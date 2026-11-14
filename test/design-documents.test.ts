@@ -79,6 +79,7 @@ describe("parseDesignMutation", () => {
       { operationId: "op-7", documentId: DOC, baseRevision: 1, target: { id: "copy" }, transactionId: "tx", change: { kind: "wrap", extraIds: ["title"], tag: "section", attrs: { class: "row" } } },
       { operationId: "op-8", documentId: DOC, baseRevision: 1, target: { locator: { tag: "h1", path: [1, 0], text: "Hello" } }, transactionId: "tx", change: { kind: "unwrap" } },
       { operationId: "op-9", documentId: DOC, baseRevision: 1, target: { id: "title" }, transactionId: "tx", change: { kind: "retag", tag: "h2" } },
+      { operationId: "op-10", documentId: DOC, baseRevision: 1, target: { id: "title" }, transactionId: "tx", change: { kind: "setStyle", changes: [{ prop: "padding", value: "8px" }], at: "mobile" } },
     ];
     for (const each of valid) expect(parseDesignMutation(each)).toEqual(each);
   });
@@ -104,6 +105,7 @@ describe("parseDesignMutation", () => {
       mutation({ change: { kind: "wrap", extraIds: [], tag: "div", attrs: { class: 1 } } }),
       mutation({ change: { kind: "shout" } }),
       mutation({ change: { kind: "retag", tag: "script" } }),
+      mutation({ change: { kind: "setStyle", changes: [{ prop: "color", value: "red" }], at: "wide" } }),
     ];
     for (const each of cases) expect(parseDesignMutation(each)).toBeNull();
   });

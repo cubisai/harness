@@ -215,6 +215,42 @@ describe("setProp", () => {
   });
 });
 
+describe("setStyle at a breakpoint", () => {
+  const at = (html: string, target: { id: string } | { locator: { tag: string; path: number[]; text: string } }, bp: "tablet" | "mobile", changes: { prop: string; value: string }[]) =>
+    applyChange(html, target, { kind: "setStyle", changes, at: bp }, counter());
+
+  it("writes a media rule on the element's id in a new block at the end of <head>, leaving its inline style alone", () => {
+    const base = PAGE.replace('data-agent-id="hero">', 'data-agent-id="hero" style="padding: 32px">');
+    const { html } = at(base, HERO, "mobile", [{ prop: "padding", value: "8px" }]);
+    expect(html).toContain('style="padding: 32px"');
+    expect(html).toMatch(/<style data-cubiq-breakpoints>[\s\S]*@media \(max-width: 767px\) \{\n {2}\[data-agent-id="hero"\] \{ padding: 8px !important; \}\n\}[\s\S]*<\/style>\n<\/head>/);
+  });
+
+  it("keeps tablet before mobile, merges into an existing rule, and removes the block with the last override", () => {
+    let html = at(PAGE, HERO, "mobile", [{ prop: "gap", value: "8px" }]).html;
+    html = at(html, SA, "tablet", [{ prop: "gap", value: "16px" }]).html;
+    html = at(html, HERO, "mobile", [{ prop: "color", value: "red" }]).html;
+    expect(html.indexOf("max-width: 1199px")).toBeLessThan(html.indexOf("max-width: 767px"));
+    expect(html).toContain('[data-agent-id="hero"] { gap: 8px !important; color: red !important; }');
+    expect(html.match(/data-cubiq-breakpoints/g)).toHaveLength(1);
+    html = at(html, HERO, "mobile", [{ prop: "gap", value: "" }, { prop: "color", value: "" }]).html;
+    expect(html).not.toContain("max-width: 767px");
+    html = at(html, SA, "tablet", [{ prop: "gap", value: "" }]).html;
+    expect(html).not.toContain("data-cubiq-breakpoints");
+    expect(html).toBe(PAGE);
+  });
+
+  it("stamps an id on an element found by its place", () => {
+    const out = at(PAGE, { locator: { tag: "h1", path: [1, 0, 0], text: "Hello & welcome" } }, "tablet", [{ prop: "font-size", value: "40px" }]);
+    expect(out.stampedId).toBeTruthy();
+    expect(out.html).toContain(`[data-agent-id="${out.stampedId}"] { font-size: 40px !important; }`);
+  });
+
+  it("refuses a value that could break out of the rule", () => {
+    expect(() => at(PAGE, HERO, "mobile", [{ prop: "color", value: "red} body{display:none" }])).toThrow(SourceEditError);
+  });
+});
+
 describe("setStyle", () => {
   it("adds a style attribute when there is none", () => {
     const { html } = applyChange(PAGE, HERO, { kind: "setStyle", changes: [{ prop: "color", value: "red" }] }, counter());

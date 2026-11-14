@@ -1095,6 +1095,7 @@ export function designBridge(
       document.documentElement.removeEventListener("mouseleave", onLeave);
       document.removeEventListener("keydown", onKey, true);
       window.removeEventListener("scroll", rehover, true);
+      window.removeEventListener("resize", rehover);
       moved.disconnect();
       cancelAnimationFrame(rehoverFrame);
       clone = null;
@@ -1113,7 +1114,7 @@ export function designBridge(
     document.addEventListener("contextmenu", onContext, true);
     document.documentElement.addEventListener("mouseleave", onLeave);
     document.addEventListener("keydown", onKey, true);
-    // An insert, a patch or a scroll moves the page under a mouse that stays put: the outline follows on the next frame.
+    // An insert, a patch, a scroll or a resize moves the page under a mouse that stays put: the outline follows on the next frame.
     let rehoverFrame = 0;
     const rehover = (): void => {
       if (rehoverFrame) return;
@@ -1125,6 +1126,8 @@ export function designBridge(
     const moved = new MutationObserver(rehover);
     if (document.body) moved.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
     window.addEventListener("scroll", rehover, { passive: true, capture: true });
+    // A viewport switch resizes the page under the mouse without changing it.
+    window.addEventListener("resize", rehover);
     stepKey = step;
     stopSelect = stop;
   };

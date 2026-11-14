@@ -69,7 +69,8 @@ function parseChange(value: unknown): DesignMutation["change"] | null {
         if (typeof entry.prop !== "string" || typeof entry.value !== "string") return null;
         changes.push({ prop: entry.prop, value: entry.value });
       }
-      return { kind: "setStyle", changes };
+      if (value.at !== undefined && value.at !== "tablet" && value.at !== "mobile") return null;
+      return value.at ? { kind: "setStyle", changes, at: value.at } : { kind: "setStyle", changes };
     }
     case "setText":
       if (typeof value.before !== "string" || typeof value.after !== "string") return null;

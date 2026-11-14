@@ -2,7 +2,7 @@
 // string splice, so the bytes outside the edit (whitespace, comments, quoting, doctype) stay identical.
 
 import { parse, parseFragment, type DefaultTreeAdapterMap } from "parse5";
-import { RETAG_TAGS, type DesignChange, type InsertPosition, type TargetLocator } from "../../shared/design-mutation";
+import { BREAKPOINT_MAX, RETAG_TAGS, type Breakpoint, type DesignChange, type InsertPosition, type TargetLocator } from "../../shared/design-mutation";
 import { decodeEntities, escapeText } from "./textedit";
 
 type TreeMap = DefaultTreeAdapterMap;
@@ -195,7 +195,7 @@ function applyOne(ctx: Context, change: DesignChange): Applied {
     case "setProp":
       return { html: setAttribute(ctx.html, ctx.element, change.name, change.value) };
     case "setStyle":
-      return { html: setStyle(ctx.html, ctx.element, change.changes) };
+      return { html: change.at ? setBreakpointStyle(ctx, change.at, change.changes) : setStyle(ctx.html, ctx.element, change.changes) };
     case "setText":
       return { html: setText(ctx.html, ctx.element, change.before, change.after) };
     case "insert":
@@ -296,6 +296,94 @@ function setStyle(html: string, element: Element, changes: { prop: string; value
   const at = attributeInsertPoint(html, element);
   if (at === null) throw invalid("That element's start tag cannot be edited.");
   return splice(html, at, 0, ` style="${escapeAttribute(body)}"`);
+}
+
+// --- breakpoint overrides ------------------------------------------------------------------------
+
+const BREAKPOINT_ORDER: Breakpoint[] = ["tablet", "mobile"];
+const BREAKPOINT_STYLE = "data-cubiq-breakpoints";
+
+/**
+ * A style override for one breakpoint: kept in the page's own `<style data-cubiq-breakpoints>` block (made on the first
+ * one, removed with the last), one media rule per breakpoint and one rule per element id. `!important`, because the
+ * base value usually sits in the element's inline style.
+ */
+function setBreakpointStyle(ctx: Context, at: Breakpoint, changes: { prop: string; value: string }[]): string {
+  if (changes.length < 1 || changes.length > 32) throw invalid("A style edit needs 1 to 32 declarations.");
+  const id = findAttr(ctx.element, "data-agent-id")?.value;
+  if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) throw invalid("That element needs an id for a breakpoint style.");
+  for (const { prop, value } of changes) {
+    if (!STYLE_PROP_RE.test(prop)) throw invalid(`"${prop}" is not a valid style property.`);
+    checkStyleValue(prop, value);
+  }
+  let block: Element | null = null;
+  walkElements(ctx.root, (el) => {
+    if (!block && el.tagName === "style" && findAttr(el, BREAKPOINT_STYLE)) block = el;
+  });
+  const found = block as Element | null;
+  const loc = found?.sourceCodeLocation;
+  const old = found && loc?.startTag && loc.endTag ? ctx.html.slice(loc.startTag.endOffset, loc.endTag.startOffset) : "";
+  const model = readBreakpoints(old);
+  const rules = model.get(at) ?? new Map<string, Map<string, string>>();
+  const decls = rules.get(id) ?? new Map<string, string>();
+  for (const { prop, value } of changes) {
+    if (value.trim() === "") decls.delete(prop);
+    else decls.set(prop, value.trim());
+  }
+  if (decls.size) rules.set(id, decls);
+  else rules.delete(id);
+  if (rules.size) model.set(at, rules);
+  else model.delete(at);
+  const body = writeBreakpoints(model);
+  if (found && loc?.startTag && loc.endTag) {
+    if (!body) {
+      // The block's own line goes: its indent and one line break after it, nothing more.
+      let from = loc.startOffset;
+      while (from > 0 && (ctx.html[from - 1] === " " || ctx.html[from - 1] === "\t")) from--;
+      const to = loc.endOffset + (ctx.html.startsWith("\r\n", loc.endOffset) ? 2 : ctx.html[loc.endOffset] === "\n" ? 1 : 0);
+      return ctx.html.slice(0, from) + ctx.html.slice(to);
+    }
+    return splice(ctx.html, loc.startTag.endOffset, loc.endTag.startOffset - loc.startTag.endOffset, body);
+  }
+  if (!body) return ctx.html;
+  // A new block goes last in <head>, after the page's own styles, so its media rules come last.
+  let head: Element | null = null;
+  walkElements(ctx.root, (el) => {
+    if (!head && el.tagName === "head") head = el;
+  });
+  const headEnd = (head as Element | null)?.sourceCodeLocation?.endTag?.startOffset;
+  const tag = `<style ${BREAKPOINT_STYLE}>${body}</style>\n`;
+  if (headEnd !== undefined) return splice(ctx.html, headEnd, 0, `  ${tag}`);
+  const bodyStart = /<body[\s>]/i.exec(ctx.html)?.index;
+  return splice(ctx.html, bodyStart ?? 0, 0, tag);
+}
+
+/** The block's overrides: breakpoint → element id → property → value. Anything it doesn't recognise is dropped. */
+function readBreakpoints(css: string): Map<Breakpoint, Map<string, Map<string, string>>> {
+  const model = new Map<Breakpoint, Map<string, Map<string, string>>>();
+  for (const media of css.matchAll(/@media \(max-width: (\d+)px\) \{([\s\S]*?)\n\}/g)) {
+    const at = BREAKPOINT_ORDER.find((b) => BREAKPOINT_MAX[b] === Number(media[1]));
+    if (!at) continue;
+    const rules = new Map<string, Map<string, string>>();
+    for (const rule of media[2]!.matchAll(/\[data-agent-id="([A-Za-z0-9_-]+)"\] \{([^}]*)\}/g)) {
+      const decls = new Map<string, string>();
+      for (const d of splitDeclarations(rule[2]!)) decls.set(d.prop, d.value.replace(/\s*!important$/i, ""));
+      if (decls.size) rules.set(rule[1]!, decls);
+    }
+    if (rules.size) model.set(at, rules);
+  }
+  return model;
+}
+
+function writeBreakpoints(model: Map<Breakpoint, Map<string, Map<string, string>>>): string {
+  const parts: string[] = [];
+  for (const at of BREAKPOINT_ORDER) {
+    const rules = model.get(at);
+    if (!rules?.size) continue;
+    const lines = [...rules].map(([id, decls]) => `  [data-agent-id="${id}"] { ${[...decls].map(([p, v]) => `${p}: ${v} !important`).join("; ")}; }`);
+    parts.push(`@media (max-width: ${BREAKPOINT_MAX[at]}px) {\n${lines.join("\n")}\n}`);
+  }
+  return parts.length ? `\n/* Breakpoint overrides from the canvas: ${BREAKPOINT_ORDER.map((b) => `${b} up to ${BREAKPOINT_MAX[b]}px`).join(", ")}. */\n${parts.join("\n")}\n` : "";
 }
 
 function checkStyleValue(prop: string, raw: string): void {

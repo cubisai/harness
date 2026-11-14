@@ -4,12 +4,19 @@
 /** Where inserted or moved content lands relative to its target element. */
 export type InsertPosition = "before" | "after" | "inside-start" | "inside-end";
 
+/** A size a style can be overridden at; the page's own value is the base (desktop). */
+export type Breakpoint = "tablet" | "mobile";
+
+/** Each breakpoint's media query bound: desktop first, so a mobile page also takes the tablet overrides. */
+export const BREAKPOINT_MAX: Record<Breakpoint, number> = { tablet: 1199, mobile: 767 };
+
 /** The one edit a mutation asks for. Each is applied as a splice, never a re-serialization. */
 export type DesignChange =
   /** Set an attribute (`null` removes it). */
   | { kind: "setProp"; name: string; value: string | null }
-  /** Update inline style declarations (an empty value removes the declaration). */
-  | { kind: "setStyle"; changes: { prop: string; value: string }[] }
+  /** Update inline style declarations (an empty value removes the declaration). With `at`, the declarations are an
+   * override for that breakpoint instead: a media rule on the element's id in the page's breakpoint style block. */
+  | { kind: "setStyle"; changes: { prop: string; value: string }[]; at?: Breakpoint }
   /** Replace an element's text, given as it reads before the edit. */
   | { kind: "setText"; before: string; after: string }
   /** Insert parsed HTML at a position around the target. */

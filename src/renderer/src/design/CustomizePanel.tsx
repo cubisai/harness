@@ -5,7 +5,7 @@ import { api } from "../api";
 import { Select } from "../components/Select";
 import { IconClose } from "../icons";
 import { ColorSwatch } from "./ColorSwatch";
-import { RETAG_TAGS } from "../../../shared/design-mutation";
+import { BREAKPOINT_MAX, RETAG_TAGS, type Breakpoint } from "../../../shared/design-mutation";
 import { colourTokenOf, colourTokens, inlineStyle, optionLabel, scaleChanges, scaleStepOf, sizeMeta, textVariantProp, typeScale, type ColourToken } from "./text-styles";
 import { MOD_KEY } from "./system-mode";
 import { flowChanges, flowOf, gapSteps, lineOf, startAttrs, startTagOf, wrapShapes, type AttrChange, type Flow, type KitPart, type WrapShape } from "./kit-parts";
@@ -123,9 +123,15 @@ export function CustomizePanel({
   onSwitchStyle,
   overrides = 0,
   onSaveTheme,
+  breakpoint = null,
+  onBreakpoint,
 }: {
   threadId: string;
   designDir: string;
+  /** The size the canvas shows, when its style edits are an override for it rather than the base value. */
+  breakpoint?: Breakpoint | null;
+  /** Show the page at a breakpoint (its viewport), or at the base size with null. */
+  onBreakpoint?: (at: Breakpoint | null) => void;
   pageRel?: string;
   reloadKey: string;
   element: SelectedElement | null;
@@ -316,6 +322,23 @@ export function CustomizePanel({
         </button>
       </div>
       {readOnly && <p className="design-customize-note">Design in progress. Controls return when the turn ends.</p>}
+      {onBreakpoint && (
+        <div className="design-customize-breakpoint">
+          <Segments
+            label="Breakpoint"
+            options={[
+              { label: "Mobile", value: "mobile" },
+              { label: "Tablet", value: "tablet" },
+              { label: "Desktop", value: "base" },
+            ]}
+            value={breakpoint ?? "base"}
+            onPick={(v) => onBreakpoint(v === "base" ? null : (v as Breakpoint))}
+          />
+          <p className="design-customize-breakpoint-note">
+            {breakpoint ? `Styles here apply up to ${BREAKPOINT_MAX[breakpoint]}px wide. Props and text change every size.` : "Writes the base value, for every size."}
+          </p>
+        </div>
+      )}
       <div className="design-customize-filter">
         <input className="text-input" type="search" placeholder={`Filter props and values   ${MOD_KEY}F`} aria-label="Filter props and values" aria-keyshortcuts="Meta+F Control+F" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </div>

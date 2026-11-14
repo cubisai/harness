@@ -27,7 +27,7 @@ import { boardSections, flowOrder, frameLabel, type BoardPage } from "./board-la
 import { Board } from "./Board";
 import { Present } from "./Present";
 import { CustomizePanel, THEME_TOKENS } from "./CustomizePanel";
-import { RETAG_TAGS, type InsertPosition } from "../../../shared/design-mutation";
+import { RETAG_TAGS, type Breakpoint, type InsertPosition } from "../../../shared/design-mutation";
 import { optionLabel, scaleChanges, scaleStepOf, textVariantProp, tokenNames, typeScale, inlineStyle } from "./text-styles";
 import { useDesignEditing } from "./useDesignEditing";
 import { StudioBar, viewportMenu, type StudioMenuItem, type StudioView } from "./StudioBar";
@@ -634,6 +634,7 @@ export default function DesignCanvas({
       window.removeEventListener("focus", back);
     };
   }, []);
+  const breakpointWrites = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; changes: Map<string, string> }>());
   const cloneRef = useRef<(source: SelectedElement, ref: SelectedElement, position: "before" | "after") => void>(() => {});
   const studioRef = useRef<{ context: (x: number, y: number) => void; key: (key: string, mod: boolean, shift: boolean, alt: boolean) => boolean; toolOf: () => CanvasTool }>({ context: () => {}, key: () => false, toolOf: () => "select" });
 
@@ -1466,7 +1467,26 @@ export default function DesignCanvas({
     });
   };
   cloneRef.current = cloneTo;
+  // At Mobile or Tablet, a style edit on an element is an override for that size: written (debounced per control) as a
+  // media rule in the page's breakpoint block, then patched into the frame from the file. No inline preview: the frame
+  // must not keep a base-value style that only this size should have.
+  const breakpoint: Breakpoint | null = viewport === "mobile" ? "mobile" : viewport === "tablet" ? "tablet" : null;
+  const styleAt = (el: SelectedElement, at: Breakpoint, changes: { prop: string; value: string }[], key: string) => {
+    const to = el.id ? { id: el.id } : el.at ? { locator: { tag: el.tag, path: el.at, text: "" } } : null;
+    if (!to) return setNotice({ text: notAnchored, error: true });
+    const slot = `${at}:${key}`;
+    const prior = breakpointWrites.current.get(slot);
+    if (prior) clearTimeout(prior.timer);
+    const merged = prior?.changes ?? new Map<string, string>();
+    for (const c of changes) merged.set(c.prop, c.value);
+    const timer = setTimeout(() => {
+      breakpointWrites.current.delete(slot);
+      void edits.transaction(async (step) => step(to, { kind: "setStyle", changes: [...merged].map(([prop, value]) => ({ prop, value })), at }));
+    }, 200);
+    breakpointWrites.current.set(slot, { timer, changes: merged });
+  };
   const styleElement = (el: SelectedElement | null, changes: { prop: string; value: string }[], key: string) => {
+    if (el && breakpoint) return styleAt(el, breakpoint, changes, key);
     const target = el ? { ...(el.id ? { id: el.id } : {}), selector: el.selector, tag: el.tag, text: "" } : { selector: "html", tag: "html", text: "" };
     post({ type: "apply-style", target, changes });
     // Page tokens change what the panel shows beside them.
@@ -2280,6 +2300,8 @@ export default function DesignCanvas({
               onSwitchStyle={() => useStore.getState().requestStudio({ threadId, picker: true })}
               overrides={Object.keys(pageInline).length}
               onSaveTheme={() => setNaming({ kind: "theme", warnings: [], error: null, busy: false })}
+              breakpoint={breakpoint}
+              onBreakpoint={(at) => setViewport(at ?? "desktop")}
               readOnly={agentRunning || edits.status?.readOnly === true}
               styleName={styleName ?? null}
               styleNote={styleNote}
