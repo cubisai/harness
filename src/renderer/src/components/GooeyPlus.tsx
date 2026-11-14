@@ -36,8 +36,9 @@ export function gooeyOffset(i: number): { x: number; y: number } {
  * gates the travel; without it the items just appear. An item may carry a
  * submenu: a flyout above its item, opened on hover, focus or
  * ArrowRight/Enter and closed by ArrowLeft, Escape or a click outside the menu.
+ * `openSub` opens the menu on that item's flyout whenever its `n` changes (a "/" command asking for it).
  */
-export function GooeyPlus({ items, title = "Add context" }: { items: GooeyItem[]; title?: string }) {
+export function GooeyPlus({ items, title = "Add context", openSub }: { items: GooeyItem[]; title?: string; openSub?: { id: string; n: number } }) {
   const [open, setOpen] = useState(false);
   const [sub, setSub] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -50,6 +51,14 @@ export function GooeyPlus({ items, title = "Add context" }: { items: GooeyItem[]
     setSub(null);
     setOpen(false);
   };
+
+  const asked = useRef(openSub?.n ?? 0);
+  useEffect(() => {
+    if (!openSub || openSub.n === asked.current) return;
+    asked.current = openSub.n;
+    setOpen(true);
+    setSub(openSub.id);
+  }, [openSub]);
 
   useEffect(() => {
     if (!open) return;

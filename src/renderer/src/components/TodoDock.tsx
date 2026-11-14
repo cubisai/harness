@@ -18,12 +18,14 @@ const collapsedByThread = new Map<string, boolean>();
  * The agent's todo list, docked above the message box: one summary line when
  * collapsed, the full checklist (growing upward) when open.
  */
-export function TodoDock({ threadId }: { threadId: string }) {
+export function TodoDock({ threadId, quietWhileRunning = false }: { threadId: string; quietWhileRunning?: boolean }) {
   const events = useStore((s) => s.events[threadId]) ?? EMPTY;
+  // The studio's Composer shows the running plan itself.
+  const hidden = useStore((s) => quietWhileRunning && Boolean(s.running[threadId]));
   const dismissed = useDismissedPlans((s) => s.seqs[threadId]);
   const plan = useMemo(() => dockedPlan(events, dismissed), [events, dismissed]);
   const [collapsed, setCollapsed] = useState(() => collapsedByThread.get(threadId) ?? false);
-  if (!plan) return null;
+  if (!plan || hidden) return null;
   const { done, total, current } = todoProgress(plan.entries);
   const toggle = () => {
     collapsedByThread.set(threadId, !collapsed);

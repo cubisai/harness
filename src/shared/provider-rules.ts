@@ -38,14 +38,13 @@ export const ANTIGRAVITY_ACK_VERSION = 2;
 
 /**
  * Codex 0.157+ rejects `wire_api = "chat"` and supports only Responses-API
- * providers, so a chat-completions provider cannot drive it (spike S2,
- * spec/open-questions.md).
+ * providers, so a chat-completions provider cannot drive it (spike S2).
  */
 export function codexCompatible(provider: Pick<Provider, "wireProtocol">): { ok: true } | { ok: false; reason: string } {
   if (provider.wireProtocol === "openai-responses") return { ok: true };
   return {
     ok: false,
-    reason: `Codex 0.157+ rejects wire_api = "chat" and supports only Responses-API providers; this provider speaks ${provider.wireProtocol} (spike S2, spec/open-questions.md).`,
+    reason: `Codex 0.157+ rejects wire_api = "chat" and supports only Responses-API providers; this provider speaks ${provider.wireProtocol}.`,
   };
 }
 

@@ -2,7 +2,7 @@
 // bench's own app copy. Records per turn the style picked, pages written, tools used, the agent's last lint and
 // usage; `bench/design-score.ts` lints and screenshots the pages afterwards.
 //
-//   bun bench/design-live.ts --out <dir> [--root <app checkout>] [--agents claude-sonnet,codex-luna] [--prompts 1-10 | 1,3,4] [--port 9490]
+//   bun bench/design-live.ts --out <dir> [--root <app checkout>] [--agents claude,codex] [--prompts 1-10 | 1,3,4] [--port 9490]
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -174,7 +174,7 @@ async function main(): Promise<void> {
   if (!arg("out")) throw new Error("--out <dir> is required");
   const root = resolve(arg("root") ?? ROOT);
   const port = Number(arg("port") ?? 9490);
-  const wanted = (arg("agents") ?? "claude-sonnet,codex-luna").split(",");
+  const wanted = (arg("agents") ?? "claude,codex").split(",");
   const all = JSON.parse(readFileSync(join(ROOT, "bench/agents.json"), "utf8")) as BenchAgent[];
   const agents = wanted.map((id) => {
     const agent = all.find((a) => a.id === id);

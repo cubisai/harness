@@ -6,7 +6,7 @@ name: release-cubiq
 # hand: Actions → release-cubiq → Run workflow, with **publish** ticked to tag
 # the picked commit and publish, or unticked to only build. A version that's
 # already released is refused. Signing turns on per OS when its secrets exist
-# (README → Signing); without them macOS is ad-hoc signed and Windows unsigned.
+# (README.md → Releases); without them macOS is ad-hoc signed and Windows unsigned.
 on:
   push:
     tags: ["cubiq-v*"]

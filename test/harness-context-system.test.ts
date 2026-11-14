@@ -122,7 +122,7 @@ describe("systemPrompt", () => {
 
   it("keeps the base prompt within its token budget", () => {
     // Every rule costs tokens on every request; extra rules past this point
-    // measurably hurt (the ETH context-file study, plan/docs/12-harness-best-practices.md §12.2). Grow it only on purpose.
+    // measurably hurt (the ETH context-file study). Grow it only on purpose.
     for (const model of ["claude-sonnet-5-5", "gpt-5.5", "gemini-3-pro", "deepseek-v4.1-flash"]) {
       expect(estimateText(systemPrompt(parts({ model }))[0]!)).toBeLessThanOrEqual(650);
     }

@@ -1,8 +1,9 @@
 import type { CodeMode, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, ThreadEvent } from "../../shared/types";
-import { CODE_HINT } from "../code-hint";
+import { CODE_HINT, CODE_HINT_CODEX_EXEC, CODE_HINT_DEFERRED } from "../code-hint";
+import { z } from "zod";
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipAgentSummary, clipSummary } from "../../shared/tools";
-import { diffSummary } from "../../shared/diff";
+import { diffSummary, unifiedDiff } from "../../shared/diff";
 import { normalizePlan } from "../../shared/plan";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -46,6 +47,8 @@ type ThreadItem =
     }
   | { type: "webSearch"; id: string; query?: string }
   | { type: "plan"; id: string; text: string }
+  // A client-executed dynamic tool (run_code registered on thread/start).
+  | { type: "dynamicToolCall"; id: string; tool: string; status: string; arguments?: unknown; contentItems?: { type?: string; text?: string }[] | null; success?: boolean }
   // A parent thread's note that a subagent (a Codex child thread) started or ended.
   | { type: "subAgentActivity"; id: string; kind: "started" | "interacted" | "interrupted" | "completed"; agentThreadId: string; agentPath: string }
   | {
@@ -102,8 +105,10 @@ export interface CodexConfig {
   skillsDir?: (cwd?: string, design?: boolean, threadId?: string) => string | null;
   /** The harness's tools over HTTP MCP (the browser pane's), attached per thread. */
   toolServer?: () => Promise<{ url: string; token: string }>;
-  /** The thread's code mode: on adds run_code to its tool server URL (`&c=`). */
+  /** The thread's code mode: on adds run_code to its tool server URL (`&c=`) and, with codeTool, as a dynamic tool. */
   codeMode?: (threadId: string) => CodeMode;
+  /** The thread's run_code, registered as a dynamic tool on thread/start (0.159+) so it isn't deferred behind tool_search. */
+  codeTool?: (threadId: string) => HarnessTool;
   /** Plan rate limits, from the notifications Codex sends with its responses. */
   onLimits?: LimitsListener;
   /** The credential plan for the next app-server start; absent = inherit process.env (tests). */
@@ -189,7 +194,7 @@ export function turnPolicy(mode: PermissionMode, design?: string): { approvalPol
 
 /** Where a design thread's CubiQ skills are, so Codex reads them there instead of guessing a root. */
 export function designSkillsLine(root: string): string {
-  return `CubiQ's design skills for this thread are in \`${root}\`: read \`${root}/<skill>/SKILL.md\` (e.g. design-prototype).`;
+  return `CubiQ's design skills for this thread are in \`${root}\`: read \`${root}/<skill>/SKILL.md\` (e.g. design-build).`;
 }
 
 /** Codex's per-turn sandbox policy, as the app-server schema spells it. */
@@ -397,6 +402,18 @@ export function codexToolConfig(
   return Object.keys(mcp).length ? { mcp_servers: mcp } : undefined;
 }
 
+/** A harness tool as a dynamic-tool spec for thread/start (0.159+): a top-level function Codex calls back on item/tool/call. */
+function dynamicToolSpec(tool: HarnessTool): Record<string, unknown> {
+  let inputSchema: Record<string, unknown>;
+  try {
+    const { $schema: _schema, ...schema } = z.toJSONSchema(z.object(tool.input), { io: "input", unrepresentable: "any" }) as Record<string, unknown>;
+    inputSchema = schema;
+  } catch {
+    inputSchema = { type: "object", properties: {} };
+  }
+  return { type: "function", name: tool.name, description: tool.description, inputSchema, deferLoading: false };
+}
+
 interface Elicitation {
   threadId: string;
   serverName: string;
@@ -436,6 +453,8 @@ interface TurnState {
   rowId?: string;
   /** Each started fileChange item's paths, by item id: its approval request carries none. */
   changePaths?: Map<string, string[]>;
+  /** Tool item ids whose tool-use event already went out (item/tool/call can precede item/started). */
+  startedTools?: Set<string>;
 }
 
 /**
@@ -752,7 +771,12 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       }
     }
     const tool = toolFor(item);
-    if (tool) t.input.onEvent({ kind: "tool-use", toolUseId: item.id, ...tool });
+    if (tool) {
+      const seen = (t.startedTools ??= new Set());
+      if (seen.has(item.id)) return;
+      seen.add(item.id);
+      t.input.onEvent({ kind: "tool-use", toolUseId: item.id, ...tool });
+    }
   };
   const onItemCompleted = (t: TurnState, item: ThreadItem) => {
     // Root-only subagent lifecycle: a subagent finishing closes its Agent row.
@@ -807,7 +831,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     }
     if (!toolFor(item)) return;
     const status = (item as { status?: string }).status ?? "completed";
-    const failed = status === "failed" || status === "declined";
+    const failed = status === "failed" || status === "declined" || (item.type === "dynamicToolCall" && (item as { success?: boolean }).success === false);
     let summary = failed ? "Failed" : "Done";
     if (item.type === "commandExecution") {
       const c = item as { command: string; aggregatedOutput: string | null; exitCode: number | null };
@@ -828,6 +852,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       const m = item as { error?: { message: string } | null; result?: { content: unknown } | null };
       if (m.error) summary = m.error.message;
       else if (m.result) summary = summarizeToolResult(m.result.content) || summary;
+    } else if (item.type === "dynamicToolCall") {
+      const d = item as { contentItems?: { type?: string; text?: string }[] | null; success?: boolean };
+      summary = summarizeToolResult((d.contentItems ?? []).map((c) => c.text ?? "").join("\n")) || (d.success === false ? "Failed" : summary);
     }
     const payload = resultPayloadFor(item);
     const diff = !failed && item.type === "fileChange" ? (payload as { diff: ToolDiff[] }).diff : [];
@@ -856,7 +883,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         const paths = t.changePaths?.get(p.itemId) ?? [];
         const command = typeof p.command === "string" ? p.command : null;
         // A command with no text can't be checked, so it's refused like an edit with no files.
-        const reason = isCommand ? (command !== null ? fenceCommand(t.input.cwd, t.input.design, command) : "Blocked in a design thread: couldn't read this command") : fenceWrite(t.input.cwd, t.input.design, paths);
+        const reason = isCommand ? (command !== null ? fenceCommand(t.input.cwd, t.input.design, command) : "Blocked in a design thread: couldn't read this command") : fenceWrite(t.input.cwd, t.input.design, paths, t.input.designGuard);
         if (reason) {
           t.input.onEvent({ kind: "notice", text: `Blocked in this design thread: ${isCommand ? command : paths.join(", ")}` });
           return { decision: "decline" };
@@ -877,6 +904,33 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       return { decision: codexDecision(decision) };
     }
     if (method === "mcpServer/elicitation/request") return onElicitation(params as Elicitation);
+    // A dynamic tool call (run_code): emit its row if item/started hasn't yet, run it, and answer with content items.
+    if (method === "item/tool/call") {
+      const call = params as { threadId: string; callId?: string; tool?: string; arguments?: unknown };
+      const state = stateFor(call.threadId);
+      const tool = state && config.codeTool?.(state.input.threadId);
+      if (!state || !tool || call.tool !== tool.name) {
+        return { contentItems: [{ type: "inputText", text: `No handler registered for tool: ${String(call.tool ?? "")}` }], success: false };
+      }
+      const args = call.arguments && typeof call.arguments === "object" ? (call.arguments as Record<string, unknown>) : {};
+      if (call.callId && !(state.startedTools ??= new Set()).has(call.callId)) {
+        state.startedTools.add(call.callId);
+        const row = toolFor({ type: "dynamicToolCall", id: call.callId, tool: tool.name, status: "inProgress", arguments: args });
+        if (row) state.input.onEvent({ kind: "tool-use", toolUseId: call.callId, ...row });
+      }
+      const parentId = state.rowId ?? call.callId;
+      try {
+        const out = await tool.run(args as never, {
+          ...(state.input.projectId ? { projectId: state.input.projectId } : {}),
+          threadId: state.input.threadId,
+          ...(parentId ? { parentId } : {}),
+          signal: state.input.signal,
+        });
+        return { contentItems: [{ type: "inputText", text: out.text }], success: !out.isError };
+      } catch (err) {
+        return { contentItems: [{ type: "inputText", text: err instanceof Error ? err.message : String(err) }], success: false };
+      }
+    }
     // Plan mode's questions: the user answers in the app's card; a skip sends
     // no answers, and Codex goes on with its recommended defaults.
     if (method === "item/tool/requestUserInput") {
@@ -1078,7 +1132,16 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // Codex pins a design skill onto the wrong skills root (another plugin's) on its first read: say where CubiQ's are.
     const skillRoot = input.design ? config.skillsDir?.(input.cwd, true, input.threadId) : null;
     const skillLine = skillRoot ? designSkillsLine(skillRoot) : "";
-    const guideText = [config.guide?.(input.cwd, input.design) ?? "", skillLine, codeMode !== "off" && server ? CODE_HINT : "", PLAN_HINT].filter(Boolean).join("\n\n");
+    // Opt-in (CUBIQ_CODEX_EXEC_MODE=1) until its approvals and rows are live-checked: Codex's own code_mode puts every tool, run_code included, inside `exec`.
+    const execMode = codeMode !== "off" && Boolean(server) && process.env.CUBIQ_CODEX_EXEC_MODE === "1";
+    if (execMode) threadConfig = { ...(threadConfig ?? {}), features: { code_mode: true } };
+    // Code mode's run_code as a client-executed dynamic tool (0.159+): top-level, not deferred behind tool_search.
+    // The MCP copy on the URL above stays as the fallback for threads started before dynamicTools.
+    const runCode = codeMode !== "off" && !execMode && config.codeTool ? config.codeTool(input.threadId) : null;
+    const dynamicTools = runCode ? [dynamicToolSpec(runCode)] : null;
+    // Without a dynamic tool Codex defers every MCP tool behind tool_search, so its hint says to load run_code first.
+    const codeHint = codeMode === "off" ? "" : execMode ? CODE_HINT_CODEX_EXEC : dynamicTools ? CODE_HINT : server ? CODE_HINT_DEFERRED : "";
+    const guideText = [config.guide?.(input.cwd, input.design) ?? "", skillLine, codeHint, PLAN_HINT].filter(Boolean).join("\n\n");
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
     let threadModel: string | null = null;
@@ -1132,6 +1195,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         ...policy,
         config: threadConfig,
         ...(developerInstructions ? { developerInstructions } : {}),
+        ...(dynamicTools ? { dynamicTools } : {}),
       });
       threadId = res.thread.id;
       threadModel = res.model ?? null;
@@ -1466,6 +1530,16 @@ export function toolFor(item: ThreadItem): { name: string; summary: string; payl
         ...(Object.keys(args).length ? { payload: args } : {}),
       };
     }
+    case "dynamicToolCall": {
+      // The dynamic run_code renders (and nests its child rows) exactly like the MCP one.
+      const d = item as { tool: string; arguments?: unknown };
+      const args = d.arguments && typeof d.arguments === "object" ? (d.arguments as Record<string, unknown>) : {};
+      return {
+        name: d.tool,
+        summary: summarizeToolInput(d.tool, args),
+        ...(Object.keys(args).length ? { payload: args } : {}),
+      };
+    }
     case "webSearch": {
       const query = (item as { query?: string }).query;
       return {
@@ -1486,11 +1560,16 @@ export function resultPayloadFor(item: ThreadItem): unknown | null {
     return { exitCode: c.exitCode, output: c.aggregatedOutput ?? "" } satisfies RunResult;
   }
   if (item.type === "fileChange") {
-    const f = item as { changes: { path: string; diff?: unknown; unified_diff?: unknown; kind?: { unified_diff?: unknown } }[] };
+    const f = item as { changes: { path: string; diff?: unknown; unified_diff?: unknown; kind?: { type?: unknown; unified_diff?: unknown } }[] };
     const diff: ToolDiff[] = f.changes
       .map((c) => {
-        const unified =
+        const text =
           typeof c.diff === "string" ? c.diff : typeof c.unified_diff === "string" ? c.unified_diff : typeof c.kind?.unified_diff === "string" ? c.kind.unified_diff : "";
+        // A new or deleted file comes as its whole text, with no hunks: as a diff it would count +0 −0.
+        const whole = text !== "" && !/^@@ /m.test(text);
+        const made = whole && c.kind?.type === "add" ? unifiedDiff(c.path, "", text) : whole && c.kind?.type === "delete" ? unifiedDiff(c.path, text, "") : text;
+        // An update comes as bare hunks (no `diff --git` header), which parse as no file at all: +0 −0 on the card.
+        const unified = made && !/^diff --git /m.test(made) ? `diff --git a/${c.path} b/${c.path}\n${/^--- /m.test(made) ? "" : `--- a/${c.path}\n+++ b/${c.path}\n`}${made}` : made;
         return { path: c.path, unified };
       })
       .filter((d) => d.unified);
@@ -1499,6 +1578,9 @@ export function resultPayloadFor(item: ThreadItem): unknown | null {
   if (item.type === "mcpToolCall") {
     const m = item as { result?: { content: unknown } | null; error?: { message: string } | null };
     return m.error ?? m.result ?? null;
+  }
+  if (item.type === "dynamicToolCall") {
+    return (item as { contentItems?: unknown }).contentItems ?? null;
   }
   return null;
 }

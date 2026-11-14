@@ -50,6 +50,17 @@ describe("ranChecks", () => {
     for (const c of ["npm test", "bun run typecheck", "pytest -q", "go test ./...", "cargo clippy", "npx tsc --noEmit", "make check"]) expect(ranChecks([c]), c).toBe(true);
     expect(ranChecks(["ls -la", "cat src/a.ts", "git status"])).toBe(false);
   });
+
+  it("counts a design_lint call under any MCP prefix, and no other tool", () => {
+    for (const t of ["design_lint", "mcp__cubiq__design_lint", "cubiq_design_lint"]) expect(ranChecks([], [t]), t).toBe(true);
+    expect(ranChecks([], ["design_screenshot", "Edit", "run_code", "design_lint_notes"])).toBe(false);
+  });
+
+  it("drops the pass-claim flag when the turn linted its design", () => {
+    const turn: EvidenceInput = { editedTests: [], deletedTests: [], weakened: [], request: "badge each hazard", answer: "Lint is clean and the card fits.", commands: [], checkPassed: false };
+    expect(evidenceFlags(turn)).toEqual(["Says tests or checks pass, but none ran this turn."]);
+    expect(evidenceFlags({ ...turn, tools: ["run_code", "design_lint"] })).toEqual([]);
+  });
 });
 
 describe("evidenceFlags", () => {

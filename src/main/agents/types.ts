@@ -20,6 +20,8 @@ export interface ToolContext {
   projectId?: string;
   /** The thread whose turn called the tool, when the tool server knows it (`?t=`). */
   threadId?: string;
+  /** The agent row this tool call itself renders as, when the driver executes it directly (Codex dynamic tools). */
+  parentId?: string;
   /** Aborts when the caller gives up on the call (the HTTP request closed). */
   signal?: AbortSignal;
 }
@@ -53,6 +55,8 @@ export interface TurnInput {
   projectId?: string;
   /** A design thread's folder (relative to cwd), which the guide tells the agent to build in. */
   design?: string;
+  /** A live check on writes inside the design folder (e.g. no page before an Auto thread has a direction): the reason to refuse, or null. */
+  designGuard?: (paths: readonly string[]) => string | null;
   /** The thread's expert persona block (see shared/experts.ts expertBlock), appended to the guide; absent = no expert. */
   expert?: string;
   /** The expert team's members as subagents (Claude SDK agents, OpenCode agents); absent = no team. Fixed for a thread. */

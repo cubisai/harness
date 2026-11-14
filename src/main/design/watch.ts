@@ -26,7 +26,7 @@ const ATOMIC_TEMP = /\.tmp\.\d+\.[0-9a-z]+$/i;
 export function ignoredChange(file: string | undefined): boolean {
   if (file === undefined) return false;
   const rel = file.replace(/\\/g, "/");
-  return UNWATCHED.has(rel) || ATOMIC_TEMP.test(rel);
+  return UNWATCHED.has(rel) || ATOMIC_TEMP.test(rel) || rel.startsWith(".preview");
 }
 
 export interface DesignWatcherOptions {

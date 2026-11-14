@@ -147,3 +147,33 @@ describe("fence bypass attempts", () => {
     expect(fenceWrite(threadFolder(), DESIGN, [])).toMatch(/didn't say which files/);
   });
 });
+
+describe("managed folders and the design guard", () => {
+  it("refuses writes into system/ and styles/, but not the kit/ draft or pages", () => {
+    const cwd = threadFolder();
+    expect(fenceWrite(cwd, DESIGN, [`${DESIGN}/system/tokens.css`])).toMatch(/system\/ is managed by CubiQ/);
+    expect(fenceWrite(cwd, DESIGN, [join(cwd, DESIGN, "system", "ui.css")])).toMatch(/managed by CubiQ/);
+    expect(fenceWrite(cwd, DESIGN, [`${DESIGN}/styles/stripe/tokens.css`])).toMatch(/styles\/ is managed by CubiQ/);
+    expect(fenceWrite(cwd, DESIGN, [`${DESIGN}/kit/ui.css`])).toBeNull();
+    expect(fenceWrite(cwd, DESIGN, [`${DESIGN}/variant-stripe.html`, `${DESIGN}/page.css`])).toBeNull();
+    // A page whose name merely starts with "system" is the agent's own.
+    expect(fenceWrite(cwd, DESIGN, [`${DESIGN}/system-status.html`])).toBeNull();
+  });
+
+  it("refuses shell writes into system/, and still lets the agent copy a block out of it", () => {
+    const cwd = threadFolder();
+    expect(fenceCommand(cwd, DESIGN, `echo x > ${DESIGN}/system/tokens.css`)).toMatch(/Blocked/);
+    expect(fenceCommand(cwd, DESIGN, `rm -rf ${DESIGN}/system`)).toMatch(/Blocked/);
+    expect(fenceCommand(cwd, DESIGN, `cp ${DESIGN}/system/blocks/hero.html ${DESIGN}/hero.html`)).toBeNull();
+  });
+
+  it("asks the guard only about writes that are otherwise allowed", () => {
+    const cwd = threadFolder();
+    const seen: string[][] = [];
+    const guard = (paths: readonly string[]) => (seen.push([...paths]), paths.some((p) => p.endsWith(".html")) ? "Call design_set_direction first" : null);
+    expect(fenceWrite(cwd, DESIGN, [`${DESIGN}/index.html`], guard)).toBe("Call design_set_direction first");
+    expect(fenceWrite(cwd, DESIGN, [`${DESIGN}/brief.md`], guard)).toBeNull();
+    expect(fenceWrite(cwd, DESIGN, ["src/app.ts"], guard)).toContain("This design thread");
+    expect(seen).toEqual([[`${DESIGN}/index.html`], [`${DESIGN}/brief.md`]]);
+  });
+});

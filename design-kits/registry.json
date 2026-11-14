@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "kits": [
+    {
+      "id": "shadcn-ui",
+      "name": "shadcn/ui",
+      "version": "1.0.0",
+      "themes": [
+        "zinc",
+        "stone",
+        "mauve",
+        "olive",
+        "mist",
+        "taupe",
+        "blue",
+        "rose",
+        "green",
+        "violet",
+        "orange"
+      ],
+      "card": {
+        "bg": "#FFFFFF",
+        "text": "#0A0A0A",
+        "accent": "#171717",
+        "radius": "10px"
+      }
+    },
+    {
+      "id": "mui",
+      "name": "MUI",
+      "version": "1.0.0",
+      "themes": [
+        "indigo",
+        "deep-purple",
+        "teal",
+        "pink",
+        "green",
+        "deep-orange",
+        "blue-grey"
+      ],
+      "card": {
+        "bg": "#FFFFFF",
+        "text": "#212121",
+        "accent": "#1976D2",
+        "radius": "4px"
+      }
+    },
+    {
+      "id": "ant-design",
+      "name": "Ant Design",
+      "version": "1.0.0",
+      "themes": [
+        "geek-blue",
+        "purple",
+        "magenta",
+        "red",
+        "volcano",
+        "cyan",
+        "green"
+      ],
+      "card": {
+        "bg": "#FFFFFF",
+        "text": "#1F1F1F",
+        "accent": "#1677FF",
+        "radius": "6px"
+      }
+    },
+    {
+      "id": "chakra-ui",
+      "name": "Chakra UI",
+      "version": "1.0.0",
+      "themes": [
+        "blue",
+        "red",
+        "purple",
+        "pink",
+        "teal",
+        "green",
+        "orange"
+      ],
+      "card": {
+        "bg": "#FFFFFF",
+        "text": "#09090B",
+        "accent": "#18181B",
+        "radius": "4px"
+      }
+    },
+    {
+      "id": "mantine",
+      "name": "Mantine",
+      "version": "1.0.0",
+      "themes": [
+        "violet",
+        "teal",
+        "grape",
+        "orange",
+        "red",
+        "cyan",
+        "pink"
+      ],
+      "card": {
+        "bg": "#FFFFFF",
+        "text": "#000000",
+        "accent": "#228BE6",
+        "radius": "8px"
+      }
+    },
+    {
+      "id": "varelyo-ui",
+      "name": "varelyo/ui",
+      "version": "1.0.0",
+      "themes": [
+        "neutral",
+        "slate",
+        "blue",
+        "green",
+        "violet",
+        "rose",
+        "orange"
+      ],
+      "card": {
+        "bg": "#FFFFFF",
+        "text": "#171717",
+        "accent": "#171717",
+        "radius": "8px"
+      }
+    }
+  ]
+}

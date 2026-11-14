@@ -3,6 +3,7 @@
 import { collectLayoutSlop, layoutSlopFindings } from "./slop-layout";
 import { collectSurfaceSlop, surfaceSlopFindings } from "./slop-surface";
 import { collectSystemSlop, systemSlopFindings } from "./slop-system";
+import { collectCraftSlop, craftSlopFindings } from "./slop-craft";
 import { collectTypeSlop, typeSlopFindings } from "./slop-type";
 
 /** An sRGB color: channels 0-255, alpha 0-1. */
@@ -100,7 +101,7 @@ export function colorKey(c: Rgba): string {
 }
 
 /** The lint rules the design lint runs. */
-export type LintRule = "contrast" | "targets" | "spacing" | "color" | "slop";
+export type LintRule = "contrast" | "targets" | "kit" | "spacing" | "color" | "slop";
 
 /** One lint finding. */
 export interface LintFinding {
@@ -1347,6 +1348,7 @@ const SLOP_GROUPS = [
   { name: "type", collect: collectTypeSlop, check: typeSlopFindings },
   { name: "surface", collect: collectSurfaceSlop, check: surfaceSlopFindings },
   { name: "system", collect: collectSystemSlop, check: systemSlopFindings },
+  { name: "craft", collect: collectCraftSlop, check: craftSlopFindings },
 ] as const;
 
 /** The design lint as one page expression, embedding the selector and helpers. */
@@ -1360,7 +1362,7 @@ export const LINT_MAX = 40;
 
 /** Render a lint result as a compact report for the agent. */
 export function formatLint(result: LintResult): string {
-  const order: LintRule[] = ["contrast", "targets", "spacing", "color", "slop"];
+  const order: LintRule[] = ["contrast", "targets", "kit", "spacing", "color", "slop"];
   const deduped: LintFinding[] = [];
   const seen = new Set<string>();
   for (const rule of order) {
@@ -1373,7 +1375,7 @@ export function formatLint(result: LintResult): string {
     }
   }
 
-  const counts: Record<LintRule, number> = { contrast: 0, targets: 0, spacing: 0, color: 0, slop: 0 };
+  const counts: Record<LintRule, number> = { contrast: 0, targets: 0, kit: 0, spacing: 0, color: 0, slop: 0 };
   for (const finding of deduped) counts[finding.rule] += 1;
 
   const lines: string[] = [];
@@ -1381,7 +1383,7 @@ export function formatLint(result: LintResult): string {
     lines.push(`design_lint: no findings (${result.scanned} elements)`);
   } else {
     lines.push(
-      `design_lint: ${deduped.length} findings — contrast ${counts.contrast}, targets ${counts.targets}, spacing ${counts.spacing}, color ${counts.color}, slop ${counts.slop} (${result.scanned} elements)`,
+      `design_lint: ${deduped.length} findings — contrast ${counts.contrast}, targets ${counts.targets}${counts.kit ? `, kit ${counts.kit}` : ""}, spacing ${counts.spacing}, color ${counts.color}, slop ${counts.slop} (${result.scanned} elements)`,
     );
     const shown = deduped.slice(0, LINT_MAX);
     for (const finding of shown) lines.push(`- [${finding.rule}] ${finding.selector} — ${finding.detail}`);

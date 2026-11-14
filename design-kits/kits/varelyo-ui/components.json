@@ -1,0 +1,1601 @@
+{
+  "kitId": "varelyo-ui",
+  "name": "varelyo/ui",
+  "version": "1.0.0",
+  "contractVersion": "1.0",
+  "package": "varelyo-foundation",
+  "compat": {
+    "themes": [
+      "neutral",
+      "slate",
+      "blue",
+      "green",
+      "violet",
+      "rose",
+      "orange"
+    ],
+    "migratesFrom": []
+  },
+  "components": [
+    {
+      "name": "Stack",
+      "ui": "stack",
+      "category": "Layout",
+      "description": "Lay content in a row or column with token-based spacing and alignment.",
+      "props": [
+        {
+          "name": "direction",
+          "label": "Direction",
+          "type": "choice",
+          "options": [
+            "column",
+            "row"
+          ],
+          "default": "column"
+        },
+        {
+          "name": "spacing",
+          "label": "Spacing",
+          "type": "choice",
+          "options": [
+            "md",
+            "none",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl",
+            "3xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "align-items",
+          "label": "Align Items",
+          "type": "choice",
+          "options": [
+            "stretch",
+            "start",
+            "center",
+            "end"
+          ],
+          "default": "stretch"
+        },
+        {
+          "name": "justify-content",
+          "label": "Justify Content",
+          "type": "choice",
+          "options": [
+            "start",
+            "center",
+            "end",
+            "between"
+          ],
+          "default": "start"
+        },
+        {
+          "name": "divider",
+          "label": "Divider",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-spacing=\"md\">\n<div data-ui=\"typography\" data-variant=\"title-md\">Harvest Box, 4 kg</div>\n<div data-ui=\"typography\" data-variant=\"body-sm\" data-color=\"muted\">Seasonal vegetables from Ash Lane Farm.</div>\n<div data-ui=\"stack\" data-direction=\"row\" data-spacing=\"sm\" data-align-items=\"center\">\n<button data-ui=\"button\" data-variant=\"contained\" data-size=\"sm\">Subscribe</button>\n<button data-ui=\"button\" data-variant=\"text\" data-size=\"sm\">Skip week</button>\n</div>\n</div>"
+    },
+    {
+      "name": "Grid",
+      "ui": "grid",
+      "category": "Layout",
+      "description": "Arrange responsive columns with token-based spacing, item sizes and offsets.",
+      "props": [
+        {
+          "name": "columns",
+          "label": "Columns",
+          "type": "choice",
+          "options": [
+            "12",
+            "1",
+            "2",
+            "3",
+            "4",
+            "6"
+          ],
+          "default": "12"
+        },
+        {
+          "name": "spacing",
+          "label": "Spacing",
+          "type": "choice",
+          "options": [
+            "md",
+            "none",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"grid\" data-columns=\"3\" data-spacing=\"md\">\n<div data-ui=\"card\" data-elevation=\"none\" data-variant=\"outlined\"><div data-part=\"content\"><div data-ui=\"typography\" data-variant=\"label-sm\" data-color=\"muted\">Small</div><div data-ui=\"typography\" data-variant=\"title-sm\">Half box</div></div></div>\n<div data-ui=\"card\" data-elevation=\"none\" data-variant=\"outlined\"><div data-part=\"content\"><div data-ui=\"typography\" data-variant=\"label-sm\" data-color=\"muted\">Medium</div><div data-ui=\"typography\" data-variant=\"title-sm\">Family box</div></div></div>\n<div data-ui=\"card\" data-elevation=\"none\" data-variant=\"outlined\"><div data-part=\"content\"><div data-ui=\"typography\" data-variant=\"label-sm\" data-color=\"muted\">Large</div><div data-ui=\"typography\" data-variant=\"title-sm\">Market box</div></div></div>\n</div>"
+    },
+    {
+      "name": "Container",
+      "ui": "container",
+      "category": "Layout",
+      "description": "Center page content and constrain its maximum width with responsive gutters.",
+      "props": [
+        {
+          "name": "max-width",
+          "label": "Max Width",
+          "type": "choice",
+          "options": [
+            "lg",
+            "xs",
+            "sm",
+            "md",
+            "xl"
+          ],
+          "default": "lg"
+        },
+        {
+          "name": "disable-gutters",
+          "label": "Disable Gutters",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"container\" data-max-width=\"lg\">\n<div data-ui=\"typography\" data-variant=\"body-md\">Pick your box by Tuesday and it arrives on Thursday morning.</div>\n</div>"
+    },
+    {
+      "name": "Typography",
+      "ui": "typography",
+      "category": "Type",
+      "description": "Apply the type scale to headings, body copy and labels, choosing the element for each.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "body-md",
+            "body-lg",
+            "body-sm",
+            "title-lg",
+            "title-md",
+            "title-sm",
+            "display-lg",
+            "display-md",
+            "display-sm",
+            "label-md",
+            "label-sm"
+          ],
+          "default": "body-md"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "default",
+            "muted"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "start",
+            "center",
+            "end"
+          ],
+          "default": "start"
+        },
+        {
+          "name": "no-wrap",
+          "label": "No Wrap",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-spacing=\"xs\">\n<div data-ui=\"typography\" data-variant=\"display-sm\">Fresh every Thursday</div>\n<div data-ui=\"typography\" data-variant=\"title-lg\">Orchardly farm boxes</div>\n<div data-ui=\"typography\" data-variant=\"body-md\">Choose a box size, pick a delivery day and skip any week you are away.</div>\n<div data-ui=\"typography\" data-variant=\"label-sm\" data-color=\"muted\">Delivery area: Greater Leeds</div>\n</div>"
+    },
+    {
+      "name": "Icon",
+      "ui": "icon",
+      "category": "Type",
+      "description": "Render a named line icon with token-based sizing and colour.",
+      "props": [
+        {
+          "name": "name",
+          "label": "Name",
+          "type": "text",
+          "default": "search"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-spacing=\"md\" data-align-items=\"center\">\n<i data-ui=\"icon\" data-name=\"leaf\" data-size=\"sm\"></i>\n<i data-ui=\"icon\" data-name=\"truck\"></i>\n<i data-ui=\"icon\" data-name=\"calendar\" data-size=\"lg\"></i>\n<i data-ui=\"icon\" data-name=\"heart\" data-size=\"xl\"></i>\n</div>"
+    },
+    {
+      "name": "Divider",
+      "ui": "divider",
+      "category": "Layout",
+      "description": "Separate adjacent content with a line and optional text.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "fullWidth",
+            "inset",
+            "middle"
+          ],
+          "default": "fullWidth"
+        },
+        {
+          "name": "flex-item",
+          "label": "Flex Item",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-spacing=\"sm\">\n<div data-ui=\"typography\" data-variant=\"body-sm\">Weekly box, 4 kg</div>\n<hr data-ui=\"divider\">\n<div data-ui=\"typography\" data-variant=\"body-sm\">Fortnightly box, 6 kg</div>\n<hr data-ui=\"divider\" data-variant=\"inset\">\n<div data-ui=\"divider\" data-part=\"label\">or</div>\n</div>"
+    },
+    {
+      "name": "Button",
+      "ui": "button",
+      "category": "Actions",
+      "description": "Trigger an action or navigate with a button that supports variants, icons, loading and disabled states.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "text",
+            "contained",
+            "outlined"
+          ],
+          "default": "text"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "error",
+            "warning",
+            "info",
+            "success"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "full-width",
+          "label": "Full Width",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "loading",
+          "label": "Loading",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-spacing=\"sm\" data-align-items=\"center\" data-wrap=\"true\">\n<button data-ui=\"button\" data-variant=\"contained\" data-start-addon=\"true\"><i data-ui=\"icon\" data-name=\"download\"></i>Export</button>\n<button data-ui=\"button\" data-variant=\"contained\">Subscribe</button>\n<button data-ui=\"button\" data-variant=\"outlined\">Edit box</button>\n<button data-ui=\"button\" data-variant=\"text\">Skip week</button>\n<button data-ui=\"button\" data-variant=\"contained\" data-size=\"sm\" data-start-addon=\"true\"><i data-ui=\"icon\" data-name=\"plus\"></i>Add item</button>\n<button data-ui=\"button\" data-variant=\"outlined\" data-size=\"lg\" data-end-addon=\"true\">Next cycle <i data-ui=\"icon\" data-name=\"arrow-right\"></i></button>\n<button data-ui=\"button\" data-variant=\"contained\" data-loading=\"true\">Saving</button>\n<button data-ui=\"button\" data-variant=\"contained\" disabled>Closed</button>\n</div>"
+    },
+    {
+      "name": "ButtonBase",
+      "ui": "button-base",
+      "category": "Actions",
+      "description": "Build custom button and action-link compositions using the shared interaction foundation.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-spacing=\"md\" data-align-items=\"center\">\n<button data-ui=\"button-base\">Pick a box size</button>\n<a data-ui=\"button-base\" data-part=\"link\" href=\"#\">Read the delivery policy</a>\n</div>"
+    },
+    {
+      "name": "IconButton",
+      "ui": "icon-button",
+      "category": "Actions",
+      "description": "Provide a compact icon-only action with explicit naming, visual variants and loading states.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "text",
+            "contained",
+            "outlined"
+          ],
+          "default": "text"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "neutral",
+            "primary",
+            "secondary",
+            "error",
+            "warning",
+            "info",
+            "success"
+          ],
+          "default": "neutral"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "loading",
+          "label": "Loading",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-spacing=\"sm\" data-align-items=\"center\">\n<button data-ui=\"icon-button\" aria-label=\"Edit box\"><i data-ui=\"icon\" data-name=\"edit\"></i></button>\n<button data-ui=\"icon-button\" data-variant=\"contained\" aria-label=\"Add to box\"><i data-ui=\"icon\" data-name=\"plus\"></i></button>\n<button data-ui=\"icon-button\" data-variant=\"outlined\" aria-label=\"Share\"><i data-ui=\"icon\" data-name=\"upload\"></i></button>\n<button data-ui=\"icon-button\" data-size=\"sm\" aria-label=\"More\"><i data-ui=\"icon\" data-name=\"more\"></i></button>\n</div>"
+    },
+    {
+      "name": "Link",
+      "ui": "link",
+      "category": "Actions",
+      "description": "Navigate between pages with a semantic text link that supports underline, colour and disabled states.",
+      "props": [
+        {
+          "name": "underline",
+          "label": "Underline",
+          "type": "choice",
+          "options": [
+            "always",
+            "hover",
+            "none"
+          ],
+          "default": "always"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "neutral",
+            "primary",
+            "secondary",
+            "error",
+            "warning",
+            "info",
+            "success"
+          ],
+          "default": "neutral"
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<p data-ui=\"typography\" data-variant=\"body-md\">Read the <a data-ui=\"link\" href=\"#\">delivery policy</a>, or <a data-ui=\"link\" data-underline=\"hover\" href=\"#\">see the farms</a>.</p>"
+    },
+    {
+      "name": "Chip",
+      "ui": "chip",
+      "category": "Data display",
+      "description": "Display a compact label for a status, person or filter, with optional icons and removal.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "filled",
+            "outlined"
+          ],
+          "default": "filled"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "neutral",
+            "primary",
+            "secondary",
+            "error",
+            "warning",
+            "info",
+            "success"
+          ],
+          "default": "neutral"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "deletable",
+          "label": "Deletable",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-spacing=\"sm\" data-wrap=\"true\">\n<span data-ui=\"chip\">Leafy greens</span>\n<span data-ui=\"chip\" data-variant=\"outlined\" data-color=\"success\">Paid</span>\n<span data-ui=\"chip\" data-color=\"secondary\"><i data-ui=\"icon\" data-name=\"leaf\"></i>Organic</span>\n<span data-ui=\"chip\" data-deletable=\"true\">Root veg<button type=\"button\" aria-label=\"Remove\" data-part=\"delete\"><i data-ui=\"icon\" data-name=\"close\"></i></button></span>\n</div>"
+    },
+    {
+      "name": "Avatar",
+      "ui": "avatar",
+      "category": "Data display",
+      "description": "Represent a person or account with an image, initials or a fallback icon.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "circular",
+            "rounded",
+            "square"
+          ],
+          "default": "circular"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "neutral",
+            "primary",
+            "secondary",
+            "error",
+            "warning",
+            "info",
+            "success"
+          ],
+          "default": "neutral"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "2xs",
+            "xs",
+            "sm",
+            "lg",
+            "xl",
+            "2xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-spacing=\"sm\" data-align-items=\"center\">\n<span data-ui=\"avatar\">AK</span>\n<span data-ui=\"avatar\" data-variant=\"rounded\" data-color=\"secondary\"><i data-ui=\"icon\" data-name=\"user\"></i></span>\n<span data-ui=\"avatar\" data-variant=\"square\" data-size=\"lg\" data-color=\"success\">FL</span>\n</div>"
+    },
+    {
+      "name": "Card",
+      "ui": "card",
+      "category": "Surfaces",
+      "description": "Group a related title, content and actions into a reusable surface for records or summaries.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "elevation",
+            "outlined"
+          ],
+          "default": "elevation"
+        },
+        {
+          "name": "elevation",
+          "label": "Elevation",
+          "type": "choice",
+          "options": [
+            "xs",
+            "none",
+            "2xs",
+            "sm",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "xs"
+        },
+        {
+          "name": "selected",
+          "label": "Selected",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"card\" data-elevation=\"xs\">\n<div data-part=\"header\"><div data-ui=\"typography\" data-variant=\"title-md\">Harvest Box, 4 kg</div><div data-ui=\"typography\" data-variant=\"body-sm\" data-color=\"muted\">Next delivery, Thu 12 March</div></div>\n<div data-part=\"content\">\n<div data-ui=\"typography\" data-variant=\"body-sm\" data-color=\"muted\">14 items from Ash Lane Farm, picked Wednesday.</div>\n</div>\n<div data-part=\"actions\"><button data-ui=\"button\" data-variant=\"text\" data-size=\"sm\">Edit</button><button data-ui=\"button\" data-variant=\"contained\" data-size=\"sm\">Confirm</button></div>\n</div>"
+    },
+    {
+      "name": "Paper",
+      "ui": "paper",
+      "category": "Surfaces",
+      "description": "Create a surface with token-based elevation, an outline or square corners for grouped content.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "elevation",
+            "outlined"
+          ],
+          "default": "elevation"
+        },
+        {
+          "name": "elevation",
+          "label": "Elevation",
+          "type": "choice",
+          "options": [
+            "xs",
+            "none",
+            "2xs",
+            "sm",
+            "md",
+            "lg",
+            "xl",
+            "2xl",
+            "3xl"
+          ],
+          "default": "xs"
+        },
+        {
+          "name": "square",
+          "label": "Square",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "selected",
+          "label": "Selected",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-spacing=\"md\">\n<div data-ui=\"paper\" data-variant=\"outlined\" data-part=\"surface\"><div data-part=\"content\"><div data-ui=\"typography\" data-variant=\"body-sm\">Outlined: grouped settings</div></div></div>\n<div data-ui=\"paper\" data-elevation=\"md\" data-part=\"surface\"><div data-part=\"content\"><div data-ui=\"typography\" data-variant=\"body-sm\">Elevated: floating summary</div></div></div>\n</div>"
+    },
+    {
+      "name": "Skeleton",
+      "ui": "skeleton",
+      "category": "Feedback",
+      "description": "Reserve the shape of text or surfaces while content is loading.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "text",
+            "rectangular",
+            "rounded",
+            "circular"
+          ],
+          "default": "text"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "animation",
+          "label": "Animation",
+          "type": "choice",
+          "options": [
+            "pulse",
+            "wave",
+            "none"
+          ],
+          "default": "pulse"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-spacing=\"md\" data-align-items=\"center\">\n<span data-ui=\"skeleton\" data-variant=\"circular\" data-size=\"lg\"></span>\n<div data-ui=\"stack\" data-spacing=\"xs\" style=\"flex:1\"><span data-ui=\"skeleton\" data-variant=\"text\"></span><span data-ui=\"skeleton\" data-variant=\"text\" style=\"inline-size:60%\"></span></div>\n</div>"
+    },
+    {
+      "name": "CircularProgress",
+      "ui": "circular-progress",
+      "category": "Feedback",
+      "description": "Indicate background work with a circular animation, or show a known percentage.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "indeterminate",
+            "determinate"
+          ],
+          "default": "indeterminate"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "error",
+            "warning",
+            "info",
+            "success"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "value",
+          "label": "Value",
+          "type": "text"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-direction=\"row\" data-spacing=\"lg\" data-align-items=\"center\">\n<span data-ui=\"circular-progress\" aria-label=\"Loading\"></span>\n<span data-ui=\"circular-progress\" data-variant=\"determinate\" data-value=\"72\" aria-label=\"Box packed 72%\"></span>\n</div>"
+    },
+    {
+      "name": "LinearProgress",
+      "ui": "linear-progress",
+      "category": "Feedback",
+      "description": "Show ongoing work with a horizontal bar, or a measured completion percentage.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "indeterminate",
+            "determinate"
+          ],
+          "default": "indeterminate"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "error",
+            "warning",
+            "info",
+            "success"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "value",
+          "label": "Value",
+          "type": "text"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-spacing=\"sm\">\n<span data-ui=\"linear-progress\" aria-label=\"Loading\"></span>\n<span data-ui=\"linear-progress\" data-variant=\"determinate\" data-value=\"40\" aria-label=\"Deliveries 40%\"></span>\n</div>"
+    },
+    {
+      "name": "List",
+      "ui": "list",
+      "category": "Data display",
+      "description": "Compose related items with optional icons, secondary text and selectable actions.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "neutral",
+            "primary",
+            "secondary"
+          ],
+          "default": "neutral"
+        },
+        {
+          "name": "disable-padding",
+          "label": "Disable Padding",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<ul data-ui=\"list\" data-part=\"root\">\n<li data-part=\"subheader\">Next week</li>\n<li data-part=\"item\"><button data-part=\"button\"><i data-ui=\"icon\" data-name=\"leaf\"></i><span data-part=\"text\"><span data-part=\"primary\">Leafy greens</span><span data-part=\"secondary\">Kale, chard, spinach</span></span></button></li>\n<li data-part=\"item\"><button data-part=\"button\"><i data-ui=\"icon\" data-name=\"box\"></i><span data-part=\"text\"><span data-part=\"primary\">Root veg</span><span data-part=\"secondary\">Carrot, beet, celeriac</span></span></button></li>\n<li data-part=\"item\"><button data-part=\"button\" data-selected=\"true\"><i data-ui=\"icon\" data-name=\"truck\"></i><span data-part=\"text\"><span data-part=\"primary\">Delivery</span><span data-part=\"secondary\">Thursday, 7 to 10 am</span></span></button></li>\n</ul>"
+    },
+    {
+      "name": "Breadcrumbs",
+      "ui": "breadcrumbs",
+      "category": "Navigation",
+      "description": "Show the current location in a hierarchy and link back to earlier pages.",
+      "props": [
+        {
+          "name": "separator",
+          "label": "Separator",
+          "type": "choice",
+          "options": [
+            "chevron",
+            "slash"
+          ],
+          "default": "chevron"
+        },
+        {
+          "name": "collapsed",
+          "label": "Collapsed",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<nav data-ui=\"breadcrumbs\" aria-label=\"Breadcrumb\"><ol data-part=\"list\">\n<li data-part=\"item\"><a data-ui=\"link\" href=\"#\">Shop</a></li>\n<li data-part=\"item\" aria-hidden=\"true\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></li>\n<li data-part=\"item\"><a data-ui=\"link\" href=\"#\">Boxes</a></li>\n<li data-part=\"item\" aria-hidden=\"true\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></li>\n<li data-part=\"item\" aria-current=\"page\">Harvest Box</li>\n</ol></nav>"
+    },
+    {
+      "name": "Collapse",
+      "ui": "collapse",
+      "category": "Layout",
+      "description": "Reveal or hide a region with a token-based transition along an axis.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "vertical",
+            "horizontal"
+          ],
+          "default": "vertical"
+        },
+        {
+          "name": "in",
+          "label": "In",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-spacing=\"sm\">\n<button data-ui=\"button\" data-variant=\"text\" data-size=\"sm\" aria-expanded=\"true\" aria-controls=\"collapse-demo-body\">Delivery notes</button>\n<div data-ui=\"collapse\" data-in=\"true\" id=\"collapse-demo-body\"><div data-part=\"body\">Leave boxes in the porch. We text when the van is two stops away.</div></div>\n</div>"
+    },
+    {
+      "name": "FormControl",
+      "ui": "form-control",
+      "category": "Forms",
+      "description": "Share field variant, size, disabled, required and error state across composable input parts.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled"
+          ],
+          "default": "outlined"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "required",
+          "label": "Required",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "error",
+          "label": "Error",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"form-control\" data-variant=\"outlined\" data-size=\"md\">\n<label data-ui=\"input-label\" data-required=\"true\" for=\"fc-name\">Name on box</label>\n<div data-ui=\"input-base\" data-part=\"root\"><input id=\"fc-name\" data-part=\"input\" value=\"Amara Khan\"></div>\n<span data-ui=\"form-helper-text\">Shown on the delivery label.</span>\n</div>"
+    },
+    {
+      "name": "InputLabel",
+      "ui": "input-label",
+      "category": "Forms",
+      "description": "Label a custom form field and inherit its required state from FormControl.",
+      "props": [
+        {
+          "name": "required",
+          "label": "Required",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-spacing=\"xs\">\n<label data-ui=\"input-label\" for=\"il-email\">Email</label>\n<label data-ui=\"input-label\" data-required=\"true\" for=\"il-phone\">Phone</label>\n</div>"
+    },
+    {
+      "name": "InputBase",
+      "ui": "input-base",
+      "category": "Forms",
+      "description": "Compose a custom input or textarea with field styling and native input behaviour.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled"
+          ],
+          "default": "outlined"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "error",
+          "label": "Error",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"input-base\" data-part=\"root\" data-size=\"md\">\n<input data-part=\"input\" placeholder=\"Postcode\" aria-label=\"Postcode\">\n</div>\n<div data-ui=\"input-base\" data-part=\"root\" data-variant=\"filled\">\n<textarea data-part=\"input\" rows=\"2\" aria-label=\"Notes\">Leave by the back gate</textarea>\n</div>"
+    },
+    {
+      "name": "InputAdornment",
+      "ui": "input-adornment",
+      "category": "Forms",
+      "description": "Place an icon, prefix or suffix beside the editable content of a custom input.",
+      "props": [
+        {
+          "name": "position",
+          "label": "Position",
+          "type": "choice",
+          "options": [
+            "start",
+            "end"
+          ],
+          "default": "start"
+        }
+      ],
+      "snippet": "<div data-ui=\"input-base\" data-part=\"root\">\n<span data-ui=\"input-adornment\" data-position=\"start\">£</span>\n<input data-part=\"input\" value=\"18.50\" aria-label=\"Price\">\n<span data-ui=\"input-adornment\" data-position=\"end\"><i data-ui=\"icon\" data-name=\"info\"></i></span>\n</div>"
+    },
+    {
+      "name": "FormHelperText",
+      "ui": "form-helper-text",
+      "category": "Forms",
+      "description": "Display supporting instructions or validation feedback below a custom field.",
+      "props": [
+        {
+          "name": "error",
+          "label": "Error",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-spacing=\"xs\">\n<span data-ui=\"form-helper-text\">We deliver on Thursdays.</span>\n<span data-ui=\"form-helper-text\" data-error=\"true\">Enter a postcode from our delivery area.</span>\n</div>"
+    },
+    {
+      "name": "TextField",
+      "ui": "text-field",
+      "category": "Forms",
+      "description": "Collect text in forms with a visible label, helper text, validation feedback and adornments.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled"
+          ],
+          "default": "outlined"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "error",
+          "label": "Error",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "multiline",
+          "label": "Multiline",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "full-width",
+          "label": "Full Width",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-spacing=\"md\">\n<div data-ui=\"text-field\" data-variant=\"outlined\" data-size=\"md\">\n<label data-ui=\"input-label\" for=\"tf-street\">Street address</label>\n<div data-ui=\"input-base\" data-part=\"root\"><input id=\"tf-street\" data-part=\"input\" value=\"14 Ash Lane\"></div>\n<span data-ui=\"form-helper-text\">Used for the van route.</span>\n</div>\n<div data-ui=\"text-field\" data-variant=\"outlined\" data-error=\"true\">\n<label data-ui=\"input-label\" for=\"tf-zip\">Postcode</label>\n<div data-ui=\"input-base\" data-part=\"root\"><input id=\"tf-zip\" data-part=\"input\" value=\"XX1\"></div>\n<span data-ui=\"form-helper-text\" data-error=\"true\">Not in our delivery area.</span>\n</div>\n</div>"
+    },
+    {
+      "name": "Select",
+      "ui": "select",
+      "category": "Forms",
+      "description": "Let users choose one value or several from labelled options in a form or filter.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled"
+          ],
+          "default": "outlined"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "error",
+          "label": "Error",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "multiple",
+          "label": "Multiple",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"text-field\" data-variant=\"outlined\">\n<label data-ui=\"input-label\" for=\"sel-box\">Box size</label>\n<div data-ui=\"select\" data-part=\"root\"><select id=\"sel-box\" data-part=\"native\"><option>Half box, 2 kg</option><option selected>Harvest Box, 4 kg</option><option>Family box, 6 kg</option></select></div>\n</div>"
+    },
+    {
+      "name": "Checkbox",
+      "ui": "checkbox",
+      "category": "Forms",
+      "description": "Select independent options or show a group selection with checked, unchecked and indeterminate states.",
+      "props": [
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "error",
+            "warning",
+            "info",
+            "success"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "indeterminate",
+          "label": "Indeterminate",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-spacing=\"sm\">\n<label data-ui=\"checkbox\"><input type=\"checkbox\" checked> Organic only</label>\n<label data-ui=\"checkbox\"><input type=\"checkbox\"> Add eggs</label>\n<label data-ui=\"checkbox\" data-indeterminate=\"true\"><input type=\"checkbox\"> Select all vegetables</label>\n</div>"
+    },
+    {
+      "name": "Switch",
+      "ui": "switch",
+      "category": "Forms",
+      "description": "Toggle a setting between on and off with a labelled control for preferences applied at once.",
+      "props": [
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "primary",
+            "secondary",
+            "error",
+            "warning",
+            "info",
+            "success"
+          ],
+          "default": "primary"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-spacing=\"sm\">\n<label data-ui=\"switch\"><input type=\"checkbox\" role=\"switch\" checked> Pause deliveries</label>\n<label data-ui=\"switch\"><input type=\"checkbox\" role=\"switch\"> Send recipes</label>\n</div>"
+    },
+    {
+      "name": "Dropzone",
+      "ui": "dropzone",
+      "category": "Forms",
+      "description": "Accept files through a picker or a drag-and-drop surface with type, size and count limits.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "neutral",
+            "primary",
+            "secondary"
+          ],
+          "default": "neutral"
+        },
+        {
+          "name": "error",
+          "label": "Error",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<label data-ui=\"dropzone\" data-size=\"md\">\n<i data-ui=\"icon\" data-name=\"upload\" data-part=\"icon\"></i>\n<span data-part=\"title\">Drop a farm photo here</span>\n<span data-part=\"hint\">PNG or JPG, up to 5 MB, one file</span>\n<input type=\"file\" accept=\"image/png,image/jpeg\" hidden>\n</label>"
+    },
+    {
+      "name": "Table",
+      "ui": "table",
+      "category": "Data display",
+      "description": "Present structured records in rows and columns with header, body, row and cell parts.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "sm",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<table data-ui=\"table\" data-size=\"md\">\n<thead data-part=\"head\"><tr data-part=\"row\"><th data-part=\"cell\">Box</th><th data-part=\"cell\">Size</th><th data-part=\"cell\" data-align=\"end\">Price</th></tr></thead>\n<tbody data-part=\"body\">\n<tr data-part=\"row\"><td data-part=\"cell\">Harvest Box</td><td data-part=\"cell\">4 kg</td><td data-part=\"cell\" data-align=\"end\">£24.00</td></tr>\n<tr data-part=\"row\"><td data-part=\"cell\">Half box</td><td data-part=\"cell\">2 kg</td><td data-part=\"cell\" data-align=\"end\">£14.50</td></tr>\n<tr data-part=\"row\"><td data-part=\"cell\">Family box</td><td data-part=\"cell\">6 kg</td><td data-part=\"cell\" data-align=\"end\">£32.00</td></tr>\n</tbody>\n</table>"
+    },
+    {
+      "name": "TableContainer",
+      "ui": "table-container",
+      "category": "Data display",
+      "description": "Wrap a table in a surface that scrolls sideways when columns exceed the width.",
+      "props": [],
+      "snippet": "<div data-ui=\"table-container\"><table data-ui=\"table\" data-size=\"sm\">\n<thead data-part=\"head\"><tr data-part=\"row\"><th data-part=\"cell\">Week</th><th data-part=\"cell\">Boxes</th><th data-part=\"cell\">Paid</th><th data-part=\"cell\">Status</th></tr></thead>\n<tbody data-part=\"body\"><tr data-part=\"row\"><td data-part=\"cell\">10 March</td><td data-part=\"cell\">2</td><td data-part=\"cell\">£48.00</td><td data-part=\"cell\">Delivered</td></tr><tr data-part=\"row\"><td data-part=\"cell\">17 March</td><td data-part=\"cell\">2</td><td data-part=\"cell\">£48.00</td><td data-part=\"cell\">Packed</td></tr></tbody>\n</table></div>"
+    },
+    {
+      "name": "TableSortLabel",
+      "ui": "table-sort-label",
+      "category": "Data display",
+      "description": "Show an actionable column heading with the active sort direction inside a table.",
+      "props": [
+        {
+          "name": "direction",
+          "label": "Direction",
+          "type": "choice",
+          "options": [
+            "asc",
+            "desc"
+          ],
+          "default": "asc"
+        },
+        {
+          "name": "active",
+          "label": "Active",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<table data-ui=\"table\" data-size=\"sm\"><thead data-part=\"head\"><tr data-part=\"row\">\n<th data-part=\"cell\"><button data-ui=\"table-sort-label\" data-direction=\"desc\" data-active=\"true\">Delivery date<i data-ui=\"icon\" data-name=\"sort\"></i></button></th>\n<th data-part=\"cell\"><button data-ui=\"table-sort-label\" data-direction=\"asc\">Box</button></th>\n</tr></thead><tbody data-part=\"body\">\n<tr data-part=\"row\"><td data-part=\"cell\">12 March</td><td data-part=\"cell\">Harvest Box</td></tr>\n<tr data-part=\"row\"><td data-part=\"cell\">19 March</td><td data-part=\"cell\">Half box</td></tr>\n</tbody></table>"
+    },
+    {
+      "name": "Backdrop",
+      "ui": "backdrop",
+      "category": "Overlays",
+      "description": "Separate foreground content from the page with a scrim while loading or in overlay compositions.",
+      "props": [
+        {
+          "name": "open",
+          "label": "Open",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-spacing=\"sm\">\n<div data-ui=\"backdrop\" data-open=\"true\" data-part=\"scrim\"><span data-ui=\"circular-progress\" aria-label=\"Loading\"></span></div>\n</div>"
+    },
+    {
+      "name": "Modal",
+      "ui": "modal",
+      "category": "Overlays",
+      "description": "Build a custom modal with a backdrop and a panel that keeps focus inside.",
+      "props": [
+        {
+          "name": "open",
+          "label": "Open",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "hide-backdrop",
+          "label": "Hide Backdrop",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"modal\" data-open=\"true\" role=\"presentation\">\n<div data-ui=\"backdrop\" data-open=\"true\" data-part=\"scrim\"></div>\n<div data-part=\"panel\" role=\"dialog\" aria-modal=\"true\" aria-label=\"Pause deliveries\">\n<div data-ui=\"typography\" data-variant=\"title-md\">Pause deliveries?</div>\n<div data-ui=\"typography\" data-variant=\"body-sm\" data-color=\"muted\">Your next two boxes will be skipped. You can restart any time.</div>\n<div data-part=\"actions\"><button data-ui=\"button\" data-variant=\"text\" data-size=\"sm\">Cancel</button><button data-ui=\"button\" data-variant=\"contained\" data-size=\"sm\">Pause</button></div>\n</div>\n</div>"
+    },
+    {
+      "name": "Dialog",
+      "ui": "dialog",
+      "category": "Overlays",
+      "description": "Ask for a decision in a modal window with a title, content and actions while keeping the page in context.",
+      "props": [
+        {
+          "name": "max-width",
+          "label": "Max Width",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "full-width",
+          "label": "Full Width",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outlined\" data-dialog-open=\"dialog-cancel\">Cancel subscription</button>\n<dialog data-ui=\"dialog\" id=\"dialog-cancel\" aria-labelledby=\"dialog-cancel-title\">\n<div data-part=\"title\" id=\"dialog-cancel-title\">Cancel your subscription?</div>\n<div data-part=\"content\"><div data-ui=\"typography\" data-variant=\"body-sm\" data-color=\"muted\">Boxes stop from the next delivery. Your account credit stays for 90 days.</div></div>\n<div data-part=\"actions\"><button data-ui=\"button\" data-variant=\"text\" data-size=\"sm\" data-dialog-close>Keep plan</button><button data-ui=\"button\" data-variant=\"contained\" data-color=\"error\" data-size=\"sm\" data-dialog-close>Cancel plan</button></div>\n</dialog>"
+    },
+    {
+      "name": "Drawer",
+      "ui": "drawer",
+      "category": "Overlays",
+      "description": "Place navigation or filters in an edge panel that is temporary, persistent or permanent.",
+      "props": [
+        {
+          "name": "anchor",
+          "label": "Anchor",
+          "type": "choice",
+          "options": [
+            "left",
+            "right",
+            "top",
+            "bottom"
+          ],
+          "default": "left"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "temporary",
+            "persistent",
+            "permanent"
+          ],
+          "default": "temporary"
+        },
+        {
+          "name": "appearance",
+          "label": "Appearance",
+          "type": "choice",
+          "options": [
+            "standard"
+          ],
+          "default": "standard"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outlined\" data-dialog-open=\"drawer-filter\">Filters</button>\n<dialog data-ui=\"drawer\" data-anchor=\"right\" id=\"drawer-filter\" aria-label=\"Filters\">\n<div data-part=\"header\"><div data-ui=\"typography\" data-variant=\"title-md\">Filters</div><button data-ui=\"icon-button\" data-dialog-close aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"close\"></i></button></div>\n<div data-part=\"content\">\n<div data-ui=\"stack\" data-spacing=\"sm\"><label data-ui=\"checkbox\"><input type=\"checkbox\" checked> Organic</label><label data-ui=\"checkbox\"><input type=\"checkbox\"> Local only</label></div>\n</div>\n</dialog>"
+    },
+    {
+      "name": "Menu",
+      "ui": "menu",
+      "category": "Overlays",
+      "description": "Offer a list of actions anchored to a trigger, with keyboard navigation and disabled items.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "bottom-start",
+            "bottom-end",
+            "top-start",
+            "top-end"
+          ],
+          "default": "bottom-start"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"outlined\" popovertarget=\"menu-box\" style=\"anchor-name:--menu-box\">Manage box</button>\n<div data-ui=\"menu\" popover id=\"menu-box\" style=\"position-anchor:--menu-box\" role=\"menu\">\n<button data-ui=\"menu\" data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"edit\"></i>Change items</button>\n<button data-ui=\"menu\" data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"calendar\"></i>Move delivery</button>\n<button data-ui=\"menu\" data-part=\"item\" role=\"menuitem\" disabled><i data-ui=\"icon\" data-name=\"truck\"></i>Track van</button>\n<div data-part=\"divider\"></div>\n<button data-ui=\"menu\" data-part=\"item\" role=\"menuitem\" data-tone=\"danger\"><i data-ui=\"icon\" data-name=\"trash\"></i>Cancel box</button>\n</div>"
+    },
+    {
+      "name": "Popover",
+      "ui": "popover",
+      "category": "Overlays",
+      "description": "Show supplementary content next to an anchor without leaving the current view.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "bottom-start",
+            "bottom-end",
+            "top-start",
+            "top-end"
+          ],
+          "default": "bottom-start"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"text\" popovertarget=\"pop-delivery\" style=\"anchor-name:--pop-delivery\">Delivery window</button>\n<div data-ui=\"popover\" popover id=\"pop-delivery\" style=\"position-anchor:--pop-delivery\">\n<div data-part=\"content\">\n<div data-ui=\"typography\" data-variant=\"title-sm\">Thursday, 7 to 10 am</div>\n<div data-ui=\"typography\" data-variant=\"body-sm\" data-color=\"muted\">The van leaves the farm at 6 am. Ring the bell if the porch is locked.</div>\n</div>\n</div>"
+    },
+    {
+      "name": "Tooltip",
+      "ui": "tooltip",
+      "category": "Overlays",
+      "description": "Show a short description when a user hovers over or focuses a control that needs context.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "top",
+            "bottom",
+            "left",
+            "right"
+          ],
+          "default": "top"
+        }
+      ],
+      "snippet": "<span data-ui=\"tooltip\" data-placement=\"right\" data-open=\"true\"><button data-ui=\"icon-button\" aria-describedby=\"tt-pack\"><i data-ui=\"icon\" data-name=\"info\"></i></button><span data-part=\"bubble\" id=\"tt-pack\" role=\"tooltip\">Packed the morning of delivery</span></span>"
+    },
+    {
+      "name": "Snackbar",
+      "ui": "snackbar",
+      "category": "Feedback",
+      "description": "Report the outcome of an action in a brief message with an optional follow-up such as Undo.",
+      "props": [
+        {
+          "name": "action",
+          "label": "Action",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"snackbar\" role=\"status\">\n<span data-part=\"message\">Box moved to Thursday</span>\n<button data-ui=\"button\" data-variant=\"text\" data-size=\"sm\" data-part=\"action\">Undo</button>\n</div>"
+    },
+    {
+      "name": "Sidebar",
+      "ui": "sidebar",
+      "category": "Navigation",
+      "description": "Compose application navigation with a header, content, items and footer in docked or responsive layouts.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "docked",
+            "responsive"
+          ],
+          "default": "docked"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "neutral",
+            "primary",
+            "secondary"
+          ],
+          "default": "neutral"
+        },
+        {
+          "name": "collapsed",
+          "label": "Collapsed",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<aside data-ui=\"sidebar\" aria-label=\"Main\">\n<div data-part=\"header\"><span data-ui=\"typography\" data-variant=\"title-sm\">Orchardly</span></div>\n<nav data-part=\"content\">\n<a data-ui=\"sidebar\" data-part=\"item\" href=\"#\" aria-current=\"page\"><i data-ui=\"icon\" data-name=\"home\"></i><span data-part=\"label\">Overview</span></a>\n<a data-ui=\"sidebar\" data-part=\"item\" href=\"#\"><i data-ui=\"icon\" data-name=\"box\"></i><span data-part=\"label\">My box</span></a>\n<a data-ui=\"sidebar\" data-part=\"item\" href=\"#\"><i data-ui=\"icon\" data-name=\"calendar\"></i><span data-part=\"label\">Deliveries</span></a>\n<a data-ui=\"sidebar\" data-part=\"item\" href=\"#\"><i data-ui=\"icon\" data-name=\"settings\"></i><span data-part=\"label\">Settings</span></a>\n</nav>\n<div data-part=\"footer\"><span data-ui=\"avatar\" data-size=\"xs\">AK</span><span data-part=\"label\">Amara Khan</span></div>\n</aside>"
+    },
+    {
+      "name": "Tabs",
+      "ui": "tabs",
+      "category": "Navigation",
+      "description": "Switch between related views within one page using a tab list and matching panels.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "standard",
+            "segmented"
+          ],
+          "default": "standard"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "neutral",
+            "primary",
+            "secondary"
+          ],
+          "default": "neutral"
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"tabs\" data-variant=\"standard\">\n<div role=\"tablist\" aria-label=\"Plan\">\n<button role=\"tab\" aria-selected=\"true\" aria-controls=\"tab-p1\" id=\"tab-t1\">Weekly</button>\n<button role=\"tab\" aria-selected=\"false\" aria-controls=\"tab-p2\" id=\"tab-t2\" tabindex=\"-1\">Fortnightly</button>\n<button role=\"tab\" aria-selected=\"false\" aria-controls=\"tab-p3\" id=\"tab-t3\" tabindex=\"-1\">Monthly</button>\n</div>\n<div role=\"tabpanel\" id=\"tab-p1\" aria-labelledby=\"tab-t1\" data-part=\"panel\">Every Thursday, 4 kg, about £24 a week.</div>\n<div role=\"tabpanel\" id=\"tab-p2\" aria-labelledby=\"tab-t2\" data-part=\"panel\" hidden>Every other Thursday, 6 kg.</div>\n<div role=\"tabpanel\" id=\"tab-p3\" aria-labelledby=\"tab-t3\" data-part=\"panel\" hidden>Once a month, 8 kg, with a farm visit.</div>\n</div>"
+    },
+    {
+      "name": "Hero",
+      "ui": "hero",
+      "category": "Blocks",
+      "description": "A landing hero with a headline, the subscription offer and a farm photo panel.",
+      "props": [],
+      "snippet": "<section data-ui=\"hero\" data-block=\"blocks/hero.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Feature grid",
+      "ui": "feature-grid",
+      "category": "Blocks",
+      "description": "Three to four feature cards, each with an icon, a title and a short line.",
+      "props": [],
+      "snippet": "<section data-ui=\"feature-grid\" data-block=\"blocks/feature-grid.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Pricing",
+      "ui": "pricing",
+      "category": "Blocks",
+      "description": "Three box plans with prices, a highlighted plan and a list of included items.",
+      "props": [],
+      "snippet": "<section data-ui=\"pricing\" data-block=\"blocks/pricing.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Login",
+      "ui": "login",
+      "category": "Blocks",
+      "description": "A sign-in card with email, password, a remember-me switch and a sign-up link.",
+      "props": [],
+      "snippet": "<section data-ui=\"login\" data-block=\"blocks/login.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Dashboard",
+      "ui": "dashboard",
+      "category": "Blocks",
+      "description": "An account overview with a sidebar, stat cards, the next delivery and a table of past boxes.",
+      "props": [],
+      "snippet": "<section data-ui=\"dashboard\" data-block=\"blocks/dashboard.html\"></section>",
+      "kind": "composition"
+    }
+  ]
+}

@@ -38,6 +38,7 @@ const SEARCH_FROM = 12;
 export function ElementsTree({
   nodes,
   selected,
+  others = [],
   onPick,
   onHover,
 }: {
@@ -45,7 +46,9 @@ export function ElementsTree({
   nodes: OutlineNode[];
   /** The canvas's current selection, matched by id or selector. */
   selected: { id?: string; selector: string } | null;
-  onPick: (node: OutlineNode) => void;
+  /** The rest of a multi-selection: marked too, but the tree follows `selected`. */
+  others?: { id?: string; selector: string }[];
+  onPick: (node: OutlineNode, add?: boolean) => void;
   /** A row is hovered (or focused), or null when it's left. */
   onHover?: (node: OutlineNode | null) => void;
 }) {
@@ -117,7 +120,7 @@ export function ElementsTree({
       <div className="el-tree" role="tree" aria-label="Elements" ref={listRef} onMouseLeave={() => onHover?.(null)}>
         {rows.length === 0 && <p className="el-empty">No layer matches “{query.trim()}”.</p>}
         {rows.map(({ node, index, hasChildren, match }, r) => {
-          const isSel = isSelectedNode(node, selected);
+          const isSel = isSelectedNode(node, selected) || others.some((o) => isSelectedNode(node, o));
           const key = layerKey(node);
           const open = searching || !collapsed.has(key);
           const Icon = KIND_ICONS[layerKind(node)];
@@ -132,7 +135,7 @@ export function ElementsTree({
               aria-expanded={hasChildren ? open : undefined}
               style={{ paddingLeft: 4 + node.depth * 12 }}
               title={node.selector}
-              onClick={() => onPick(node)}
+              onClick={(e) => onPick(node, e.shiftKey)}
               onMouseEnter={() => onHover?.(node)}
               onFocus={() => onHover?.(node)}
               onBlur={() => onHover?.(null)}

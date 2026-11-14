@@ -8,6 +8,7 @@ import type { CommentTarget, DesignComment } from "./comments";
 import type { LearnCase, LearnOverview, LearnSettings, Lesson, LessonAction, TurnScore } from "./learn";
 import type { AutomationInput, AutomationNotice, AutomationsOverview, AutomationView } from "./automations";
 import type { DoctorFixResult, DoctorReport } from "./doctor";
+import type { DesignHistoryRequest, DesignHistoryResult, DesignKitEnsureResult, DesignKitOption, DesignMutation, DesignReferenceCard, DesignReferenceProgress, DesignReferenceResult, DesignReferenceStatus, DocumentStatus, MutationResult } from "./design-mutation";
 
 export type Invocation = "model" | "user";
 
@@ -19,7 +20,7 @@ export type Invocation = "model" | "user";
 /** `expert`: an imported expert's own skills, in that expert's threads only. */
 export type SkillOrigin = "projectCubiq" | "project" | "projectClaude" | "expert" | "harness" | "shared" | "bundled" | "legacy";
 
-/** One skill: a folder with a SKILL.md (see plan/docs/HARNESS.md). */
+/** One skill: a folder with a SKILL.md. */
 export interface SkillEntry {
   name: string;
   description: string;
@@ -227,6 +228,10 @@ export interface Settings {
   uiBlocks?: boolean;
   /** Fetch pictures for `ui:cards` rows (a page's preview image, a remote image) from public https sites. Off unless set: it reaches the network. */
   linkPreviews?: boolean;
+  /** "File issue?" cards: in a project with an issue tracker, a cheap background model reads replies that mention a problem. On unless set to false. */
+  issueOffers?: boolean;
+  /** Set once the first-run "Download design references" sheet has been answered, either way, so it never asks again. */
+  designReferencesAsked?: boolean;
   /** The launch splash clip; unset means "agent". */
   splash?: Splash;
   /** Self-improve (scorecard, lessons, verified promotion): off unless a project is listed. SettingsStore.get() always fills it in. */
@@ -503,6 +508,51 @@ export interface Thread {
   designDirection?: DesignDirection;
   /** The expert this thread was summoned with (ExpertDef id); absent = none. */
   expertId?: string;
+  /** The issue this thread works on, picked with /issue; absent = none. */
+  issue?: ThreadIssue;
+}
+
+export type IssueTracker = "github" | "gitlab" | "gitea" | "local";
+export type IssueType = "bug" | "enhancement" | "documentation";
+/** The state labels the /issue picker groups by, in its order. */
+export type IssueState = "ready-for-agent" | "ready-for-human" | "needs-triage" | "needs-info";
+
+/** An open issue as the /issue picker lists it. `type` and `state` are label roles, read through `.cubiq/issues.json`. */
+export interface IssueSummary {
+  number: number;
+  title: string;
+  url?: string;
+  labels: string[];
+  commentCount: number;
+  type?: IssueType;
+  state?: IssueState;
+}
+
+export interface IssueComment {
+  author: string;
+  createdAt: string;
+  body: string;
+}
+
+/** One issue with its body and comments, newest first. */
+export interface IssueDetail extends IssueSummary {
+  body: string;
+  comments: IssueComment[];
+}
+
+/** An issues read: the value, or why it failed ("no-config": the project has no `.cubiq/issues.json`). */
+export type IssueResult<T> =
+  | { ok: true; tracker: IssueTracker; value: T }
+  | { ok: false; error: "no-config" | "cli-missing" | "signed-out" | "failed"; message: string };
+
+/** A thread's issue. `briefed`: the agent got the full issue once; later turns get one line. */
+export interface ThreadIssue {
+  number: number;
+  title: string;
+  url?: string;
+  labels: string[];
+  source: IssueTracker;
+  briefed?: boolean;
 }
 
 /**
@@ -676,6 +726,8 @@ export type ThreadEvent = (
   | { kind: "context-breakdown"; rows: { label: string; tokens: number }[]; total: number | null; estimated: boolean }
   | { kind: "error"; message: string }
   | { kind: "notice"; text: string; /** The evidence gate's flags, when this notice is one. */ evidence?: string[] }
+  /** After a turn whose reply reports a problem it didn't fix (project with an issue tracker): the "File issue?" card. */
+  | { kind: "issue-offer"; type: IssueType; title: string; summary: string }
   | { kind: "turn-start"; turnId: string; agent: string; model: string }
   | { kind: "plan"; entries: PlanEntry[] }
   /** The agent presented a plan and waits for the user's decision. */
@@ -885,7 +937,21 @@ export interface DesignSystemOption {
   description: string;
   /** Up to 4 CSS colors to preview it. */
   swatches: string[];
-  source: "project" | "projectFolder" | "style";
+  source: "project" | "projectFolder" | "style" | "kit";
+  /** What its tokens.css looks like; absent without one (then it has no preview). */
+  facets?: StyleFacets;
+}
+
+/** A design system's look, read from its tokens.css: what the picker filters and the shortlist matches by. */
+export interface StyleFacets {
+  /** From the base `--color-bg`. */
+  theme: "light" | "dark";
+  /** It has a `prefers-color-scheme: dark` pair. */
+  darkPair: boolean;
+  /** From the generic family that ends `--font-display`. */
+  display: "serif" | "sans" | "mono";
+  /** From `--radius-md`: 2px or less sharp, 9px or less soft, else round. */
+  shape: "sharp" | "soft" | "round";
 }
 
 /** One custom property in a design system's tokens.css: its light (`:root`) value and its dark override, if any. */
@@ -917,8 +983,114 @@ export interface DesignSystemDoc {
   groups: DesignTokenGroup[];
 }
 
+/** One theme card in the picker, drawn from its own tokens. */
+export interface DesignThemeCard {
+  id: string;
+  name: string;
+  description: string;
+  swatches: string[];
+  facets?: StyleFacets;
+  /** Its look, for the card. `dark` is its dark pair, when it has one. */
+  card: { bg: string; surface: string; text: string; muted: string; accent: string; onAccent: string; border: string; radius: string; font: string; dark?: { bg: string; surface: string; text: string; muted: string; accent: string; onAccent: string; border: string } };
+  /** Saved in this project, rather than coming with the kit. */
+  mine: boolean;
+}
+
+/** One kit in the picker's `Kit:` menu. */
+export interface DesignKitGroup {
+  id: string;
+  name: string;
+  version: string;
+  bundled: boolean;
+  installed: boolean;
+  components: number;
+  blocks: number;
+  /** Its own copy in this project, not the library's. */
+  mine: boolean;
+  themes: DesignThemeCard[];
+}
+
+/** What moving a page to another kit would do, for the preview. */
+export interface DesignMigrationPreview {
+  targetId: string;
+  targetName: string;
+  /** The rendered result, relative to the design folder. */
+  previewRel: string;
+  same: number;
+  renamed: { from: string; to: string; count: number }[];
+  unsupported: { ui: string; name: string; count: number }[];
+  droppedProps: { ui: string; prop: string; value: string; count: number }[];
+  review: { ui: string; name: string; count: number }[];
+  pages: number;
+}
+
+/** One component in System mode. */
+export interface DesignKitPart {
+  ui: string;
+  name: string;
+  category: string;
+  kind: "component" | "composition";
+  description: string;
+  props: { name: string; label: string; type: "choice" | "boolean" | "text"; options?: string[]; default?: string | boolean }[];
+  snippet: string;
+  importName: string | null;
+  packageName: string | null;
+  /** A control whose states (hover, focus, disabled) are shown as a matrix; anything else is shown as a gallery. */
+  stateful: boolean;
+  /** The agent added it while building a page. */
+  isNew: boolean;
+  /** It's only in this thread's draft, waiting for `Save to kit`. */
+  draft: boolean;
+  usage: { count: number; files: number };
+}
+
+/** The kit behind a design thread, for System mode. */
+export interface DesignKitDoc {
+  /** Null on a flat style: it has tokens but no components. */
+  kit: { id: string; name: string; version: string } | null;
+  /** The first edit saves a copy in the project. */
+  copyOnWrite: boolean;
+  /** False with no project folder: edits have nowhere to go. */
+  editable: boolean;
+  parts: DesignKitPart[];
+  blocks: string[];
+  /** A draft in the thread's `kit/` folder that isn't saved yet. */
+  draft: { added: string[]; changed: string[]; removed: string[]; errors: string[] } | null;
+}
+
+/** What a token or brand change reaches: asked for before it's applied. */
+export interface DesignReach {
+  tokens: number;
+  instances: number;
+  files: number;
+}
+
+/** One part's sample for System mode: a variant matrix, a variant × state matrix, or one instance with these props. */
+export interface DesignKitSampleRequest {
+  ui: string;
+  matrix?: boolean;
+  /** Variant rows by state columns (Normal, Hover, Focus, Disabled). */
+  states?: boolean;
+  /** Which variants the state matrix shows; all of them when left out. */
+  variants?: string[];
+  size?: string;
+  props?: Record<string, string>;
+}
+
+/** One edit to a kit's contract from System mode. */
+export type DesignKitEdit =
+  | { kind: "addVariant"; ui: string; name: string; from: string }
+  | { kind: "removeVariant"; ui: string; name: string }
+  | { kind: "addProp"; ui: string; prop: { name: string; label: string; type: "text" | "boolean" | "choice"; options?: string[]; default?: string | boolean } }
+  | { kind: "removeProp"; ui: string; name: string }
+  | { kind: "removeComponent"; ui: string }
+  | { kind: "markReviewed"; ui: string };
+
+/** A one-time choice from the Composer's `+` menu or System mode: said to the agent once, on the next turn. */
+export type DesignIntent = { kind: "new-kit"; name?: string } | { kind: "match-screenshot" } | { kind: "new-component"; selection?: string } | { kind: "system"; where: string };
+
 /** One edit from the System tab: a token value for one scheme, or the whole DESIGN.md. */
-export type DesignSystemEdit = { token: { name: string; scheme: "light" | "dark"; value: string } } | { designMd: string };
+export type DesignSystemEdit = { token: { name: string; scheme: "light" | "dark"; value: string } } | { designMd: string } | { brand: string };
 
 /** The frame a page declares it is drawn in (`<meta name="cubiq-device">`, or a one-screen mobile page's bars). */
 export type DesignDevice = "mobile" | "tablet" | "desktop" | "slide";
@@ -1141,7 +1313,10 @@ export type LiveUpdate =
   /** A turn finished having written previewable files: open the panel on `path` (the last one). */
   | { type: "artifact-ready"; threadId: string; path: string; files: string[] }
   /** Something in an open design thread's folder changed (debounced): the canvas reloads. `paths` are the changed files relative to the folder; absent = unknown. */
-  | { type: "design-changed"; threadId: string; paths?: string[] }
+  /** A design folder changed. `own`: only the editor's own save, which the frame already shows, so it doesn't reload. */
+  | { type: "design-changed"; threadId: string; paths?: string[]; own?: boolean }
+  /** An open design page's save or undo state changed; `conflicts` says edits are waiting to be fetched. */
+  | { type: "design-document"; threadId: string; rel: string; status: DocumentStatus; conflicts: boolean }
   /** Self-improve: a turn's health changed (scored, or a later correction/revert). */
   | { type: "turn-score"; score: TurnScore }
   /** Self-improve: a project's lessons or cases changed (the Learned tab refetches). */
@@ -1175,6 +1350,12 @@ export interface UnskilledApi {
   setDesignSystem(threadId: string, id: string | null): Promise<Thread>;
   /** Pick a design thread's prototype tier (null = Working); the next turn tells the agent. */
   setPrototypeTier(threadId: string, tier: PrototypeTier | null): Promise<Thread>;
+  /** The open issues of a project's tracker (`.cubiq/issues.json`), for the /issue picker. */
+  listIssues(projectId: string): Promise<IssueResult<IssueSummary[]>>;
+  /** Set the issue a thread works on (null clears it); the next turn gives the agent the full issue once. */
+  setThreadIssue(threadId: string, issue: IssueSummary | null): Promise<Thread>;
+  /** The project's `origin` remote URL, for /issue-setup; null when there's none. */
+  issueRemote(projectId: string): Promise<string | null>;
   updateThread(threadId: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>): Promise<Thread>;
   deleteThread(threadId: string): Promise<void>;
   /** Move a thread to another agent; a refused switch changes nothing. */
@@ -1374,10 +1555,28 @@ export interface UnskilledApi {
   designThumb(threadId: string, rel: string): Promise<string>;
   /** Copy a stored version of a design page back as its newest version (the current page is kept as a version first). */
   designRestoreVersion(threadId: string, rel: string, version: number): Promise<void>;
-  /** Write an in-place text edit into a design page; refuses (throws) unless that `data-agent-id` is unique, text-only and unchanged. */
-  designEditText(threadId: string, rel: string, edit: { id: string; before: string; after: string }): Promise<void>;
-  /** Write inspector style changes into the `style` of the page element with that data-agent-id (Working and Real app tiers). */
-  designEditStyle(threadId: string, rel: string, edit: { id: string; changes: { prop: string; value: string }[] }): Promise<void>;
+  /** Apply one direct edit to a design page through the main-process mutation service (Design v2 only). */
+  designMutate(threadId: string, rel: string, mutation: DesignMutation): Promise<MutationResult>;
+  /** Read a design page's status, or undo, redo or close a transaction (Design v2 only). */
+  designHistory(threadId: string, rel: string, request: DesignHistoryRequest): Promise<DesignHistoryResult>;
+  /** The kits the app can offer (Design v2 only). */
+  designKitCatalog(): Promise<DesignKitOption[]>;
+  /** Download and verify a kit if it isn't on this machine yet (Design v2 only). */
+  designKitEnsure(id: string): Promise<DesignKitEnsureResult>;
+  /** Whether GradientDeck's design references are on this machine. */
+  designReferences(): Promise<DesignReferenceStatus>;
+  /** Download the design references, or bring them up to date (only changed files are fetched). One run at a time. */
+  designReferencesDownload(): Promise<DesignReferenceResult>;
+  /** Stop a running reference download; its complete files are kept for the next run. */
+  designReferencesCancel(): Promise<void>;
+  /** Delete the downloaded design references. */
+  designReferencesRemove(): Promise<DesignReferenceStatus>;
+  /** Progress of a running reference download; returns an unsubscribe. */
+  onDesignReferenceProgress(listener: (progress: DesignReferenceProgress) => void): () => void;
+  /** Every downloaded reference as a picker card (empty before the download). */
+  designReferenceCards(): Promise<DesignReferenceCard[]>;
+  /** "Adapted from Stripe · font substituted" for a thread built on a reference, else null. */
+  designReferenceNote(threadId: string): Promise<string | null>;
   /** A design thread's comments (all pages), from its design folder. */
   designComments(threadId: string): Promise<DesignComment[]>;
   /** Add a comment on one element of a design page; the full list after. */
@@ -1398,6 +1597,36 @@ export interface UnskilledApi {
   designSystemDoc(threadId: string): Promise<DesignSystemDoc | null>;
   /** Edit the thread's design system (a library style is copied into the project first and the thread switched to the copy). */
   designSystemEdit(threadId: string, edit: DesignSystemEdit): Promise<{ doc: DesignSystemDoc; thread: Thread }>;
+  /** Every kit and its themes, for the picker. Design v2 only. */
+  designKitGroups(projectId: string | null): Promise<DesignKitGroup[]>;
+  /** Swap to another theme of the same kit, now: the canvas recolours and nothing else moves. */
+  designApplyTheme(threadId: string, id: string): Promise<{ thread: Thread; previous: string | null }>;
+  /** Work out and render a move to another kit, changing nothing. */
+  designMigratePreview(threadId: string, rel: string, id: string): Promise<DesignMigrationPreview>;
+  /** Make the move: one undo step per page. */
+  designMigrateCommit(threadId: string, rel: string, id: string): Promise<{ thread: Thread }>;
+  designMigrateCancel(threadId: string): Promise<void>;
+  /** Save the look as the project's own theme; `tokens` are the page's overrides to carry into it. */
+  designSaveTheme(threadId: string, name: string, tokens: Record<string, string>, sourceId?: string): Promise<{ thread: Thread; id: string; applied: string[] }>;
+  /** The kit behind a thread, for System mode. */
+  designKitDoc(threadId: string): Promise<DesignKitDoc>;
+  /** One component rendered for System mode; returns the page's path in the design folder. */
+  designKitSample(threadId: string, request: DesignKitSampleRequest): Promise<string>;
+  /** The kit drawn as a gallery page (all parts and blocks, or only `uis`; `single` = one entry filling the frame); its path in the design folder. */
+  designKitGallery(threadId: string, request: { uis?: string[]; single?: boolean }): Promise<string>;
+  /** `Apply to all`: set prop `name` (a `data-*` attribute) on every `ui` part of every page in the design; `dryRun` only counts. */
+  designPropAll(threadId: string, rel: string, ui: string, name: string, value: string | null, dryRun?: boolean): Promise<{ count: number; pages: number }>;
+  designKitEdit(threadId: string, edit: DesignKitEdit): Promise<{ doc: DesignKitDoc; thread: Thread }>;
+  designKitDraftSave(threadId: string): Promise<{ doc: DesignKitDoc; thread: Thread }>;
+  designKitDraftDiscard(threadId: string): Promise<DesignKitDoc>;
+  /** What changing these tokens would reach, across the project's designs on this kit. */
+  designReach(threadId: string, tokens: string[]): Promise<DesignReach>;
+  /** Step back or forward through this thread's System mode edits. */
+  designSystemHistory(threadId: string, action: "undo" | "redo"): Promise<{ doc: DesignSystemDoc | null; thread: Thread; label: string } | null>;
+  /** Keep a selection as a block of the kit. With `force` off, what won't carry over comes back first and nothing is saved. */
+  designSaveComposition(threadId: string, name: string, html: string, force: boolean): Promise<{ warnings: string[]; saved: string | null; thread: Thread }>;
+  /** Say a choice to the agent once, on the next turn (null takes it back). */
+  designSetIntent(threadId: string, intent: DesignIntent | null): Promise<void>;
   /** The expert catalogue: bundled experts and teams, then the user's imported ones. */
   listExperts(): Promise<ExpertDef[]>;
   getExpert(id: string): Promise<ExpertDef | null>;

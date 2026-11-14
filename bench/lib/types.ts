@@ -56,7 +56,7 @@ export interface BenchTask {
 }
 
 export interface BenchAgent {
-  /** Result-file and summary name, e.g. "claude-sonnet". */
+  /** Result-file and summary name, e.g. "claude". */
   id: string;
   /** CubiQ agent id: claude, codex, opencode, provider-<id>. */
   agent: string;

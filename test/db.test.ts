@@ -387,6 +387,32 @@ describe("Store migrations", () => {
     expect(store.setExpert(t.id, "code-reviewer")).toMatchObject({ expertId: "code-reviewer", updatedAt: t.updatedAt });
     expect(store.setExpert(t.id, null).expertId).toBeUndefined();
   });
+
+  it("sets and clears a thread's issue without touching its place; a thread without one has none", () => {
+    const store = new Store(join(tempDir(), "set-issue.db"));
+    closeAfter(() => store.close());
+    const p = store.addProject("/tmp/p");
+    const t = store.createThread(p.id, "claude", "m", "ask", "chat");
+    expect("issue" in store.getThread(t.id)).toBe(false);
+    const issue = { number: 3, title: "Add controls", url: "https://h/3", labels: ["enhancement"], source: "github" as const };
+    expect(store.setIssue(t.id, issue)).toMatchObject({ issue, updatedAt: t.updatedAt });
+    expect(store.setIssue(t.id, { ...issue, briefed: true }).issue?.briefed).toBe(true);
+    expect("issue" in store.setIssue(t.id, null)).toBe(false);
+  });
+
+  it("drops a stored issue it can't read", () => {
+    const path = join(tempDir(), "bad-issue.db");
+    const store = new Store(path);
+    const p = store.addProject("/tmp/p");
+    const t = store.createThread(p.id, "claude", "m", "ask", "chat");
+    store.close();
+    const raw = new DatabaseSync(path);
+    raw.prepare("UPDATE threads SET issue = ? WHERE id = ?").run('{"number":"x"}', t.id);
+    raw.close();
+    const again = new Store(path);
+    closeAfter(() => again.close());
+    expect("issue" in again.getThread(t.id)).toBe(false);
+  });
 });
 
 describe("Store design systems (migration 21)", () => {

@@ -4,7 +4,8 @@
 
 import type { ChildProcess } from "node:child_process";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, openSync } from "node:fs";
+import { mkdirSync, openSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { createConnection } from "node:net";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -20,6 +21,21 @@ export function portInUse(port: number): Promise<boolean> {
     s.once("connect", () => (s.destroy(), resolve(true)));
     s.once("error", () => resolve(false));
   });
+}
+
+/**
+ * The user's configured OpenCode `provider` section and nothing else, handed over in the child's
+ * environment only: the isolated config dir has none of them, and their keys must not be copied into a file.
+ */
+function userProviders(): Record<string, string> {
+  if (process.env.OPENCODE_CONFIG_CONTENT) return {};
+  const file = join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "opencode", "opencode.json");
+  try {
+    const { provider } = JSON.parse(readFileSync(file, "utf8")) as { provider?: unknown };
+    return provider ? { OPENCODE_CONFIG_CONTENT: JSON.stringify({ provider }) } : {};
+  } catch {
+    return {};
+  }
 }
 
 export interface App {
@@ -40,7 +56,7 @@ export async function launchApp(o: { root: string; port: number; userDataDir: st
   const out = openSync(o.log, "a");
   const child = spawnCommand("bun", ["run", "dev", "--remoteDebuggingPort", String(o.port), "--", `--user-data-dir=${o.userDataDir}`], {
     cwd: o.root,
-    env: { ...process.env, XDG_CONFIG_HOME: xdgConfig },
+    env: { ...process.env, XDG_CONFIG_HOME: xdgConfig, ...userProviders() },
     stdio: ["ignore", out, out],
   });
   return { stop: () => stopApp(child, o.port) };

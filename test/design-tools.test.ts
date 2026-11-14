@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { buildDesignExport, exportFileName, type DesignExportDeps } from "../src/main/design/export";
 import { SHOT_MAX_HEIGHT, Shooter, type ShotWindow } from "../src/main/design/shooter";
-import { designTools, type DesignToolDeps } from "../src/main/design/tools";
+import { kitIndexEntry, kitThemeIndex } from "../src/main/design/systems";
+import { designTools, directionStyle, type DesignToolDeps } from "../src/main/design/tools";
 import { tempDir } from "./helpers";
 
 const PNG = Buffer.from("png-bytes");
@@ -122,7 +123,7 @@ function toolDeps(root: string | null, over: Partial<DesignToolDeps> = {}): Desi
       if (d.style !== "riso") throw new Error(`Unknown style "${d.style}". Pick one of: riso.`);
       return `Direction: ${d.surface}, ${d.mode}, tier ${d.tier}.`;
     },
-    styleIndex: () => "riso: Riso print [print, warm; persuade; web]",
+    kitIndex: () => "riso: Riso print [print, warm; persuade; web]",
     ...over,
   };
 }
@@ -176,6 +177,64 @@ describe("design tools", () => {
     const out = await tool(deps, "design_lint").run({ width: 390 });
     expect(out.text).toContain("designs/abcd1234/index.html at 390px");
     expect(out.text).toContain("- [targets] button — 20×20px, needs 44×44");
+  });
+
+  it("tells the agent a clean page is done, and says nothing of the kind while findings remain", async () => {
+    const root = tempDir();
+    writeFileSync(join(root, "index.html"), "<p>hi</p>");
+    const clean = toolDeps(root, { evaluate: async () => JSON.stringify({ findings: [], skipped: [], scanned: 9 }) });
+    expect((await tool(clean, "design_lint").run({})).text).toContain("Clean: this page is done");
+    const dirty = toolDeps(root, { evaluate: async () => JSON.stringify({ findings: [{ rule: "targets", selector: "a", detail: "20×20px" }], skipped: [], scanned: 9 }) });
+    expect((await tool(dirty, "design_lint").run({})).text).not.toContain("Clean:");
+  });
+
+  it("screenshots one slide of a deck from a #hash (or ?query) on the path, without a wrapper page", async () => {
+    const root = tempDir();
+    writeFileSync(join(root, "index.html"), "<p>hi</p>");
+    const deps = toolDeps(root);
+    const out = await tool(deps, "design_screenshot").run({ path: "index.html#3", width: 1920, height: 1080 });
+    expect(out.isError).toBeUndefined();
+    expect(out.text).toContain("designs/abcd1234/index.html#3 at 1920×1080");
+    await tool(deps, "design_screenshot").run({ path: "designs/abcd1234/index.html?s=2 x" });
+    await tool(deps, "design_screenshot").run({ path: "#4" });
+    expect(deps.shots.map((s) => (s as { url: string }).url)).toEqual([
+      "cubiq-design://d/thread-1/index.html#3",
+      "cubiq-design://d/thread-1/index.html?s=2%20x",
+      "cubiq-design://d/thread-1/index.html#4",
+    ]);
+    // The file part is still checked.
+    expect(await tool(deps, "design_screenshot").run({ path: "deck.html#2" })).toMatchObject({ isError: true, text: expect.stringContaining("deck.html doesn't exist yet") });
+    expect(await tool(deps, "design_screenshot").run({ path: "../x.html#2" })).toMatchObject({ isError: true, text: expect.stringContaining("outside") });
+  });
+
+  it("from the third identical lint result in a row, tells the agent to stop fixing and report", async () => {
+    const root = tempDir();
+    writeFileSync(join(root, "index.html"), "<p>hi</p>");
+    const stuck = JSON.stringify({ findings: [{ rule: "contrast", selector: "span", detail: "4.0:1, needs 4.5:1" }], skipped: [], scanned: 9 });
+    let result = stuck;
+    const deps = toolDeps(root, { evaluate: async () => result });
+    const lint = designTools(deps, "thread-1").find((t) => t.name === "design_lint")!;
+    expect((await lint.run({})).text).not.toContain("Stop fixing");
+    expect((await lint.run({})).text).not.toContain("Stop fixing");
+    // Another width is another count.
+    expect((await lint.run({ width: 390 })).text).not.toContain("Stop fixing");
+    const third = (await lint.run({})).text;
+    expect(third).toContain("Same finding as your last 2 lint runs");
+    expect(third).toContain("Stop fixing");
+    // Different findings start the count again.
+    result = JSON.stringify({ findings: [{ rule: "targets", selector: "a", detail: "20×20px" }], skipped: [], scanned: 9 });
+    expect((await lint.run({})).text).not.toContain("Stop fixing");
+  });
+
+  it("forgets a repeat after a long gap, so a new turn starts counting afresh", async () => {
+    const { stuckNote } = await import("../src/main/design/tools");
+    const runs = new Map();
+    const f = [{ rule: "contrast" as const, selector: "p", detail: "2:1" }];
+    expect(stuckNote(runs, "index.html@1440", f, 0)).toBe("");
+    expect(stuckNote(runs, "index.html@1440", f, 1000)).toBe("");
+    expect(stuckNote(runs, "index.html@1440", f, 16 * 60_000)).toBe("");
+    expect(stuckNote(runs, "index.html@1440", f, 16 * 60_000 + 1)).toBe("");
+    expect(stuckNote(runs, "index.html@1440", f, 16 * 60_000 + 2)).toContain("Stop fixing");
   });
 
   it("reports a renderer failure as a tool error, not a throw", async () => {
@@ -242,5 +301,29 @@ describe("design export", () => {
     expect(exportFileName("<p>no title</p>", "abcd1234ffff", "png", null)).toBe("design-abcd1234.png");
     expect(exportFileName("<title> ... </title>", "abcd1234ffff", "png", null)).toBe("design-abcd1234.png");
     expect(exportFileName(null, "abcd1234ffff", "png", null)).toBe("design-abcd1234.png");
+  });
+});
+
+describe("the direction tool's kit and theme", () => {
+  it("records a Foundation theme as its style and another kit's as kit:<kit>/<theme>", () => {
+    expect(directionStyle(undefined, "riso")).toBe("riso");
+    expect(directionStyle("foundation", "riso")).toBe("riso");
+    expect(directionStyle("kit:mui", "indigo")).toBe("kit:mui/indigo");
+    expect(directionStyle("mui", "mui/indigo")).toBe("kit:mui/indigo");
+    expect(directionStyle("mui", "project")).toBe("project");
+    expect(directionStyle(undefined, "")).toBe("kit:foundation");
+    expect(directionStyle("foundation", " ")).toBe("kit:foundation");
+  });
+
+  it("indexes Foundation with the reference summary, then each other kit with its themes", () => {
+    const mui = kitIndexEntry(join(process.cwd(), "design-kits", "kits", "mui"));
+    expect(mui?.id).toBe("mui");
+    expect(mui?.themes).toContain("indigo");
+    const index = kitThemeIndex([mui!, { id: "foundation", name: "Foundation", themes: ["x"] }], "REFS").split("\n");
+    expect(index[0]).toMatch(/^Kit "foundation"/);
+    expect(index[1]).toBe("REFS");
+    expect(index.at(-1)).toMatch(/^mui \(MUI, @mui\/material\): .*indigo/);
+    expect(index.filter((l) => l.startsWith("foundation"))).toEqual([]);
+    expect(kitThemeIndex([], "REFS").split("\n")).toHaveLength(2);
   });
 });

@@ -1,0 +1,42 @@
+<section data-ui="dashboard">
+  <aside data-ui="sidebar" aria-label="Sidebar">
+    <div data-part="header"><a data-part="button" data-size="lg" href="#"><span data-part="logo"><i data-ui="icon" data-name="sparkles"></i></span><span data-part="label-stack"><span data-part="name">Tallybook</span><span data-part="sub">Northline Studio</span></span></a></div>
+    <div data-part="content">
+      <div data-part="group"><ul data-part="menu">
+        <li data-part="menu-item"><a data-part="button" href="#" data-active="true"><i data-ui="icon" data-name="layout-dashboard"></i><span data-part="label">Dashboard</span></a></li>
+        <li data-part="menu-item"><a data-part="button" href="#"><i data-ui="icon" data-name="file-text"></i><span data-part="label">Invoices</span></a><span data-part="badge">12</span></li>
+        <li data-part="menu-item"><a data-part="button" href="#"><i data-ui="icon" data-name="users"></i><span data-part="label">Clients</span></a></li>
+        <li data-part="menu-item"><a data-part="button" href="#"><i data-ui="icon" data-name="chart-bar"></i><span data-part="label">Reports</span></a></li>
+      </ul></div>
+      <div data-part="group"><div data-part="group-label">Documents</div><ul data-part="menu">
+        <li data-part="menu-item"><a data-part="button" href="#"><i data-ui="icon" data-name="folder"></i><span data-part="label">Contracts</span></a></li>
+        <li data-part="menu-item"><a data-part="button" href="#"><i data-ui="icon" data-name="file"></i><span data-part="label">Receipts</span></a></li>
+      </ul></div>
+    </div>
+    <div data-part="footer"><a data-part="button" href="#"><i data-ui="icon" data-name="settings"></i><span data-part="label">Settings</span></a><a data-part="button" data-size="lg" href="#"><span data-ui="avatar"><span data-part="fallback">MK</span></span><span data-part="label-stack"><span data-part="name">Mara Kowal</span><span data-part="sub">mara@northline.studio</span></span></a></div>
+  </aside>
+  <div data-part="inset">
+    <header data-part="inset-header"><button data-ui="button" data-part="trigger" data-variant="ghost" data-size="icon-sm" aria-label="Toggle sidebar"><i data-ui="icon" data-name="panel-left"></i></button><span data-ui="separator" data-orientation="vertical" style="block-size:1rem"></span><span data-ui="text" data-size="sm" style="font-weight:500">Dashboard</span><button data-ui="button" data-size="sm" style="margin-inline-start:auto"><i data-ui="icon" data-name="plus"></i>New invoice</button></header>
+    <div data-part="main">
+      <div data-part="stats">
+        <div data-ui="card"><div data-part="header"><div data-part="description">Total revenue</div><div data-part="stat-value">$48,250.00</div><div data-part="action"><span data-ui="badge" data-variant="outline"><i data-ui="icon" data-name="trending-up"></i>+12.5%</span></div></div><div data-part="content"><div data-part="stat-note"><span data-part="stat-trend">Trending up this month <i data-ui="icon" data-name="trending-up"></i></span><span data-part="muted">Invoices paid in the last 6 months</span></div></div></div>
+        <div data-ui="card"><div data-part="header"><div data-part="description">Outstanding</div><div data-part="stat-value">$6,120.00</div><div data-part="action"><span data-ui="badge" data-variant="outline"><i data-ui="icon" data-name="trending-down"></i>-8%</span></div></div><div data-part="content"><div data-part="stat-note"><span data-part="stat-trend">Down from last month <i data-ui="icon" data-name="trending-down"></i></span><span data-part="muted">12 invoices waiting</span></div></div></div>
+        <div data-ui="card"><div data-part="header"><div data-part="description">Active clients</div><div data-part="stat-value">42</div><div data-part="action"><span data-ui="badge" data-variant="outline"><i data-ui="icon" data-name="trending-up"></i>+3</span></div></div><div data-part="content"><div data-part="stat-note"><span data-part="stat-trend">Steady growth <i data-ui="icon" data-name="trending-up"></i></span><span data-part="muted">Billed in the last 90 days</span></div></div></div>
+        <div data-ui="card"><div data-part="header"><div data-part="description">Paid on time</div><div data-part="stat-value">94%</div><div data-part="action"><span data-ui="badge" data-variant="outline"><i data-ui="icon" data-name="trending-up"></i>+4.5%</span></div></div><div data-part="content"><div data-part="stat-note"><span data-part="stat-trend">Reminders are working <i data-ui="icon" data-name="trending-up"></i></span><span data-part="muted">Across all clients</span></div></div></div>
+      </div>
+      <div data-ui="card"><div data-part="header"><div data-part="title">Revenue</div><div data-part="description">Total for the last 6 months</div><div data-part="action"><div data-ui="toggle-group" role="group" data-variant="outline"><button data-ui="toggle" aria-pressed="false" data-size="sm">Last 6 months</button><button data-ui="toggle" aria-pressed="false" data-size="sm">30 days</button><button data-ui="toggle" aria-pressed="true" data-size="sm">7 days</button></div></div></div><div data-part="content">
+        <div data-ui="chart" data-type="area" style="--plot-h:220px"><div data-part="plot"><svg xmlns="http://www.w3.org/2000/svg" data-part="svg" viewBox="0 0 800 220" preserveAspectRatio="none"><path data-part="fill" d="M0 160C60 130 90 80 160 90S260 170 340 150 440 60 520 80 640 150 700 110 770 60 800 50V220H0Z"></path><path data-part="stroke" d="M0 160C60 130 90 80 160 90S260 170 340 150 440 60 520 80 640 150 700 110 770 60 800 50"></path></svg></div><div data-part="axis"><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span></div></div>
+      </div></div>
+      <div data-ui="data-table">
+        <div data-part="toolbar"><input data-ui="input" placeholder="Filter clients..." aria-label="Filter clients" style="max-inline-size:20rem"><button data-ui="button" data-variant="outline" data-part="columns">Columns<i data-ui="icon" data-name="chevron-down"></i></button></div>
+        <div data-part="frame"><table data-ui="table"><thead><tr><th><input data-ui="checkbox" type="checkbox" aria-label="Select all" data-part="select-all"></th><th>Invoice</th><th>Client</th><th>Status</th><th data-align="end">Amount</th></tr></thead><tbody>
+          <tr><td><input data-ui="checkbox" type="checkbox" aria-label="Select row"></td><td style="font-weight:500">TB-1042</td><td>Northline Studio</td><td><span data-ui="badge" data-variant="outline">Paid</span></td><td data-align="end">$2,400.00</td></tr>
+          <tr><td><input data-ui="checkbox" type="checkbox" aria-label="Select row"></td><td style="font-weight:500">TB-1041</td><td>Hartley and Sons</td><td><span data-ui="badge" data-variant="secondary">Pending</span></td><td data-align="end">$860.00</td></tr>
+          <tr><td><input data-ui="checkbox" type="checkbox" aria-label="Select row"></td><td style="font-weight:500">TB-1040</td><td>Pine Street Bakery</td><td><span data-ui="badge" data-variant="destructive">Overdue</span></td><td data-align="end">$1,180.00</td></tr>
+          <tr><td><input data-ui="checkbox" type="checkbox" aria-label="Select row"></td><td style="font-weight:500">TB-1039</td><td>Marlow Print Co.</td><td><span data-ui="badge" data-variant="outline">Paid</span></td><td data-align="end">$3,275.00</td></tr>
+        </tbody></table></div>
+        <div data-part="footer"><span data-part="count">0 of 4 row(s) selected.</span><button data-ui="button" data-variant="outline" data-size="sm" disabled>Previous</button><button data-ui="button" data-variant="outline" data-size="sm">Next</button></div>
+      </div>
+    </div>
+  </div>
+</section>

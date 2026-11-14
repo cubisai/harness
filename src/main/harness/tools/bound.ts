@@ -44,6 +44,24 @@ export function bound(text: string, ctx: Pick<ToolContext, "outputDir" | "callId
 }
 
 /**
+ * bound() without the spill file: long text is cut in memory with a plain
+ * omitted note. For a script's child rows, whose text is only a UI preview.
+ */
+export function boundPreview(text: string, keep: "head" | "tail" = "head"): string {
+  const lines = text.split("\n");
+  if (lines.length <= MAX_LINES && Buffer.byteLength(text) <= MAX_BYTES) return text;
+  let kept = keep === "head" ? lines.slice(0, MAX_LINES) : lines.slice(-MAX_LINES);
+  let out = kept.join("\n");
+  while (Buffer.byteLength(out) > MAX_BYTES && kept.length > 1) {
+    kept = keep === "head" ? kept.slice(0, Math.floor(kept.length * 0.8)) : kept.slice(Math.ceil(kept.length * 0.2));
+    out = kept.join("\n");
+  }
+  if (Buffer.byteLength(out) > MAX_BYTES) out = keep === "head" ? out.slice(0, MAX_BYTES) : out.slice(-MAX_BYTES);
+  const note = `[${lines.length - kept.length} of ${lines.length} lines omitted]`;
+  return keep === "head" ? `${out}\n\n${note}` : `${note}\n\n${out}`;
+}
+
+/**
  * Delete saved-output files older than maxAgeMs. A missing folder and per-file
  * errors are ignored (a file another turn is still paging through may be busy).
  * Returns how many were removed.

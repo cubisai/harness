@@ -29,7 +29,7 @@ export const EXPERTS: ExpertPreset[] = [
     description: "Designs web pages and app screens as live prototypes on the canvas, with every state, on the 8pt grid.",
     tags: ["Prototype", "Web", "States"],
     kind: "design",
-    skills: ["design-prototype"],
+    skills: ["design-build"],
   },
   {
     id: "mobile-designer",
@@ -40,7 +40,7 @@ export const EXPERTS: ExpertPreset[] = [
     description: "Lays out iOS and Android screens and flows in real-size phone frames, with safe areas and 44pt targets.",
     tags: ["iOS", "Android", "Flows"],
     kind: "design",
-    skills: ["design-mobile"],
+    skills: ["design-build"],
   },
   {
     id: "slide-designer",
@@ -51,7 +51,7 @@ export const EXPERTS: ExpertPreset[] = [
     description: "Turns a story into a 1920×1080 deck you can click through, present and print to PDF.",
     tags: ["Slides", "Storytelling", "PDF"],
     kind: "design",
-    skills: ["design-slides"],
+    skills: ["design-build"],
   },
   {
     id: "design-system-architect",
@@ -59,10 +59,10 @@ export const EXPERTS: ExpertPreset[] = [
     persona: "Theo",
     category: "Design",
     avatarText: "DS",
-    description: "Extracts a design system from a site, a screenshot or your code into DESIGN.md and tokens you can design with.",
+    description: "Extracts a kit from a site, a screenshot or your code: its tokens and rules on the kit's parts, ready to design with.",
     tags: ["Tokens", "DESIGN.md", "Extraction"],
     kind: "design",
-    skills: ["design-system-extract"],
+    skills: ["design-kit"],
   },
   {
     id: "ux-critic",
@@ -73,7 +73,7 @@ export const EXPERTS: ExpertPreset[] = [
     description: "Reviews a design against hierarchy, spacing, contrast, tokens and states, then fixes what it finds.",
     tags: ["Critique", "Accessibility", "Polish"],
     kind: "design",
-    skills: ["design-critique"],
+    skills: ["design-review"],
   },
   {
     id: "code-review",

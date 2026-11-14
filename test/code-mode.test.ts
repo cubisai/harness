@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { HarnessTool } from "../src/main/agents/types";
-import { hasOwnCodeMode, harnessTool } from "../src/main/agents/acp/driver";
+import { acpCodeHint, hasOwnCodeMode, harnessTool, stockToolsOnly } from "../src/main/agents/acp/driver";
+import { CODE_HINT, CODE_HINT_DEFERRED, OWN_CODE_MODE_HINT } from "../src/main/code-hint";
 import { summarizeToolInput } from "../src/main/agents/summarize";
 import { codeModes, createCodeServer, CODE_TOOL, type CodeServerDeps } from "../src/main/code-mode";
 import { createCodeBroker, MAX_IN_FLIGHT } from "../src/main/harness/tools/code-broker";
@@ -97,13 +98,14 @@ describe("createCodeBroker", () => {
       return { text: "out" };
     });
     const broker = createCodeBroker({ tools: () => [slow], emit: () => {}, outputDir: tempDir() });
-    const calls = Array.from({ length: 12 }, (_, i) => broker("slow", {}, `p${i}`, signal()));
+    const total = MAX_IN_FLIGHT + 4;
+    const calls = Array.from({ length: total }, (_, i) => broker("slow", {}, `p${i}`, signal()));
     await new Promise((r) => setTimeout(r, 20));
     expect(running).toBe(MAX_IN_FLIGHT);
     release();
     const results = await Promise.all(calls);
     expect(peak).toBe(MAX_IN_FLIGHT);
-    expect(results).toHaveLength(12);
+    expect(results).toHaveLength(total);
     expect(results.every((r) => !r.isError)).toBe(true);
   });
 });
@@ -219,6 +221,42 @@ describe("createCodeServer", () => {
     const other = await run(codes, "u", "return load('k') === undefined");
     expect(other.text.endsWith("=> true")).toBe(true);
   });
+
+  it("boots the sandbox immediately without waiting on parentOf when no child calls emit, and skips child spill files", async () => {
+    const outputDir = tempDir();
+    let parentChecks = 0;
+    const { codes } = setup({
+      outputDir,
+      parentWaitMs: 2000,
+      parentOf: () => {
+        parentChecks += 1;
+        return undefined;
+      },
+    });
+    const t0 = Date.now();
+    const pure = await run(codes, "t", "return 2 + 2;");
+    expect(Date.now() - t0).toBeLessThan(500);
+    expect(pure.text).toBe("=> 4");
+    expect(parentChecks).toBe(0);
+
+    const dir = tempDir();
+    writeFileSync(join(dir, "large.txt"), Array.from({ length: 2400 }, (_, i) => `row-${i}`).join("\n"));
+    const withBigChild = createCodeServer({
+      cwdOf: () => dir,
+      projectOf: () => undefined,
+      appTools: () => [],
+      parentOf: () => "parent-1",
+      emit: () => {},
+      outputDir,
+      guardScript: "builtin",
+      parentWaitMs: 0,
+    });
+    const res = await run(withBigChild, "t2", 'const s = await tools.read("large.txt"); return s.split("\\n").length;');
+    expect(res.isError).toBeFalsy();
+    expect(res.text).toBe("=> 2400");
+    const { readdirSync } = await import("node:fs");
+    expect(readdirSync(outputDir)).toEqual([]);
+  });
 });
 
 describe("tool server ?c=", () => {
@@ -275,17 +313,43 @@ describe("tool server ?c=", () => {
 });
 
 describe("ACP helpers", () => {
+  it("keeps OpenCode's own tools on Zen free models, which refuse a changed tool surface", () => {
+    expect(stockToolsOnly("opencode/deepseek-v4.1-flash-free")).toBe(true);
+    expect(stockToolsOnly("opencode/deepseek-v4.1-flash")).toBe(false);
+    expect(stockToolsOnly("explabs/deepseek-v4.1-flash:free")).toBe(false);
+    expect(stockToolsOnly("PGA/deepseek-v4.1-flash-1017")).toBe(false);
+    expect(stockToolsOnly("default")).toBe(false);
+    expect(stockToolsOnly(null)).toBe(false);
+  });
+
   it("knows which agents bring their own code mode", () => {
     expect(hasOwnCodeMode({ agentInfo: { name: "OpenCode", version: "2.1.0" } })).toBe(true);
     expect(hasOwnCodeMode({ agentInfo: { name: "OpenCode", version: "1.19.0" } })).toBe(false);
     expect(hasOwnCodeMode({ agentInfo: { name: "Gemini", version: "3.0.0" } })).toBe(false);
     expect(hasOwnCodeMode({})).toBe(false);
+    // OpenCode v2 gets the line that points at run_code inside its own Code Mode catalog unless exposed top-level; others the plain one.
+    expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "2.2.0" } }, true)).toBe(OWN_CODE_MODE_HINT);
+    expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "2.2.0" } }, true, true)).toBe(CODE_HINT);
+    expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "1.19.0" } }, true)).toBe(CODE_HINT);
+    expect(acpCodeHint({ agentInfo: { name: "OpenCode", version: "2.2.0" } }, false, true)).toBe("");
+    expect(OWN_CODE_MODE_HINT).toContain("execute");
+    expect(OWN_CODE_MODE_HINT).toContain("tools.cubiq.run_code");
+    expect(CODE_HINT_DEFERRED.startsWith(CODE_HINT)).toBe(true);
+    expect(CODE_HINT_DEFERRED).toContain('search for "run_code"');
   });
 
   it("names and summarises the harness's own tool calls", () => {
     expect(harnessTool({ title: "cubiq_run_code", kind: "other", rawInput: { code: "return 1" } })).toEqual({
       name: "run_code",
       summary: "return 1",
+    });
+    expect(harnessTool({ title: "run_code", kind: "other", rawInput: { code: "return 2" } })).toEqual({
+      name: "run_code",
+      summary: "return 2",
+    });
+    expect(harnessTool({ title: "cubiq.guard_run_code", kind: "other", rawInput: { code: "return 3" } })).toEqual({
+      name: "run_code",
+      summary: "return 3",
     });
   });
 });
@@ -298,6 +362,24 @@ describe("SettingsStore codeMode", () => {
   };
 
   const fresh = () => join(tempDir(), "settings.json");
+
+  it("keeps the File issue? cards switch, and ignores anything but a boolean", () => {
+    const s = new SettingsStore(fresh(), box);
+    expect(s.get().issueOffers).toBeUndefined();
+    s.update({ issueOffers: false });
+    expect(s.get().issueOffers).toBe(false);
+    s.update({ issueOffers: "no" as never });
+    expect(s.get().issueOffers).toBe(false);
+  });
+
+  it("keeps the design references sheet's answer, and ignores anything but a boolean", () => {
+    const s = new SettingsStore(fresh(), box);
+    expect(s.get().designReferencesAsked).toBeUndefined();
+    s.update({ designReferencesAsked: true });
+    expect(s.get().designReferencesAsked).toBe(true);
+    s.update({ designReferencesAsked: "yes" as never });
+    expect(s.get().designReferencesAsked).toBe(true);
+  });
 
   it("accepts off/on and ignores an unknown value, including the removed only", () => {
     const s = new SettingsStore(fresh(), box);

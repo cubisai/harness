@@ -1,14 +1,20 @@
-# bench: day-by-day harness performance
+# Agent benchmarks
 
-A fixed task set, run every day per agent and model **through the real app, on this repo**, so a harness change (a prompt line, a tool description, a CLI upgrade) shows its effect. It measures real-change solve rate, memory, context, the check gate, self-improve, todo use, code mode, skills, tokens, time and cost.
+A fixed task set run per agent and model **through the real app, on this repo**, so a harness change can be compared across runs. It measures solve rate, memory, context, checks, skills, tokens, time, and cost. Runs use your own agent sign-ins and can incur charges.
+
+## Agent configuration
+
+`agents.json` ships with three generic entries: `claude`, `codex`, and `opencode`. Claude uses the stable `sonnet` alias; Codex and OpenCode use their configured default models. Select only integrations you have installed and signed in to with `--agents`.
+
+Change `model` to compare a specific model. Set `spaced: true` for rate-limited endpoints. Custom native providers may use the `provider` fields defined in `lib/types.ts`; keep credentials in environment variables and do not commit account-specific configuration.
 
 ```bash
-bun run bench                         # daily core: 9 tasks × every agent, one try each (~25 min)
+bun run bench --agents claude          # core tasks on one configured integration
 bun run bench --suite full --k 3      # weekly: every task, three tries each
 bun run bench --suite solve           # one suite: behaviour, solve, memory or context
-bun run bench --agents claude-sonnet,codex-luna --tasks solve-codex-office-skills
+bun run bench --agents claude,codex --tasks solve-codex-office-skills
 bun run bench --parallel 6            # agents side by side (default 3: solve tasks run typechecks, and an 8 GB Mac runs out of memory at 6)
-bun run bench --scratch               # a trial run: results go to .state/, not the committed history
+bun run bench --scratch               # a trial run: results go to .state/scratch-results/
 bun run bench --dry                   # list the runs, start nothing
 bun run bench:report [YYYY-MM-DD]     # re-render a day's report and results/README.md (no model calls)
 bun bench/validate.ts [--tasks a,b]   # prove the tasks are fair (no model calls); run it after changing a task
@@ -34,7 +40,7 @@ Repo tasks run on this repo at a pinned commit: CLAUDE.md (minus its opencode-de
 3. Code mode is on. A new thread → `updateThread({agent, model, permissionMode: "full"})` → the DB row is checked → `send`. The run then waits until the thread is idle: its turns have ended, no check is running, and nothing new arrived for 10 s (so a check's fix round is waited for). Follow-ups go to the same thread or a new one. `afterMemory` waits up to 2 min for the note the previous message asked for.
 4. The hidden files are written in (a fixture's `.hidden`, `hiddenDir`, a replayed commit's tests). Then the graders run (`evals/lib/graders.ts`), and the metrics are read from the threads' events (`lib/metrics.ts`).
 5. Free providers (`"spaced": true`) wait at least 90 s between runs. After a rate-limit error, or a stall (no new event for 5 min), a run waits 180 s and retries once.
-6. Self-improve's background model (lesson drafts, memory extraction) is CoralBricks when it is in the run.
+6. `--background-agent <id>` optionally selects a background model for lesson drafts and memory extraction. It must be in the selected agents. Without the flag, the benchmark preserves its profile's existing setting rather than choosing a provider for you.
 
 ## What is measured
 
@@ -57,11 +63,11 @@ Put a JSON file in `tasks/` (the fields are in `lib/types.ts`). A fixture goes i
 
 ## Reading results
 
-Committed (small, readable, the same on both machines):
+Generated locally in `bench/results/` (ignored, not published with the source):
 - `results/README.md`: the latest flags and every agent day by day, with real changes solved per tier.
 - `results/<YYYY-MM-DD>.md`: the day's report. It has the at-a-glance table, flags, one section per suite (a table per task) and why runs missed.
 - `results/history.csv`: one row per run. Reports and day-to-day deltas are built from it.
 
-Local only: `.state/runs/<date>/<agent>--<task>--t<n>.json`, the full record of a run (graders, metrics, final answer, thread ids). The threads themselves stay in the bench profile (`.state/ud`), as do the projects' memory and lessons, which carry over from day to day like a real working project.
+Full records stay in `.state/runs/<date>/<agent>--<task>--t<n>.json` (graders, metrics, final answer, thread ids). The threads themselves stay in the bench profile (`.state/ud`), as do the projects' memory and lessons. Review and redact any report before sharing it: it may include agent answers or project details.
 
 Deltas are against the previous day. A **flag** needs a pass/fail flip, or a value outside the last 7 days' min–max (±10%) once at least 3 days exist: one run is noisy, so a single-day wobble is not a change.

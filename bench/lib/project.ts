@@ -58,7 +58,7 @@ export function layTree(from: string, dir: string, git: boolean): void {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const modules = join(from, "node_modules");
-  cpSync(from, dir, { recursive: true, filter: (src) => !src.endsWith(".bench-ready") && src !== modules && !src.startsWith(modules + sep) });
+  cpSync(from, dir, { recursive: true, preserveTimestamps: true, filter: (src) => !src.endsWith(".bench-ready") && src !== modules && !src.startsWith(modules + sep) });
   if (existsSync(modules)) symlinkSync(modules, join(dir, "node_modules"), process.platform === "win32" ? "junction" : "dir");
   if (git) {
     const run = (...args: string[]) => execFileSync("git", ["-c", "user.name=bench", "-c", "user.email=bench@localhost", "-c", "core.autocrlf=false", ...args], { cwd: dir, stdio: "ignore" });

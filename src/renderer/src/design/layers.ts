@@ -45,16 +45,28 @@ export function humanize(raw: string): string {
 }
 
 /**
- * A layer's readable name: its own text (or accessible name), else its agent id, else its first class, else its
- * tag's plain name. `div.hero-wrap` reads "Hero wrap", an `<h1>` with text reads that text.
+ * A layer's readable name: its own text (or accessible name), else its kit part, else the id an agent gave it (not one
+ * the editor stamped), else its first class, else its tag's plain name. `div.hero-wrap` reads "Hero wrap", an `<h1>` with
+ * text reads that text.
  */
 export function layerName(node: OutlineNode): string {
   if (node.label) return node.label;
-  if (node.id) return humanize(node.id);
+  if (node.ui) return humanize(node.ui);
+  if (node.id && !/^el-[0-9a-f]{6,}$/.test(node.id)) return humanize(node.id);
   const cls = node.cls.split(".")[0];
   if (cls) return humanize(cls) || cls;
   if (/^h[1-6]$/.test(node.tag)) return `Heading ${node.tag.slice(1)}`;
   return TAG_NAMES[node.tag] ?? node.tag;
+}
+
+/** A step in the pill's parent menu, named the way Layers names it: its kit part, its named part, an agent's id, its tag. */
+export function parentName(step: { label: string; ui?: string; part?: string }, partName?: string): string {
+  if (partName) return partName;
+  if (step.ui) return humanize(step.ui);
+  if (step.part) return humanize(step.part);
+  const [tag = "", id] = step.label.split(" ");
+  if (id && !/^el-[0-9a-f]{6,}$/.test(id)) return humanize(id);
+  return TAG_NAMES[tag] ?? tag;
 }
 
 /** One visible row of the Layers tree. */

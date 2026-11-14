@@ -113,8 +113,8 @@ describe("store mode", () => {
     await useStore.getState().setThreadKind("design");
     useStore.getState().setDraft({ designSystem: "mono" });
     await useStore.getState().newThread();
-    await useStore.getState().newThread(["design-slides"], { designSystem: "editorial" });
-    expect(useStore.getState().pendingSkills).toEqual(["design-slides"]);
+    await useStore.getState().newThread(["design-build"], { designSystem: "editorial" });
+    expect(useStore.getState().pendingSkills).toEqual(["design-build"]);
     await useStore.getState().setThreadKind("chat");
     useStore.getState().setDraft({ designSystem: "mono" });
     await useStore.getState().newThread();

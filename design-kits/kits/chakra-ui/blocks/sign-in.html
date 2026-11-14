@@ -1,0 +1,26 @@
+<section data-ui="sign-in">
+  <div data-part="card">
+    <div>
+      <h2>Sign in to Trailmark</h2>
+      <p>Your bookings, saved trails and guide messages are waiting.</p>
+    </div>
+    <div data-part="form">
+      <div data-ui="field">
+        <label data-part="label" for="si-email">Email</label>
+        <input data-ui="input" id="si-email" type="email" placeholder="you@example.com">
+      </div>
+      <div data-ui="field">
+        <label data-part="label" for="si-pass">Password</label>
+        <div data-ui="password-input"><input data-ui="input" id="si-pass" type="password" placeholder="At least 8 characters"><button data-part="toggle" type="button" aria-label="Show password"><i data-ui="icon" data-name="eye"></i></button></div>
+      </div>
+      <label data-ui="checkbox"><input type="checkbox" checked><span data-part="control"><i data-ui="icon" data-name="check"></i></span><span data-part="label">Keep me signed in on this device</span></label>
+      <button data-ui="button" data-size="lg">Sign in</button>
+    </div>
+    <div data-part="divider">or</div>
+    <div data-part="social">
+      <button data-ui="button" data-variant="outline">Continue with Google</button>
+      <button data-ui="button" data-variant="outline">Continue with Apple</button>
+    </div>
+    <p>New to Trailmark? <button type="button" data-ui="link">Create an account</button></p>
+  </div>
+</section>

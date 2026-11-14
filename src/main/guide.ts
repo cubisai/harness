@@ -51,6 +51,14 @@ export const UI_BLOCKS_NOTE =
   "- **UI blocks** (if clearer than prose; max 2 unless asked): a ```ui:<name> fence, a line per item, `|`-split fields, optional `# Title`. checklist `[x] text`; compare: header row, rows, `*` after best cell; timeline `time|title|detail`; chart `label|number`; calculator `id|label|value|unit` lines + `=formula` of those ids; choices; form `id|label|text, number, yes/no or a/b/c`; stat `label|value|change`; cards `icon|title|text|https-link`.";
 
 /**
+ * What an agent is told in a project with an issue tracker (`.cubiq/issues.json`):
+ * offer to file what it finds and won't fix now, and file it on the user's yes. One line, after the app's
+ * own guide; absent without a tracker, so other projects pay nothing.
+ */
+export const ISSUES_NOTE =
+  "- **Issues**: found a real bug, missing feature or docs gap outside this task's scope? Don't just mention it: ask whether to file it (question tool, or a question ending your reply). On yes, check for a duplicate (`.cubiq/issue-tracker.md`), then file it with `issue_create` from what you saw (no root-cause digging), with screenshot, artifact or log paths.";
+
+/**
  * The harness guide agents receive as instructions: the app's bundled copy,
  * then the user's own, then the project's; a design thread's ends with Design
  * mode's guide (`designMode`) for its folder. Each file is read once and cached by
@@ -58,7 +66,7 @@ export const UI_BLOCKS_NOTE =
  * broken by a re-read (which also means a guide edited mid-session is only
  * picked up on the next mtime change, not mid-turn).
  */
-export function createGuide(opts: { bundled: string; global: string; designMode?: string; uiBlocks?: () => boolean }): {
+export function createGuide(opts: { bundled: string; global: string; designMode?: string; uiBlocks?: () => boolean; issues?: (cwd: string) => boolean }): {
   forCwd(cwd: string, design?: string): string;
   partsForCwd(cwd: string): { source: "bundled" | "user" | "project"; path: string; text: string }[];
 } {
@@ -87,10 +95,14 @@ export function createGuide(opts: { bundled: string; global: string; designMode?
       { source: "project", path: projectGuidePath(cwd) },
     ];
     const parts = sources.map((s) => ({ ...s, text: read(s.path) })).filter((p) => p.text.length > 0);
-    // The opt-in UI block catalog follows the app's own guide.
-    if (!opts.uiBlocks?.()) return parts;
+    // The opt-in UI block catalog, then the issues note, follow the app's own guide.
+    const extra = [
+      ...(opts.uiBlocks?.() ? [{ source: "bundled" as const, path: "ui-blocks", text: UI_BLOCKS_NOTE }] : []),
+      ...(opts.issues?.(cwd) ? [{ source: "bundled" as const, path: "issues", text: ISSUES_NOTE }] : []),
+    ];
+    if (!extra.length) return parts;
     const at = parts.filter((p) => p.source === "bundled").length;
-    return [...parts.slice(0, at), { source: "bundled" as const, path: "ui-blocks", text: UI_BLOCKS_NOTE }, ...parts.slice(at)];
+    return [...parts.slice(0, at), ...extra, ...parts.slice(at)];
   };
 
   /** Design mode's guide with the thread's folder filled in; the short note when the file is missing. */

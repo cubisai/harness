@@ -9,7 +9,7 @@ avatar: UI
 description: Designs web pages and app screens as live prototypes on the canvas, with every state, on the 8pt grid.
 tags: ["Prototype", "Web", "States"]
 quickPrompts: ["Design a settings page with profile, notifications and billing sections", "Create a dashboard for a small online store with sales, orders and stock", "Make three layout options for a pricing page"]
-skills: ["design-prototype"]
+skills: ["design-build"]
 threadKind: design
 version: 1.0.0
 ---

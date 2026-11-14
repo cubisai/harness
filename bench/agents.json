@@ -1,26 +1,5 @@
 [
-  { "id": "claude-sonnet", "agent": "claude", "model": "sonnet" },
-  { "id": "codex-luna", "agent": "codex", "model": "gpt-6-luna" },
-  { "id": "opencode-zen-deepseek", "agent": "opencode", "model": "opencode/deepseek-v4.1-flash-free", "spaced": true },
-  {
-    "id": "pgs-deepseek",
-    "agent": "provider-pgs",
-    "model": "deepseek-v4-flash-0731",
-    "spaced": true,
-    "provider": { "id": "pgs", "label": "PGS Grove", "baseURL": "https://api.pgsgrove.com/v1", "envVar": "PGS_API_KEY" }
-  },
-  {
-    "id": "coralbricks-deepseek",
-    "agent": "provider-coralbricks",
-    "model": "deepseek-v4.1-flash-fast",
-    "spaced": true,
-    "provider": { "id": "coralbricks", "label": "CoralBricks", "baseURL": "https://inference.coralbricks.ai/v1", "envVar": "CORALBRICK_API_KEY" }
-  },
-  {
-    "id": "tokenharbor-deepseek",
-    "agent": "provider-tokenharbor",
-    "model": "deepseek-v4.1-flash:free",
-    "spaced": true,
-    "provider": { "id": "tokenharbor", "label": "TokenHarbor", "baseURL": "https://tokenharbor.ai/v1", "envVar": "TOKENHARBOR_API_KEY" }
-  }
+  { "id": "claude", "agent": "claude", "model": "sonnet" },
+  { "id": "codex", "agent": "codex", "model": "default" },
+  { "id": "opencode", "agent": "opencode", "model": "default" }
 ]

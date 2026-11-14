@@ -1,4 +1,4 @@
-// Self-improving CubiQ (plan .ai/plans/self-improve.md): what the main
+// Self-improving CubiQ: what the main
 // process and the renderer share about turn scores and learned lessons.
 
 /** Why a turn wasn't plainly healthy. */
@@ -127,7 +127,7 @@ export const CHEAP_MODEL_HINTS = ["flash", "haiku", "mini", "nano", "lite", "lun
 export const LEARN_DEFAULTS: LearnSettings = { enabledProjects: [], dailyTokens: 50_000, memoryDailyTokens: 200_000, background: null, backgroundByProject: {} };
 
 /** What a hidden background model call was for: shared memory extraction, or a lesson draft. */
-export type BackgroundPurpose = "memory" | "lesson";
+export type BackgroundPurpose = "memory" | "lesson" | "issue";
 
 /** One background model call, as the accounting table records it. */
 export interface BackgroundRun {

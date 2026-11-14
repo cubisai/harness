@@ -8,8 +8,9 @@ mode: design
 
 1. **Identity.** Read the picked element in the page file (the message gives its selector), its parent, and the design's `system/` tokens. Note for yourself, in one sentence, what is on screen: surface and accent colours (real values), the fonts, the layout, corners, borders and shadows, and the copy's voice.
 2. **Keep it** unless the message asks for a redesign: the same tokens and fonts. New tokens or fonts only on a redesign.
-3. **Three axes.** Each variant commits to a different axis: hierarchy, layout, type, colour role, density or structure. The action below says which axes. Three tweaks of one axis is a failure. A note binds to the part it sits on. In the reference image, a loop means "this", an arrow a direction, a cross "remove".
-4. **Write them in one edit**, in place of the element:
+3. **Kit first.** When the element is built from kit parts (`data-ui`), reach for the kit before new markup: another variant or prop value of the same parts (`design_kit_inspect component:` lists them), other parts that fit (`search:`), a different block. Only props and values from `components.json`; new CSS only for what the kit can't express, with tokens, and never restyling a part through `[data-ui]`.
+4. **Three axes.** Each variant commits to a different axis: hierarchy, layout, type, colour role, density or structure. The action below says which axes. Three tweaks of one axis is a failure. A note binds to the part it sits on. In the reference image, a loop means "this", an arrow a direction, a cross "remove".
+5. **Write them in one edit**, in place of the element:
 
 ```html
 <style data-cubiq-variants="SET">
@@ -29,5 +30,5 @@ mode: design
    - Put shared keyframes in the same style block.
    - With several elements selected, wrap their nearest shared parent.
    - **Insert** (the message says "Insert … before/after"): the selected element is only the anchor and stays as it is. Write the set right beside it, with an empty `<div data-cubiq-variant="SET-0" hidden></div>`. Each variant is new content in the page's identity, with a new `data-agent-id`.
-5. **Change nothing else.** Don't open or screenshot the page: the canvas is the preview.
-6. **End the turn** with one line per variant: its axis and what changed.
+6. **Change nothing else.** Don't open or screenshot the page: the canvas is the preview.
+7. **End the turn** with one line per variant: its axis and what changed.

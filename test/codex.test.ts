@@ -1,3 +1,5 @@
+import { CODE_HINT, CODE_HINT_CODEX_EXEC, CODE_HINT_DEFERRED } from "../src/main/code-hint";
+import { createCodeServer } from "../src/main/code-mode";
 import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1114,7 +1116,7 @@ describe("turnEndFromUsage", () => {
 
 describe("Codex policy mapping", () => {
   it("maps permission modes and decisions", () => {
-    // Pinned by spikes (spec/open-questions.md): codex 0.157 still honours "untrusted" and it is the only
+    // Pinned by spikes: codex 0.157 still honours "untrusted" and it is the only
     // policy that asks before every command; the request's sandbox spelling is kebab-case (camelCase is rejected).
     expect(codexPolicy("ask")).toEqual({ approvalPolicy: "untrusted", sandbox: "workspace-write" });
     expect(codexPolicy("ask").approvalPolicy).not.toBe("on-request");
@@ -1241,7 +1243,7 @@ describe("Codex shared memory", () => {
     run: async () => ({ text: "" }),
   };
 
-  type ThreadProbe = { method: string; params: { developerInstructions?: string; config?: { memories?: unknown; mcp_servers?: Record<string, { url?: string }> } } };
+  type ThreadProbe = { method: string; params: { developerInstructions?: string; config?: { memories?: unknown; features?: unknown; mcp_servers?: Record<string, { url?: string }> } } };
   /** The (projectId, threadId, sessionKey) each memory call carried. */
   type MemCall = [string, string | undefined, string | null | undefined];
 
@@ -1364,6 +1366,43 @@ describe("Codex shared memory", () => {
     }
   });
 
+  it("in code mode, tells Codex to load run_code through its tool search", async () => {
+    const { d, sent } = probeDriver(() => null, { toolServer: async () => ({ url: "http://127.0.0.1:1234/mcp", token: "tok" }), codeMode: () => "on" });
+    try {
+      await d.runTurn(turn("hi", { tools: [safeTool] }).input);
+      expect(sent().params.developerInstructions).toContain(CODE_HINT_DEFERRED);
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
+  it("leaves Codex's own code_mode off unless opted in, whatever CubiQ's code mode says", async () => {
+    const { d, sent } = probeDriver(() => null, { toolServer: async () => ({ url: "http://127.0.0.1:1234/mcp", token: "tok" }), codeMode: () => "on" });
+    try {
+      await d.runTurn(turn("hi", { tools: [safeTool] }).input);
+      expect(sent().params.config?.features).toBeUndefined();
+      expect(sent().params.developerInstructions).not.toContain(CODE_HINT_CODEX_EXEC);
+    } finally {
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
+  it("opted in, turns Codex's code_mode on only with CubiQ's code mode, and names run_code inside exec", async () => {
+    process.env.CUBIQ_CODEX_EXEC_MODE = "1";
+    try {
+      const on = probeDriver(() => null, { toolServer: async () => ({ url: "http://127.0.0.1:1234/mcp", token: "tok" }), codeMode: () => "on" });
+      await on.d.runTurn(turn("hi", { tools: [safeTool] }).input);
+      expect(on.sent().params.config?.features).toEqual({ code_mode: true });
+      expect(on.sent().params.developerInstructions).toContain(CODE_HINT_CODEX_EXEC);
+      const off = probeDriver(() => null, { toolServer: async () => ({ url: "http://127.0.0.1:1234/mcp", token: "tok" }), codeMode: () => "off" });
+      await off.d.runTurn(turn("hi", { tools: [safeTool] }).input);
+      expect(off.sent().params.config?.features).toBeUndefined();
+    } finally {
+      delete process.env.CUBIQ_CODEX_EXEC_MODE;
+      delete process.env.GUIDE_PROBE;
+    }
+  });
+
   it("carries the calling project on the tool server URL", async () => {
     const { d, sent } = probeDriver(() => null, { toolServer: async () => ({ url: "http://127.0.0.1:1234/mcp", token: "tok" }) });
     try {
@@ -1433,6 +1472,174 @@ describe("turnPolicy", () => {
 
 describe("designSkillsLine", () => {
   it("names the delivered skills root and the SKILL.md path to read", () => {
-    expect(designSkillsLine("/ud/harness-skills-projects/ab12")).toBe("CubiQ's design skills for this thread are in `/ud/harness-skills-projects/ab12`: read `/ud/harness-skills-projects/ab12/<skill>/SKILL.md` (e.g. design-prototype).");
+    expect(designSkillsLine("/ud/harness-skills-projects/ab12")).toBe("CubiQ's design skills for this thread are in `/ud/harness-skills-projects/ab12`: read `/ud/harness-skills-projects/ab12/<skill>/SKILL.md` (e.g. design-build).");
+  });
+});
+
+describe("Codex dynamic run_code", () => {
+  const DYNAMIC_PROBE = `
+const fs = require("node:fs");
+const readline = require("node:readline");
+const send = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
+const log = (o) => fs.appendFileSync(process.env.DYNAMIC_PROBE, JSON.stringify(o) + "\\n");
+let pendingTurn = null;
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.id !== undefined && msg.method === undefined && pendingTurn) {
+    // Response to our item/tool/call request (id = 99).
+    log({ kind: "tool_response", result: msg.result, error: msg.error });
+    const { threadId, turn, callId, prompt } = pendingTurn;
+    pendingTurn = null;
+    if (prompt === "started-after") {
+      send({ method: "item/started", params: { threadId, turnId: turn.id, item: { type: "dynamicToolCall", id: callId, tool: "run_code", status: "inProgress", arguments: { code: 'return await tools.read({ path: "hello.txt" });' } } } });
+    }
+    const contentItems = msg.result?.contentItems ?? [];
+    const success = Boolean(msg.result?.success);
+    send({ method: "item/completed", params: { threadId, turnId: turn.id, item: { type: "dynamicToolCall", id: callId, tool: "run_code", status: "completed", arguments: { code: 'return await tools.read({ path: "hello.txt" });' }, contentItems, success } } });
+    send({ method: "item/completed", params: { threadId, turnId: turn.id, item: { type: "agentMessage", id: "m1", text: (contentItems[0]?.text ?? "").trim() } } });
+    send({ method: "turn/completed", params: { threadId, turn: { ...turn, status: "completed", durationMs: 1 } } });
+    return;
+  }
+  if (msg.id === undefined) return;
+  const { id, method, params } = msg;
+  if (method === "initialize") return send({ id, result: { userAgent: "probe" } });
+  if (method === "model/list") return send({ id, result: { data: [] } });
+  if (method === "thread/start" || method === "thread/resume") {
+    log({ method, params });
+    return send({ id, result: { thread: { id: "dyn-thread" } } });
+  }
+  if (method === "turn/start") {
+    const prompt = params.input.map((i) => i.text).join("");
+    const turn = { id: "turn-1", status: "inProgress", error: null, durationMs: null };
+    send({ id, result: { turn } });
+    send({ method: "turn/started", params: { threadId: params.threadId, turn } });
+    if (prompt === "noop") {
+      send({ method: "turn/completed", params: { threadId: params.threadId, turn: { ...turn, status: "completed", durationMs: 1 } } });
+      return;
+    }
+    const callId = "call_dyn_1";
+    const toolName = prompt === "unknown-tool" ? "not_registered" : "run_code";
+    const code = prompt === "syntax-error" ? "function (" : 'return await tools.read({ path: "hello.txt" });';
+    if (prompt !== "started-after") {
+      send({ method: "item/started", params: { threadId: params.threadId, turnId: turn.id, item: { type: "dynamicToolCall", id: callId, tool: toolName, status: "inProgress", arguments: { code } } } });
+    }
+    pendingTurn = { threadId: params.threadId, turn, callId, prompt };
+    send({ id: 99, method: "item/tool/call", params: { threadId: params.threadId, turnId: turn.id, callId, tool: toolName, arguments: { code } } });
+    return;
+  }
+  send({ id, result: {} });
+});
+`;
+
+  it("registers run_code on thread/start (not resume), sends CODE_HINT, executes item/tool/call, and nests child rows", async () => {
+    const probe = join(tempDir(), "dynamic.jsonl");
+    const cwd = tempDir();
+    writeFileSync(join(cwd, "hello.txt"), "HELLO_CODEX_DYNAMIC\n");
+    process.env.DYNAMIC_PROBE = probe;
+    try {
+      const emitted: ThreadEvent[] = [];
+      const codeServer = createCodeServer({
+        cwdOf: () => cwd,
+        projectOf: () => undefined,
+        appTools: () => [],
+        parentOf: () => undefined,
+        emit: (_tid, e) => emitted.push(e),
+        outputDir: tempDir(),
+        guardScript: GUARD,
+        parentWaitMs: 0,
+      });
+      const d = createCodexDriver({
+        command: process.execPath,
+        args: ["-e", DYNAMIC_PROBE],
+        clientVersion: "test",
+        guide: () => "GUIDE",
+        codeMode: () => "on",
+        codeTool: (tid) => codeServer.tool(tid),
+      });
+      closeAfter(() => d.dispose?.());
+
+      // 1. Fresh thread/start: dynamicTools registered (deferLoading: false), CODE_HINT sent, item/tool/call runs even if item/started arrives after.
+      const first = turn("started-after", { cwd, onEvent: (e) => emitted.push(e) });
+      await d.runTurn(first.input);
+
+      const logs = () => readFileSync(probe, "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
+      const startCall = logs().find((l) => l.method === "thread/start") as { params: { developerInstructions?: string; dynamicTools?: Record<string, unknown>[] } };
+      expect(startCall.params.developerInstructions).toContain(CODE_HINT);
+      expect(startCall.params.developerInstructions).not.toContain(CODE_HINT_DEFERRED);
+      expect(startCall.params.dynamicTools).toHaveLength(1);
+      expect(startCall.params.dynamicTools![0]).toMatchObject({
+        type: "function",
+        name: "run_code",
+        deferLoading: false,
+        inputSchema: { type: "object", required: ["code"] },
+      });
+      expect(startCall.params.dynamicTools![0]!.inputSchema).not.toHaveProperty("$schema");
+
+      const toolResp = logs().find((l) => l.kind === "tool_response") as { result: { success: boolean; contentItems: { type: string; text: string }[] } };
+      expect(toolResp.result).toEqual({
+        success: true,
+        contentItems: [{ type: "inputText", text: "=> HELLO_CODEX_DYNAMIC\n" }],
+      });
+
+      // Exactly one run_code tool-use row (no duplicate when item/started followed item/tool/call), child Read nested under call_dyn_1.
+      const runCodeUses = emitted.filter((e): e is Extract<ThreadEvent, { kind: "tool-use" }> => e.kind === "tool-use" && e.name === "run_code");
+      expect(runCodeUses).toHaveLength(1);
+      expect(runCodeUses[0]!.toolUseId).toBe("call_dyn_1");
+      const childRead = emitted.find((e): e is Extract<ThreadEvent, { kind: "tool-use" }> => e.kind === "tool-use" && e.name === "Read");
+      expect(childRead).toMatchObject({ parentId: "call_dyn_1" });
+      const runCodeResult = emitted.find((e): e is Extract<ThreadEvent, { kind: "tool-result" }> => e.kind === "tool-result" && e.toolUseId === "call_dyn_1");
+      expect(runCodeResult).toMatchObject({ isError: false, summary: "=> HELLO_CODEX_DYNAMIC" });
+
+      // 2. Resume: ThreadResumeParams omits dynamicTools, keeps CODE_HINT in developerInstructions.
+      await d.runTurn(turn("noop", { cwd, sessionId: "dyn-thread" }).input);
+      const resumeCall = logs().find((l) => l.method === "thread/resume") as { params: { developerInstructions?: string; dynamicTools?: unknown } };
+      expect(resumeCall.params.dynamicTools).toBeUndefined();
+      expect(resumeCall.params.developerInstructions).toContain(CODE_HINT);
+
+      // 3. Failed script: returns success: false and marks tool-result isError: true.
+      const failedTurn = turn("syntax-error", { cwd });
+      await d.runTurn(failedTurn.input);
+      const failResult = failedTurn.events.find((e): e is Extract<ThreadEvent, { kind: "tool-result" }> => e.kind === "tool-result" && e.toolUseId === "call_dyn_1");
+      expect(failResult).toMatchObject({ isError: true });
+
+      // 4. Unregistered dynamic tool name: gracefully returns success: false without crashing.
+      const unknownTurn = turn("unknown-tool", { cwd });
+      await d.runTurn(unknownTurn.input);
+      const unknownResult = unknownTurn.events.find((e): e is Extract<ThreadEvent, { kind: "tool-result" }> => e.kind === "tool-result" && e.toolUseId === "call_dyn_1");
+      expect(unknownResult).toMatchObject({ isError: true });
+    } finally {
+      delete process.env.DYNAMIC_PROBE;
+    }
+  });
+
+  it("leaves thread/start untouched when codeMode is off", async () => {
+    const probe = join(tempDir(), "dynamic-off.jsonl");
+    process.env.DYNAMIC_PROBE = probe;
+    try {
+      const codeServer = createCodeServer({
+        cwdOf: () => tempDir(),
+        projectOf: () => undefined,
+        appTools: () => [],
+        parentOf: () => undefined,
+        emit: () => {},
+        outputDir: tempDir(),
+        guardScript: GUARD,
+      });
+      const d = createCodexDriver({
+        command: process.execPath,
+        args: ["-e", DYNAMIC_PROBE],
+        clientVersion: "test",
+        guide: () => "GUIDE",
+        codeMode: () => "off",
+        codeTool: (tid) => codeServer.tool(tid),
+      });
+      closeAfter(() => d.dispose?.());
+      await d.runTurn(turn("noop").input);
+      const startCall = JSON.parse(readFileSync(probe, "utf8").trim()) as { params: { developerInstructions?: string; dynamicTools?: unknown } };
+      expect(startCall.params.dynamicTools).toBeUndefined();
+      expect(startCall.params.developerInstructions).toBe(GUIDE);
+    } finally {
+      delete process.env.DYNAMIC_PROBE;
+    }
   });
 });

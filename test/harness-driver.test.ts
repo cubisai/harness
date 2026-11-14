@@ -303,8 +303,8 @@ describe("provider driver", () => {
   it("in code mode, points the second look-around call of a turn at run_code, once", async () => {
     const calls = [
       [{ type: "tool-call", id: "c1", name: "bash", input: { command: "ls" } }],
-      [{ type: "tool-call", id: "c2", name: "read", input: { path: "a.txt" } }],
-      [{ type: "tool-call", id: "c3", name: "grep", input: { pattern: "hello" } }],
+      [{ type: "tool-call", id: "c2", name: "bash", input: { command: "cat a.txt" } }],
+      [{ type: "tool-call", id: "c3", name: "bash", input: { command: "grep hello a.txt" } }],
       [{ type: "text", text: "ok" }],
     ] as const;
     const on = setup(calls.map((c) => [...c]), { codeMode: () => "on" });
@@ -320,6 +320,15 @@ describe("provider driver", () => {
     const off = setup(calls.map((c) => [...c]));
     await off.driver.runTurn(off.input("look"));
     expect((off.requests[2]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!.text).not.toContain(RUN_CODE_TIP);
+  });
+
+  it("in code mode, repeats the run_code tip on the fourth look-around call, and stops there", async () => {
+    const look = (i: number) => [{ type: "tool-call", id: `c${i}`, name: "bash", input: { command: `grep word${i} .` } }];
+    const calls = [look(1), look(2), look(3), look(4), look(5), look(6), [{ type: "text", text: "ok" }]];
+    const on = setup(calls.map((c) => [...c]) as never, { codeMode: () => "on" });
+    await on.driver.runTurn(on.input("look"));
+    const text = (n: number) => (on.requests[n]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!.text;
+    expect([1, 2, 3, 4, 5, 6].map((n) => text(n).includes(RUN_CODE_TIP))).toEqual([false, true, false, true, false, false]);
   });
 
   it("counts only listing, reading and searching commands as looking around", () => {
@@ -739,7 +748,7 @@ describe("provider driver", () => {
     expect(on.requests[0]!.tools.map((x) => x.name)).toContain("run_code");
   });
 
-  it("in code mode, offers run_code beside read, glob and grep and keeps store/load across turns", async () => {
+  it("in code mode, offers run_code instead of read, glob and grep and keeps store/load across turns", async () => {
     const first = "store('n', 1); const r = await tools.read({ path: 'a.txt' }); return r.includes('hello');";
     const second = "return load('n') + 1;";
     const t = setup(
@@ -755,10 +764,10 @@ describe("provider driver", () => {
     await t.driver.runTurn(t.input("go"));
     const names = t.requests[0]!.tools.map((x) => x.name);
     expect(names).toContain("run_code");
-    expect(names).toContain("read");
-    expect(names).toContain("glob");
-    expect(names).toContain("grep");
+    // The model sees run_code instead of the three look-around tools; its script still calls them.
+    for (const hidden of ["read", "glob", "grep"]) expect(names).not.toContain(hidden);
     expect(names).toContain("edit");
+    expect(t.requests[0]!.tools.map((x) => x.name)).toContain("bash");
     const result = (t.requests[1]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!;
     expect(result.text).toContain("=> true");
     expect(t.events.find((e) => e.kind === "tool-use" && e.parentId === "c1")).toMatchObject({ name: "Read" });

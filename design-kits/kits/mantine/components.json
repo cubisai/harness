@@ -1,0 +1,2297 @@
+{
+  "kitId": "mantine",
+  "name": "Mantine",
+  "version": "1.0.0",
+  "contractVersion": "1.0",
+  "package": "@mantine/core",
+  "compat": {
+    "themes": [
+      "violet",
+      "teal",
+      "grape",
+      "orange",
+      "red",
+      "cyan",
+      "pink"
+    ],
+    "migratesFrom": []
+  },
+  "components": [
+    {
+      "name": "Stack",
+      "ui": "stack",
+      "category": "Layout",
+      "description": "Lays children out in one column with a gap between them, Mantine's Stack.",
+      "props": [
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "stretch",
+            "flex-start",
+            "center",
+            "flex-end"
+          ],
+          "default": "stretch"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"md\">\n<div data-ui=\"text\" data-size=\"lg\" data-weight=\"bold\">Newsletter health</div>\n<div data-ui=\"text\" data-dimmed=\"true\">Opens and clicks for the last 30 sends.</div>\n<div data-ui=\"group\" data-gap=\"xs\"><button data-ui=\"button\" data-size=\"sm\">Export</button><button data-ui=\"button\" data-variant=\"default\" data-size=\"sm\">Share</button></div>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Stack"
+      }
+    },
+    {
+      "name": "Group",
+      "ui": "group",
+      "category": "Layout",
+      "description": "A row of children with a gap, wrapping when there is no room, Mantine's Group.",
+      "props": [
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "justify",
+          "label": "Justify",
+          "type": "choice",
+          "options": [
+            "flex-start",
+            "center",
+            "flex-end",
+            "space-between"
+          ],
+          "default": "flex-start"
+        },
+        {
+          "name": "grow",
+          "label": "Grow",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"md\">\n<span data-ui=\"badge\" data-variant=\"light\">Sent 12,400</span>\n<span data-ui=\"badge\" data-variant=\"light\" data-color=\"teal\">Opened 46%</span>\n<span data-ui=\"badge\" data-variant=\"light\" data-color=\"red\">Bounced 1.2%</span>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Group"
+      }
+    },
+    {
+      "name": "Simple Grid",
+      "ui": "simple-grid",
+      "category": "Layout",
+      "description": "Equal columns with a gap, one column on small screens. Mantine's SimpleGrid.",
+      "props": [
+        {
+          "name": "cols",
+          "label": "Cols",
+          "type": "choice",
+          "options": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ],
+          "default": "1"
+        },
+        {
+          "name": "spacing",
+          "label": "Spacing",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"simple-grid\" data-cols=\"3\" data-spacing=\"md\">\n<div data-ui=\"paper\" data-with-border=\"true\" data-part=\"tile\"><div data-ui=\"text\" data-size=\"xl\" data-weight=\"bold\">12,408</div><div data-ui=\"text\" data-size=\"sm\" data-dimmed=\"true\">Recipients</div></div>\n<div data-ui=\"paper\" data-with-border=\"true\" data-part=\"tile\"><div data-ui=\"text\" data-size=\"xl\" data-weight=\"bold\">46.2%</div><div data-ui=\"text\" data-size=\"sm\" data-dimmed=\"true\">Open rate</div></div>\n<div data-ui=\"paper\" data-with-border=\"true\" data-part=\"tile\"><div data-ui=\"text\" data-size=\"xl\" data-weight=\"bold\">3.8%</div><div data-ui=\"text\" data-size=\"sm\" data-dimmed=\"true\">Click rate</div></div>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "SimpleGrid"
+      }
+    },
+    {
+      "name": "Container",
+      "ui": "container",
+      "category": "Layout",
+      "description": "Centres content up to a width set by its size, with 16px side padding.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"container\" data-size=\"sm\"><div data-ui=\"paper\" data-with-border=\"true\" data-part=\"tile\">Content, up to 720px wide</div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Container"
+      }
+    },
+    {
+      "name": "Paper",
+      "ui": "paper",
+      "category": "Layout",
+      "description": "A surface with a radius, optional border and shadow. The base of cards and panels.",
+      "props": [
+        {
+          "name": "shadow",
+          "label": "Shadow",
+          "type": "choice",
+          "options": [
+            "none",
+            "xs",
+            "md",
+            "lg"
+          ],
+          "default": "none"
+        },
+        {
+          "name": "with-border",
+          "label": "With Border",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "padding",
+          "label": "Padding",
+          "type": "choice",
+          "options": [
+            "md",
+            "none",
+            "xs",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"paper\" data-shadow=\"md\" data-with-border=\"true\"><div data-ui=\"text\" data-size=\"sm\">A paper surface with a border and a medium shadow.</div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Paper"
+      }
+    },
+    {
+      "name": "Divider",
+      "ui": "divider",
+      "category": "Layout",
+      "description": "A thin rule between sections, solid, dashed or dotted.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "solid",
+            "dashed",
+            "dotted"
+          ],
+          "default": "solid"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\"><div data-ui=\"text\" data-size=\"sm\">Above the rule</div><div data-ui=\"divider\"></div><div data-ui=\"text\" data-size=\"sm\">Below the rule</div><div data-ui=\"divider\" data-variant=\"dashed\"></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Divider"
+      }
+    },
+    {
+      "name": "Text Input",
+      "ui": "text-input",
+      "category": "Inputs",
+      "description": "A single line field with a label, optional description and error, Mantine's TextInput.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "filled",
+            "unstyled"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "error",
+          "label": "Error",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"text-input\" data-size=\"sm\">\n<label data-part=\"label\" for=\"ti-email\">Email</label>\n<p data-part=\"description\">We send the weekly digest here.</p>\n<input data-part=\"input\" id=\"ti-email\" type=\"email\" placeholder=\"you@example.com\" value=\"ada@bellwether.dev\">\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "TextInput"
+      }
+    },
+    {
+      "name": "Password Input",
+      "ui": "password-input",
+      "category": "Inputs",
+      "description": "A password field with a button that shows or hides the characters.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "filled",
+            "unstyled"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"password-input\" data-size=\"sm\">\n<label data-part=\"label\" for=\"pi-pw\">Password</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"pi-pw\" type=\"password\" value=\"hunter22\"><button data-part=\"toggle\" type=\"button\" aria-label=\"Show password\"><i data-ui=\"icon\" data-name=\"eye\"></i></button></div>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "PasswordInput"
+      }
+    },
+    {
+      "name": "Textarea",
+      "ui": "textarea",
+      "category": "Inputs",
+      "description": "A multi-line field that grows vertically, Mantine's Textarea.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "filled",
+            "unstyled"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"textarea\" data-size=\"sm\">\n<label data-part=\"label\" for=\"ta-note\">Internal note</label>\n<textarea data-part=\"input\" id=\"ta-note\" rows=\"3\" placeholder=\"Why was this issue paused?\"></textarea>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Textarea"
+      }
+    },
+    {
+      "name": "Number Input",
+      "ui": "number-input",
+      "category": "Inputs",
+      "description": "A numeric field with stepper buttons on the right, Mantine's NumberInput.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "filled",
+            "unstyled"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"number-input\" data-size=\"sm\">\n<label data-part=\"label\" for=\"ni-send\">Send hour</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"ni-send\" type=\"text\" inputmode=\"numeric\" value=\"9\"><div data-part=\"controls\"><button data-part=\"stepper\" data-dir=\"up\" type=\"button\" aria-label=\"Increase\"><i data-ui=\"icon\" data-name=\"chevron-up\"></i></button><button data-part=\"stepper\" data-dir=\"down\" type=\"button\" aria-label=\"Decrease\"><i data-ui=\"icon\" data-name=\"chevron-down\"></i></button></div></div>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "NumberInput"
+      }
+    },
+    {
+      "name": "Checkbox",
+      "ui": "checkbox",
+      "category": "Inputs",
+      "description": "A square box for choosing one or more options, with a label beside it.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "filled",
+            "light",
+            "outline"
+          ],
+          "default": "filled"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\">\n<label data-ui=\"checkbox\"><input data-part=\"input\" type=\"checkbox\" checked><span data-part=\"box\"><i data-ui=\"icon\" data-name=\"check\"></i></span><span data-part=\"label\">Send me the weekly digest</span></label>\n<label data-ui=\"checkbox\"><input data-part=\"input\" type=\"checkbox\"><span data-part=\"box\"><i data-ui=\"icon\" data-name=\"check\"></i></span><span data-part=\"label\">Include unsubscribed contacts</span></label>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Checkbox"
+      }
+    },
+    {
+      "name": "Radio",
+      "ui": "radio",
+      "category": "Inputs",
+      "description": "A round choice in a group, one per option, Mantine's Radio.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "filled",
+            "light",
+            "outline"
+          ],
+          "default": "filled"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\" role=\"radiogroup\" aria-label=\"Send time\">\n<label data-ui=\"radio\"><input data-part=\"input\" type=\"radio\" name=\"send-time\" checked><span data-part=\"box\"><span data-part=\"dot\"></span></span><span data-part=\"label\">Tuesday 09:00</span></label>\n<label data-ui=\"radio\"><input data-part=\"input\" type=\"radio\" name=\"send-time\"><span data-part=\"box\"><span data-part=\"dot\"></span></span><span data-part=\"label\">Thursday 14:00</span></label>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Radio"
+      }
+    },
+    {
+      "name": "Switch",
+      "ui": "switch",
+      "category": "Inputs",
+      "description": "An on-off track with a thumb, with a label beside it.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\">\n<label data-ui=\"switch\"><input data-part=\"input\" type=\"checkbox\" role=\"switch\" checked><span data-part=\"track\"><span data-part=\"thumb\"></span></span><span data-part=\"label\">Double opt-in</span></label>\n<label data-ui=\"switch\"><input data-part=\"input\" type=\"checkbox\" role=\"switch\"><span data-part=\"track\"><span data-part=\"thumb\"></span></span><span data-part=\"label\">Track link clicks</span></label>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Switch"
+      }
+    },
+    {
+      "name": "Slider",
+      "ui": "slider",
+      "category": "Inputs",
+      "description": "A track with a draggable thumb for picking a value in a range.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\"><label for=\"sl-open\" data-ui=\"text\" data-size=\"sm\">Target open rate: 45%</label><input data-ui=\"slider\" id=\"sl-open\" type=\"range\" min=\"0\" max=\"100\" value=\"45\" aria-label=\"Target open rate\"></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Slider"
+      }
+    },
+    {
+      "name": "Segmented Control",
+      "ui": "segmented-control",
+      "category": "Inputs",
+      "description": "A row of options where one is selected, drawn as a sliding track.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"segmented-control\" data-size=\"sm\" role=\"radiogroup\" aria-label=\"Range\">\n<label data-part=\"item\"><input data-part=\"input\" type=\"radio\" name=\"range\" checked><span data-part=\"label\">7 days</span></label>\n<label data-part=\"item\"><input data-part=\"input\" type=\"radio\" name=\"range\"><span data-part=\"label\">30 days</span></label>\n<label data-part=\"item\"><input data-part=\"input\" type=\"radio\" name=\"range\"><span data-part=\"label\">1 year</span></label>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "SegmentedControl"
+      }
+    },
+    {
+      "name": "Native Select",
+      "ui": "native-select",
+      "category": "Inputs",
+      "description": "The browser's own select, styled with Mantine's field look, Mantine's NativeSelect.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "filled",
+            "unstyled"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"native-select\" data-size=\"sm\">\n<label data-part=\"label\" for=\"ns-list\">List</label>\n<div data-part=\"control\"><select data-part=\"input\" id=\"ns-list\"><option>Subscribers</option><option>Trial users</option><option>Churned</option></select><i data-ui=\"icon\" data-name=\"selector\" data-part=\"chevron\"></i></div>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "NativeSelect"
+      }
+    },
+    {
+      "name": "Chip",
+      "ui": "chip",
+      "category": "Inputs",
+      "description": "A pill you tick on or off, for filters and tags, Mantine's Chip.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "filled",
+            "light",
+            "outline"
+          ],
+          "default": "filled"
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"xs\">\n<label data-ui=\"chip\"><input data-part=\"input\" type=\"checkbox\" checked><span data-part=\"label\">Product news</span></label>\n<label data-ui=\"chip\"><input data-part=\"input\" type=\"checkbox\"><span data-part=\"label\">Release notes</span></label>\n<label data-ui=\"chip\"><input data-part=\"input\" type=\"checkbox\" checked><span data-part=\"label\">Events</span></label>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Chip"
+      }
+    },
+    {
+      "name": "Select",
+      "ui": "select",
+      "category": "Combobox",
+      "description": "A field that opens a list of options to choose one, Mantine's Select.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"select\" data-size=\"sm\">\n<label data-part=\"label\" for=\"sel-input\">Segment</label>\n<div data-part=\"control\"><input data-part=\"input\" id=\"sel-input\" role=\"combobox\" aria-expanded=\"false\" aria-controls=\"sel-list\" aria-autocomplete=\"list\" autocomplete=\"off\" value=\"Trial users\" style=\"anchor-name:--sel-list\"><i data-ui=\"icon\" data-name=\"selector\" data-part=\"chevron\"></i></div>\n<div popover=\"manual\" id=\"sel-list\" data-part=\"dropdown\" role=\"listbox\" style=\"position-anchor:--sel-list\">\n<button data-part=\"option\" type=\"button\" role=\"option\" aria-selected=\"false\">Subscribers</button>\n<button data-part=\"option\" type=\"button\" role=\"option\" aria-selected=\"true\">Trial users</button>\n<button data-part=\"option\" type=\"button\" role=\"option\" aria-selected=\"false\">Churned</button>\n</div>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Select"
+      }
+    },
+    {
+      "name": "Button",
+      "ui": "button",
+      "category": "Buttons",
+      "description": "A button in Mantine's variants and sizes. Filled by default, with light, outline and subtle styles.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "filled",
+            "light",
+            "default",
+            "outline",
+            "subtle",
+            "transparent",
+            "white"
+          ],
+          "default": "filled"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        },
+        {
+          "name": "block",
+          "label": "Block",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"xs\">\n<button data-ui=\"button\" data-size=\"sm\">Send campaign</button>\n<button data-ui=\"button\" data-variant=\"light\" data-size=\"sm\">Preview</button>\n<button data-ui=\"button\" data-variant=\"default\" data-size=\"sm\">Duplicate</button>\n<button data-ui=\"button\" data-variant=\"outline\" data-size=\"sm\">Export CSV</button>\n<button data-ui=\"button\" data-variant=\"subtle\" data-size=\"sm\">Skip</button>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Button"
+      }
+    },
+    {
+      "name": "Action Icon",
+      "ui": "action-icon",
+      "category": "Buttons",
+      "description": "A square icon-only button, Mantine's ActionIcon.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "filled",
+            "light",
+            "default",
+            "outline",
+            "subtle",
+            "transparent"
+          ],
+          "default": "filled"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"xs\">\n<button data-ui=\"action-icon\" data-variant=\"filled\" aria-label=\"Settings\"><i data-ui=\"icon\" data-name=\"settings\"></i></button>\n<button data-ui=\"action-icon\" data-variant=\"light\" aria-label=\"Download\"><i data-ui=\"icon\" data-name=\"download\"></i></button>\n<button data-ui=\"action-icon\" data-variant=\"default\" aria-label=\"More\"><i data-ui=\"icon\" data-name=\"dots\"></i></button>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "ActionIcon"
+      }
+    },
+    {
+      "name": "Close Button",
+      "ui": "close-button",
+      "category": "Buttons",
+      "description": "A small cross to dismiss a panel, Mantine's CloseButton.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<button data-ui=\"close-button\" type=\"button\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "CloseButton"
+      }
+    },
+    {
+      "name": "Anchor",
+      "ui": "anchor",
+      "category": "Navigation",
+      "description": "A text link in the accent colour, underlined on hover by default.",
+      "props": [
+        {
+          "name": "underline",
+          "label": "Underline",
+          "type": "choice",
+          "options": [
+            "hover",
+            "always",
+            "never"
+          ],
+          "default": "hover"
+        }
+      ],
+      "snippet": "<p data-ui=\"text\" data-size=\"sm\">Read the <a data-ui=\"anchor\" href=\"#\">delivery guide</a> before you schedule.</p>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Anchor"
+      }
+    },
+    {
+      "name": "Breadcrumbs",
+      "ui": "breadcrumbs",
+      "category": "Navigation",
+      "description": "A trail of links showing where the page sits, separated by slashes.",
+      "props": [],
+      "snippet": "<nav data-ui=\"breadcrumbs\" aria-label=\"Breadcrumb\"><a href=\"#\">Campaigns</a><span data-part=\"separator\">/</span><a href=\"#\">Spring launch</a><span data-part=\"separator\">/</span><span data-part=\"current\" aria-current=\"page\">Analytics</span></nav>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Breadcrumbs"
+      }
+    },
+    {
+      "name": "Burger",
+      "ui": "burger",
+      "category": "Navigation",
+      "description": "Three lines that open a menu, which turn into a cross when open, Mantine's Burger.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "opened",
+          "label": "Opened",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"md\"><button data-ui=\"burger\" type=\"button\" aria-label=\"Toggle navigation\"><span data-part=\"line\"></span><span data-part=\"line\"></span><span data-part=\"line\"></span></button><button data-ui=\"burger\" data-opened=\"true\" type=\"button\" aria-label=\"Close navigation\"><span data-part=\"line\"></span><span data-part=\"line\"></span><span data-part=\"line\"></span></button></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Burger"
+      }
+    },
+    {
+      "name": "Nav Link",
+      "ui": "nav-link",
+      "category": "Navigation",
+      "description": "A side-navigation item with an optional icon, active when it is the current page, Mantine's NavLink.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "light",
+            "filled",
+            "subtle"
+          ],
+          "default": "light"
+        },
+        {
+          "name": "active",
+          "label": "Active",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<nav data-ui=\"stack\" data-gap=\"xs\" style=\"inline-size:240px\">\n<a data-ui=\"nav-link\" data-active=\"true\" href=\"#\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"chart-bar\"></i></span><span data-part=\"label\">Analytics</span></a>\n<a data-ui=\"nav-link\" href=\"#\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"mail\"></i></span><span data-part=\"label\">Campaigns</span></a>\n<a data-ui=\"nav-link\" href=\"#\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"user\"></i></span><span data-part=\"label\">Audience</span><i data-ui=\"icon\" data-name=\"chevron-right\" data-part=\"chevron\"></i></a>\n</nav>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "NavLink"
+      }
+    },
+    {
+      "name": "Pagination",
+      "ui": "pagination",
+      "category": "Navigation",
+      "description": "Numbered page controls with previous and next, Mantine's Pagination.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<nav data-ui=\"pagination\" aria-label=\"Pages\"><button data-part=\"control\" type=\"button\" aria-label=\"Previous\"><i data-ui=\"icon\" data-name=\"chevron-left\"></i></button><button data-part=\"control\" type=\"button\">1</button><button data-part=\"control\" type=\"button\" data-active=\"true\" aria-current=\"page\">2</button><button data-part=\"control\" type=\"button\">3</button><span data-part=\"dots\">…</span><button data-part=\"control\" type=\"button\">9</button><button data-part=\"control\" type=\"button\" aria-label=\"Next\"><i data-ui=\"icon\" data-name=\"chevron-right\"></i></button></nav>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Pagination"
+      }
+    },
+    {
+      "name": "Tabs",
+      "ui": "tabs",
+      "category": "Navigation",
+      "description": "Switch between panels of content, with a line, outline or pill style. Mantine's Tabs.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "outline",
+            "pills"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"tabs\">\n<div role=\"tablist\">\n<button role=\"tab\" id=\"tab-overview\" aria-controls=\"panel-overview\" aria-selected=\"true\">Overview</button>\n<button role=\"tab\" id=\"tab-links\" aria-controls=\"panel-links\" aria-selected=\"false\" tabindex=\"-1\">Links</button>\n<button role=\"tab\" id=\"tab-people\" aria-controls=\"panel-people\" aria-selected=\"false\" tabindex=\"-1\">People</button>\n</div>\n<div role=\"tabpanel\" id=\"panel-overview\" aria-labelledby=\"tab-overview\"><p data-ui=\"text\" data-size=\"sm\">Opened by 46% of 12,408 recipients.</p></div>\n<div role=\"tabpanel\" id=\"panel-links\" aria-labelledby=\"tab-links\" hidden><p data-ui=\"text\" data-size=\"sm\">Top link: the delivery guide, 412 clicks.</p></div>\n<div role=\"tabpanel\" id=\"panel-people\" aria-labelledby=\"tab-people\" hidden><p data-ui=\"text\" data-size=\"sm\">Most engaged: 318 readers across three segments.</p></div>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Tabs"
+      }
+    },
+    {
+      "name": "Alert",
+      "ui": "alert",
+      "category": "Feedback",
+      "description": "A message box with an icon and title, in a colour for information, success, warning or error. Mantine's Alert.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "light",
+            "filled",
+            "outline"
+          ],
+          "default": "light"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "blue",
+            "teal",
+            "yellow",
+            "red"
+          ],
+          "default": "blue"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\">\n<div data-ui=\"alert\" data-color=\"blue\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"info\"></i></span><div data-part=\"body\"><div data-part=\"title\">Scheduled for Tuesday</div><div data-part=\"message\">The spring launch goes out at 09:00 to 12,408 recipients.</div></div></div>\n<div data-ui=\"alert\" data-color=\"red\" data-variant=\"filled\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"alert-triangle\"></i></span><div data-part=\"body\"><div data-part=\"title\">Bounce rate is high</div><div data-part=\"message\">1.2% of addresses bounced. Clean the list before sending.</div></div></div>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Alert"
+      }
+    },
+    {
+      "name": "Loader",
+      "ui": "loader",
+      "category": "Feedback",
+      "description": "A spinner or three dots for work in progress, Mantine's Loader.",
+      "props": [
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "oval",
+            "dots"
+          ],
+          "default": "oval"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"md\"><span data-ui=\"loader\" role=\"status\" aria-label=\"Loading\"></span><span data-ui=\"loader\" data-type=\"dots\" role=\"status\" aria-label=\"Loading\"><span></span><span></span><span></span></span></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Loader"
+      }
+    },
+    {
+      "name": "Notification",
+      "ui": "notification",
+      "category": "Feedback",
+      "description": "A card with a coloured edge and a title, for a result or event, with a close button. Mantine's Notification.",
+      "props": [
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "blue",
+            "teal",
+            "yellow",
+            "red"
+          ],
+          "default": "blue"
+        }
+      ],
+      "snippet": "<div data-ui=\"notification\" data-color=\"teal\"><div data-part=\"head\"><span data-part=\"title\">Import finished</span><button data-ui=\"close-button\" type=\"button\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button></div><p data-part=\"message\">4,912 contacts added, 38 skipped as duplicates.</p></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Notification"
+      }
+    },
+    {
+      "name": "Progress",
+      "ui": "progress",
+      "category": "Feedback",
+      "description": "A bar showing how far along a task is, Mantine's Progress.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "blue",
+            "teal",
+            "yellow",
+            "red"
+          ],
+          "default": "blue"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\"><div data-ui=\"progress\" data-size=\"md\" role=\"progressbar\" aria-valuenow=\"64\" aria-valuemin=\"0\" aria-valuemax=\"100\"><div data-part=\"section\" style=\"width:64%\"></div></div><div data-ui=\"progress\" data-size=\"md\" data-color=\"teal\" role=\"progressbar\" aria-valuenow=\"30\" aria-valuemin=\"0\" aria-valuemax=\"100\"><div data-part=\"section\" style=\"width:30%\"></div></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Progress"
+      }
+    },
+    {
+      "name": "Skeleton",
+      "ui": "skeleton",
+      "category": "Feedback",
+      "description": "Grey placeholder blocks that pulse while content loads, Mantine's Skeleton.",
+      "props": [],
+      "snippet": "<div data-ui=\"skeleton\" aria-busy=\"true\"><div data-part=\"line\" style=\"width:40%\"></div><div data-part=\"line\"></div><div data-part=\"line\" style=\"width:70%\"></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Skeleton"
+      }
+    },
+    {
+      "name": "Empty State",
+      "ui": "empty-state",
+      "category": "Feedback",
+      "description": "A centred icon, title and line of text for a screen with nothing in it yet.",
+      "props": [],
+      "snippet": "<div data-ui=\"empty-state\"><span data-part=\"indicator\"><i data-ui=\"icon\" data-name=\"mail\"></i></span><p data-part=\"title\">No campaigns yet</p><p data-part=\"description\">Create one and it will show up here with its open and click rates.</p></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "EmptyState"
+      }
+    },
+    {
+      "name": "Modal",
+      "ui": "modal",
+      "category": "Overlays",
+      "description": "A dialog over the page with a title, body and footer, Mantine's Modal.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"default\" data-size=\"sm\" data-dialog-open=\"modal-demo\" type=\"button\">Open modal</button>\n<dialog data-ui=\"modal\" id=\"modal-demo\" data-size=\"md\" aria-labelledby=\"modal-demo-title\">\n<div data-part=\"header\"><h2 data-ui=\"title\" data-order=\"4\" id=\"modal-demo-title\">Rename segment</h2><button data-dialog-close data-ui=\"close-button\" type=\"button\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button></div>\n<div data-part=\"body\"><p data-ui=\"text\" data-size=\"sm\">Trial users will show as Trial members in every report from now on.</p></div>\n<div data-part=\"footer\"><button data-ui=\"button\" data-variant=\"default\" data-size=\"sm\" data-dialog-close type=\"button\">Cancel</button><button data-ui=\"button\" data-size=\"sm\" data-dialog-close type=\"button\">Save</button></div>\n</dialog>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Modal"
+      }
+    },
+    {
+      "name": "Drawer",
+      "ui": "drawer",
+      "category": "Overlays",
+      "description": "A panel that slides in from the edge of the screen, Mantine's Drawer.",
+      "props": [
+        {
+          "name": "position",
+          "label": "Position",
+          "type": "choice",
+          "options": [
+            "right",
+            "left"
+          ],
+          "default": "right"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-variant=\"default\" data-size=\"sm\" data-dialog-open=\"drawer-demo\" type=\"button\">Open drawer</button>\n<dialog data-ui=\"drawer\" id=\"drawer-demo\" data-position=\"right\" aria-labelledby=\"drawer-demo-title\">\n<div data-part=\"header\"><h2 data-ui=\"title\" data-order=\"4\" id=\"drawer-demo-title\">Subscriber</h2><button data-dialog-close data-ui=\"close-button\" type=\"button\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button></div>\n<div data-part=\"body\"><p data-ui=\"text\" data-size=\"sm\">Ada Okafor, joined 2 March, opened 18 of 20 sends.</p></div>\n</dialog>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Drawer"
+      }
+    },
+    {
+      "name": "Popover",
+      "ui": "popover",
+      "category": "Overlays",
+      "description": "A small panel that opens beside a button, with a title and text, Mantine's Popover.",
+      "props": [],
+      "snippet": "<button data-ui=\"button\" data-variant=\"default\" data-size=\"sm\" popovertarget=\"pop-demo\" style=\"anchor-name:--pop-demo\" type=\"button\">Show details</button>\n<div data-ui=\"popover\" popover id=\"pop-demo\" style=\"position-anchor:--pop-demo\"><div data-part=\"title\">Delivery window</div><p data-ui=\"text\" data-size=\"sm\" data-dimmed=\"true\">Sends go out between 09:00 and 11:00 in each recipient's time zone.</p></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Popover"
+      }
+    },
+    {
+      "name": "Tooltip",
+      "ui": "tooltip",
+      "category": "Overlays",
+      "description": "A short label that appears when a control is hovered or focused, Mantine's Tooltip.",
+      "props": [
+        {
+          "name": "position",
+          "label": "Position",
+          "type": "choice",
+          "options": [
+            "top",
+            "bottom"
+          ],
+          "default": "top"
+        }
+      ],
+      "snippet": "<span data-ui=\"tooltip\"><button data-ui=\"action-icon\" data-variant=\"default\" type=\"button\" aria-describedby=\"tt-copy\" aria-label=\"Copy link\"><i data-ui=\"icon\" data-name=\"download\"></i></button><span data-part=\"label\" id=\"tt-copy\" role=\"tooltip\">Copy link</span></span>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Tooltip"
+      }
+    },
+    {
+      "name": "Menu",
+      "ui": "menu",
+      "category": "Overlays",
+      "description": "A list of actions that opens from a button, Mantine's Menu.",
+      "props": [],
+      "snippet": "<button data-ui=\"button\" data-variant=\"default\" data-size=\"sm\" popovertarget=\"menu-demo\" style=\"anchor-name:--menu-demo\" type=\"button\">Options</button>\n<div data-ui=\"menu\" popover id=\"menu-demo\" style=\"position-anchor:--menu-demo\" role=\"menu\">\n<button data-part=\"item\" type=\"button\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"user\" data-part=\"icon\"></i>Edit audience</button>\n<button data-part=\"item\" type=\"button\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"file\" data-part=\"icon\"></i>Duplicate</button>\n<button data-part=\"item\" type=\"button\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"download\" data-part=\"icon\"></i>Export CSV</button>\n<div data-part=\"divider\"></div>\n<button data-part=\"item\" type=\"button\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"x\" data-part=\"icon\"></i>Archive</button>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Menu"
+      }
+    },
+    {
+      "name": "Accordion",
+      "ui": "accordion",
+      "category": "Data display",
+      "description": "Sections that open and close, one line each, Mantine's Accordion.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "default",
+            "contained",
+            "separated"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"accordion\">\n<details data-part=\"item\" name=\"faq\" open><summary data-part=\"control\">How often can I send?<i data-ui=\"icon\" data-name=\"chevron-down\" data-part=\"chevron\"></i></summary><div data-part=\"panel\"><p data-ui=\"text\" data-size=\"sm\">Up to one issue a day. Weekly is the most common cadence.</p></div></details>\n<details data-part=\"item\" name=\"faq\"><summary data-part=\"control\">Can I schedule a send?<i data-ui=\"icon\" data-name=\"chevron-down\" data-part=\"chevron\"></i></summary><div data-part=\"panel\"><p data-ui=\"text\" data-size=\"sm\">Yes, pick a day and hour in the campaign settings.</p></div></details>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Accordion"
+      }
+    },
+    {
+      "name": "Avatar",
+      "ui": "avatar",
+      "category": "Data display",
+      "description": "A round or square picture or set of initials, Mantine's Avatar.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "radius",
+          "label": "Radius",
+          "type": "choice",
+          "options": [
+            "full",
+            "md"
+          ],
+          "default": "full"
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"md\"><span data-ui=\"avatar\" data-size=\"md\"><span data-part=\"initials\">AO</span></span><span data-ui=\"avatar\" data-size=\"md\" data-radius=\"md\"><span data-part=\"initials\">RM</span></span></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Avatar"
+      }
+    },
+    {
+      "name": "Badge",
+      "ui": "badge",
+      "category": "Data display",
+      "description": "A small uppercase label for a status or count, Mantine's Badge.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "filled",
+            "light",
+            "outline",
+            "dot"
+          ],
+          "default": "filled"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "blue",
+            "teal",
+            "yellow",
+            "red"
+          ],
+          "default": "blue"
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"xs\"><span data-ui=\"badge\">New</span><span data-ui=\"badge\" data-variant=\"light\" data-color=\"teal\">Live</span><span data-ui=\"badge\" data-variant=\"outline\" data-color=\"yellow\">Draft</span><span data-ui=\"badge\" data-variant=\"dot\" data-color=\"red\">Bounced</span></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Badge"
+      }
+    },
+    {
+      "name": "Card",
+      "ui": "card",
+      "category": "Data display",
+      "description": "A surface for one topic with a title, text and an optional footer section, Mantine's Card.",
+      "props": [
+        {
+          "name": "shadow",
+          "label": "Shadow",
+          "type": "choice",
+          "options": [
+            "none",
+            "xs",
+            "md",
+            "lg"
+          ],
+          "default": "none"
+        },
+        {
+          "name": "with-border",
+          "label": "With Border",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"card\" data-with-border=\"true\" data-shadow=\"md\" style=\"inline-size:320px\">\n<div data-part=\"title\">Spring launch</div>\n<p data-ui=\"text\" data-size=\"sm\" data-dimmed=\"true\">Sent to 12,408 subscribers on 4 November. Opens are still arriving.</p>\n<div data-part=\"section\"><div data-ui=\"group\" data-justify=\"space-between\"><span data-ui=\"badge\" data-variant=\"light\" data-color=\"teal\">Sent</span><button data-ui=\"button\" data-variant=\"subtle\" data-size=\"sm\" type=\"button\">Details</button></div></div>\n</div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Card"
+      }
+    },
+    {
+      "name": "Table",
+      "ui": "table",
+      "category": "Data display",
+      "description": "Rows and columns of data with a header, Mantine's Table.",
+      "props": [
+        {
+          "name": "striped",
+          "label": "Striped",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "highlight-on-hover",
+          "label": "Highlight On Hover",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "with-border",
+          "label": "With Border",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<table data-ui=\"table\" data-striped=\"true\" data-highlight-on-hover=\"true\" data-with-border=\"true\">\n<thead><tr><th data-part=\"th\">Campaign</th><th data-part=\"th\">Sent</th><th data-part=\"th\">Opened</th><th data-part=\"th\">Status</th></tr></thead>\n<tbody>\n<tr data-part=\"tr\"><td data-part=\"td\">Spring launch</td><td data-part=\"td\">12,408</td><td data-part=\"td\">46.2%</td><td data-part=\"td\"><span data-ui=\"badge\" data-variant=\"light\" data-color=\"teal\">Sent</span></td></tr>\n<tr data-part=\"tr\"><td data-part=\"td\">Pricing update</td><td data-part=\"td\">9,870</td><td data-part=\"td\">38.4%</td><td data-part=\"td\"><span data-ui=\"badge\" data-variant=\"light\" data-color=\"yellow\">Draft</span></td></tr>\n<tr data-part=\"tr\"><td data-part=\"td\">Welcome series</td><td data-part=\"td\">2,114</td><td data-part=\"td\">61.0%</td><td data-part=\"td\"><span data-ui=\"badge\" data-variant=\"light\" data-color=\"teal\">Sent</span></td></tr>\n</tbody>\n</table>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Table"
+      }
+    },
+    {
+      "name": "Timeline",
+      "ui": "timeline",
+      "category": "Data display",
+      "description": "A vertical list of events joined by a line, each with a bullet, Mantine's Timeline.",
+      "props": [],
+      "snippet": "<ol data-ui=\"timeline\">\n<li data-part=\"item\"><span data-part=\"bullet\"><i data-ui=\"icon\" data-name=\"circle-check\"></i></span><div data-part=\"title\">Campaign sent</div><div data-part=\"body\">12,408 recipients, 09:00 Tuesday.</div></li>\n<li data-part=\"item\"><span data-part=\"bullet\"><i data-ui=\"icon\" data-name=\"mail\"></i></span><div data-part=\"title\">First opens</div><div data-part=\"body\">Half of opens arrived within an hour.</div></li>\n<li data-part=\"item\"><span data-part=\"bullet\"><i data-ui=\"icon\" data-name=\"star\"></i></span><div data-part=\"title\">Reply received</div><div data-part=\"body\">From a partner asking about the API.</div></li>\n</ol>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Timeline"
+      }
+    },
+    {
+      "name": "Pill",
+      "ui": "pill",
+      "category": "Data display",
+      "description": "A small rounded tag with an optional remove button, Mantine's Pill.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"xs\"><span data-ui=\"pill\" data-size=\"md\">Newsletter<button data-part=\"remove\" type=\"button\" aria-label=\"Remove Newsletter\"><i data-ui=\"icon\" data-name=\"x\"></i></button></span><span data-ui=\"pill\" data-size=\"md\">Product<button data-part=\"remove\" type=\"button\" aria-label=\"Remove Product\"><i data-ui=\"icon\" data-name=\"x\"></i></button></span></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Pill"
+      }
+    },
+    {
+      "name": "Theme Icon",
+      "ui": "theme-icon",
+      "category": "Data display",
+      "description": "A coloured square holding an icon, used on feature cards, Mantine's ThemeIcon.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "filled",
+            "light",
+            "outline"
+          ],
+          "default": "filled"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"xs\"><span data-ui=\"theme-icon\" data-variant=\"filled\"><i data-ui=\"icon\" data-name=\"bolt\"></i></span><span data-ui=\"theme-icon\" data-variant=\"light\"><i data-ui=\"icon\" data-name=\"chart-bar\"></i></span><span data-ui=\"theme-icon\" data-variant=\"outline\"><i data-ui=\"icon\" data-name=\"table\"></i></span></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "ThemeIcon"
+      }
+    },
+    {
+      "name": "Title",
+      "ui": "title",
+      "category": "Typography",
+      "description": "A heading from h1 to h6, sized as Mantine's Title is by order, with a bold weight.",
+      "props": [
+        {
+          "name": "order",
+          "label": "Order",
+          "type": "choice",
+          "options": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6"
+          ],
+          "default": "1"
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\"><h1 data-ui=\"title\" data-order=\"1\">Campaign analytics</h1><h2 data-ui=\"title\" data-order=\"3\">Last 30 days</h2></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Title"
+      }
+    },
+    {
+      "name": "Text",
+      "ui": "text",
+      "category": "Typography",
+      "description": "A paragraph or line of text, with Mantine's sizes, weights and a dimmed colour.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "weight",
+          "label": "Weight",
+          "type": "choice",
+          "options": [
+            "regular",
+            "medium",
+            "bold"
+          ],
+          "default": "regular"
+        },
+        {
+          "name": "dimmed",
+          "label": "Dimmed",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\"><div data-ui=\"text\" data-size=\"lg\" data-weight=\"bold\">Medium-sized body text</div><div data-ui=\"text\" data-size=\"sm\" data-dimmed=\"true\">A small dimmed line under it.</div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Text"
+      }
+    },
+    {
+      "name": "Blockquote",
+      "ui": "blockquote",
+      "category": "Typography",
+      "description": "A quotation set off by a rule on the left, with its source beneath, Mantine's Blockquote.",
+      "props": [],
+      "snippet": "<blockquote data-ui=\"blockquote\"><p>Open rates tell you who read the subject line. Clicks tell you who read the email.</p><footer data-part=\"cite\">Growth lead, Bellwether</footer></blockquote>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Blockquote"
+      }
+    },
+    {
+      "name": "Code",
+      "ui": "code",
+      "category": "Typography",
+      "description": "Inline code, or a block of code in a grey box, Mantine's Code.",
+      "props": [
+        {
+          "name": "block",
+          "label": "Block",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<p data-ui=\"text\" data-size=\"sm\">Call <code data-ui=\"code\">bellwether send --dry-run</code> first.</p><pre data-ui=\"code\" data-block=\"true\">bellwether campaign create \\\n--list trial-users --send-at \"tue 09:00\"</pre>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Code"
+      }
+    },
+    {
+      "name": "Kbd",
+      "ui": "kbd",
+      "category": "Typography",
+      "description": "A keyboard key drawn as a small raised key, Mantine's Kbd.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<p data-ui=\"text\" data-size=\"sm\">Press <kbd data-ui=\"kbd\">Ctrl</kbd> + <kbd data-ui=\"kbd\">K</kbd> to search campaigns.</p>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Kbd"
+      }
+    },
+    {
+      "name": "Highlight",
+      "ui": "highlight",
+      "category": "Typography",
+      "description": "Text with the matching words marked in a soft colour, Mantine's Highlight.",
+      "props": [],
+      "snippet": "<p data-ui=\"highlight\" data-size=\"md\">Weekly <span data-part=\"mark\">digest</span> for <span data-part=\"mark\">trial</span> users</p>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Highlight"
+      }
+    },
+    {
+      "name": "Icon",
+      "ui": "icon",
+      "category": "Data display",
+      "description": "A line icon in the current colour, sized from the text around it. Set data-name. Mantine ships none and suggests Tabler.",
+      "props": [
+        {
+          "name": "name",
+          "label": "Name",
+          "type": "text"
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"sm\"><i data-ui=\"icon\" data-name=\"chart-bar\"></i><i data-ui=\"icon\" data-name=\"plus\"></i><i data-ui=\"icon\" data-name=\"check\"></i><i data-ui=\"icon\" data-name=\"x\"></i><i data-ui=\"icon\" data-name=\"star-filled\"></i></div>",
+      "import": {
+        "package": "@tabler/icons-react",
+        "name": "IconChartBar"
+      }
+    },
+    {
+      "name": "Avatar Group",
+      "ui": "avatar-group",
+      "category": "Data display",
+      "description": "Avatars overlapping in a row, each with a body-coloured ring, Mantine's Avatar.Group.",
+      "props": [],
+      "snippet": "<div data-ui=\"avatar-group\"><span data-ui=\"avatar\"><span data-part=\"initials\">AO</span></span><span data-ui=\"avatar\"><span data-part=\"initials\">KL</span></span><span data-ui=\"avatar\"><span data-part=\"initials\">RM</span></span><span data-ui=\"avatar\" data-part=\"more\"><span data-part=\"initials\">+4</span></span></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Avatar"
+      }
+    },
+    {
+      "name": "Grid",
+      "ui": "grid",
+      "category": "Layout",
+      "description": "A 12-column grid with a gutter, where each column takes a span, Mantine's Grid.",
+      "props": [
+        {
+          "name": "gutter",
+          "label": "Gutter",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"grid\" data-gutter=\"md\"><div data-part=\"col\" data-span=\"8\"><div data-ui=\"paper\" data-with-border=\"true\" data-padding=\"md\">Span 8</div></div><div data-part=\"col\" data-span=\"4\"><div data-ui=\"paper\" data-with-border=\"true\" data-padding=\"md\">Span 4</div></div><div data-part=\"col\" data-span=\"6\"><div data-ui=\"paper\" data-with-border=\"true\" data-padding=\"md\">Span 6</div></div><div data-part=\"col\" data-span=\"6\"><div data-ui=\"paper\" data-with-border=\"true\" data-padding=\"md\">Span 6</div></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Grid"
+      }
+    },
+    {
+      "name": "Aspect Ratio",
+      "ui": "aspect-ratio",
+      "category": "Layout",
+      "description": "A box that keeps a width-to-height ratio, here 16:9, Mantine's AspectRatio.",
+      "props": [
+        {
+          "name": "ratio",
+          "label": "Ratio",
+          "type": "choice",
+          "options": [
+            "16-9",
+            "1-1",
+            "4-3"
+          ],
+          "default": "16-9"
+        }
+      ],
+      "snippet": "<div data-ui=\"aspect-ratio\" data-ratio=\"16-9\" style=\"inline-size:320px\"><div data-part=\"inner\">16 : 9</div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "AspectRatio"
+      }
+    },
+    {
+      "name": "Scroll Area",
+      "ui": "scroll-area",
+      "category": "Miscellaneous",
+      "description": "A box with a thin scrollbar that appears when content overflows, Mantine's ScrollArea.",
+      "props": [],
+      "snippet": "<div data-ui=\"scroll-area\" style=\"block-size:120px;inline-size:280px\"><div data-ui=\"text\" data-size=\"sm\">Mon 9:00 Newsletter sent to 12,408 recipients.</div><div data-ui=\"text\" data-size=\"sm\">Mon 9:40 First opens: 1,904.</div><div data-ui=\"text\" data-size=\"sm\">Mon 10:15 Link clicks: 412.</div><div data-ui=\"text\" data-size=\"sm\">Mon 11:00 Replies: 6.</div><div data-ui=\"text\" data-size=\"sm\">Mon 12:30 Unsubscribes: 3.</div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "ScrollArea"
+      }
+    },
+    {
+      "name": "Collapse",
+      "ui": "collapse",
+      "category": "Miscellaneous",
+      "description": "Shows or hides its content, opened by a button, Mantine's Collapse.",
+      "props": [],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"xs\"><button data-ui=\"button\" data-variant=\"default\" data-size=\"sm\" data-collapse-toggle=\"col-demo\" type=\"button\" aria-expanded=\"false\" aria-controls=\"col-demo\">Show notes</button><div data-ui=\"collapse\" id=\"col-demo\" hidden><div data-ui=\"paper\" data-with-border=\"true\" data-padding=\"md\"><div data-ui=\"text\" data-size=\"sm\">Sends are paused on public holidays.</div></div></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Collapse"
+      }
+    },
+    {
+      "name": "Autocomplete",
+      "ui": "autocomplete",
+      "category": "Combobox",
+      "description": "A text field with suggestions listed under it as you type, Mantine's Autocomplete.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"autocomplete\" data-size=\"sm\"><label data-part=\"label\" for=\"ac-tag\">Tag</label><div data-part=\"control\"><input data-part=\"input\" id=\"ac-tag\" value=\"Spr\" autocomplete=\"off\"></div><div data-part=\"suggestions\"><button data-part=\"option\" type=\"button\">Spring launch</button><button data-part=\"option\" type=\"button\" aria-selected=\"true\">Spring sale</button></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Autocomplete"
+      }
+    },
+    {
+      "name": "Multi Select",
+      "ui": "multi-select",
+      "category": "Combobox",
+      "description": "A field holding several picked values as pills, with a list of options, Mantine's MultiSelect.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"multi-select\" data-size=\"sm\"><label data-part=\"label\" for=\"ms-seg\">Segments</label><div data-part=\"control\" id=\"ms-seg\"><span data-ui=\"pill\" data-size=\"sm\">Trial users<button data-part=\"remove\" type=\"button\" aria-label=\"Remove Trial users\"><i data-ui=\"icon\" data-name=\"x\"></i></button></span><span data-ui=\"pill\" data-size=\"sm\">Churned<button data-part=\"remove\" type=\"button\" aria-label=\"Remove Churned\"><i data-ui=\"icon\" data-name=\"x\"></i></button></span></div><div data-part=\"suggestions\"><button data-part=\"option\" type=\"button\">Subscribers</button><button data-part=\"option\" type=\"button\" aria-selected=\"true\">Trial users</button></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "MultiSelect"
+      }
+    },
+    {
+      "name": "Tags Input",
+      "ui": "tags-input",
+      "category": "Combobox",
+      "description": "A field where you type a value and press Enter to add it as a tag, Mantine's TagsInput.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"tags-input\" data-size=\"sm\"><label data-part=\"label\" for=\"ti-tags\">Topics</label><div data-part=\"control\"><span data-ui=\"pill\" data-size=\"sm\">launch<button data-part=\"remove\" type=\"button\" aria-label=\"Remove launch\"><i data-ui=\"icon\" data-name=\"x\"></i></button></span><span data-ui=\"pill\" data-size=\"sm\">analytics<button data-part=\"remove\" type=\"button\" aria-label=\"Remove analytics\"><i data-ui=\"icon\" data-name=\"x\"></i></button></span><input data-part=\"input\" id=\"ti-tags\" placeholder=\"Add a topic\"></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "TagsInput"
+      }
+    },
+    {
+      "name": "Combobox",
+      "ui": "combobox",
+      "category": "Combobox",
+      "description": "A searchable list of options with a search box at its top, the base of Mantine's selects.",
+      "props": [],
+      "snippet": "<div data-ui=\"combobox\"><input data-part=\"search\" type=\"search\" placeholder=\"Search segments\" aria-label=\"Search segments\"><div data-part=\"options\" role=\"listbox\"><button data-part=\"option\" type=\"button\" role=\"option\">Subscribers</button><button data-part=\"option\" type=\"button\" role=\"option\" aria-selected=\"true\">Trial users</button><button data-part=\"option\" type=\"button\" role=\"option\">Churned</button></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Combobox"
+      }
+    },
+    {
+      "name": "Pin Input",
+      "ui": "pin-input",
+      "category": "Inputs",
+      "description": "Single-character boxes for a code, such as a one-time password, Mantine's PinInput.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"pin-input\" data-size=\"sm\" role=\"group\" aria-label=\"Verification code\"><input data-part=\"input\" inputmode=\"numeric\" maxlength=\"1\" value=\"4\" aria-label=\"Digit 1\"><input data-part=\"input\" inputmode=\"numeric\" maxlength=\"1\" value=\"2\" aria-label=\"Digit 2\"><input data-part=\"input\" inputmode=\"numeric\" maxlength=\"1\" aria-label=\"Digit 3\"><input data-part=\"input\" inputmode=\"numeric\" maxlength=\"1\" aria-label=\"Digit 4\"></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "PinInput"
+      }
+    },
+    {
+      "name": "File Input",
+      "ui": "file-input",
+      "category": "Inputs",
+      "description": "A field that shows a chosen file's name, with a button to pick one, Mantine's FileInput.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"file-input\" data-size=\"sm\"><label data-part=\"label\" for=\"fi-doc\">Attachment</label><div data-part=\"control\"><span data-part=\"value\">spring-launch.csv</span><button data-ui=\"button\" data-size=\"xs\" type=\"button\">Pick file</button></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "FileInput"
+      }
+    },
+    {
+      "name": "File Button",
+      "ui": "file-button",
+      "category": "Buttons",
+      "description": "A button that opens the file picker, Mantine's FileButton.",
+      "props": [],
+      "snippet": "<button data-ui=\"file-button\" type=\"button\"><i data-ui=\"icon\" data-name=\"upload\"></i>Upload CSV</button>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "FileButton"
+      }
+    },
+    {
+      "name": "Color Input",
+      "ui": "color-input",
+      "category": "Inputs",
+      "description": "A text field for a colour, with a swatch at its start, Mantine's ColorInput.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"color-input\" data-size=\"sm\"><label data-part=\"label\" for=\"ci-brand\">Brand colour</label><div data-part=\"control\"><span data-ui=\"color-swatch\" data-color-value=\"blue\" style=\"--sw:#228be6\"></span><input data-part=\"input\" id=\"ci-brand\" value=\"#228be6\"></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "ColorInput"
+      }
+    },
+    {
+      "name": "Color Swatch",
+      "ui": "color-swatch",
+      "category": "Data display",
+      "description": "A round or square patch of one colour, with an optional check mark, Mantine's ColorSwatch.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "checked",
+          "label": "Checked",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"xs\"><span data-ui=\"color-swatch\" style=\"--sw:var(--color-primary)\"></span><span data-ui=\"color-swatch\" data-checked=\"true\" style=\"--sw:var(--color-accent-text)\"><i data-ui=\"icon\" data-name=\"check\"></i></span><span data-ui=\"color-swatch\" style=\"--sw:var(--color-success)\"></span><span data-ui=\"color-swatch\" style=\"--sw:var(--color-danger)\"></span></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "ColorSwatch"
+      }
+    },
+    {
+      "name": "Color Picker",
+      "ui": "color-picker",
+      "category": "Inputs",
+      "description": "A saturation field, a hue slider and swatches for picking a colour, Mantine's ColorPicker.",
+      "props": [],
+      "snippet": "<div data-ui=\"color-picker\" style=\"inline-size:260px\"><div data-part=\"area\"><span data-part=\"thumb\"></span></div><div data-part=\"hue\"><span data-part=\"thumb\"></span></div><div data-part=\"swatches\"><span data-ui=\"color-swatch\" style=\"--sw:var(--color-primary)\"></span><span data-ui=\"color-swatch\" style=\"--sw:var(--color-success)\"></span><span data-ui=\"color-swatch\" style=\"--sw:var(--color-warning)\"></span><span data-ui=\"color-swatch\" style=\"--sw:var(--color-danger)\"></span></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "ColorPicker"
+      }
+    },
+    {
+      "name": "JSON Input",
+      "ui": "json-input",
+      "category": "Inputs",
+      "description": "A multi-line field for JSON in a monospace face, Mantine's JsonInput.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "sm",
+            "xs",
+            "md",
+            "lg",
+            "xl"
+          ],
+          "default": "sm"
+        }
+      ],
+      "snippet": "<div data-ui=\"json-input\" data-size=\"sm\"><label data-part=\"label\" for=\"ji-cfg\">Webhook payload</label><textarea data-part=\"input\" id=\"ji-cfg\" rows=\"4\">{\"event\": \"send\", \"list\": \"trial\"}</textarea></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "JsonInput"
+      }
+    },
+    {
+      "name": "Range Slider",
+      "ui": "range-slider",
+      "category": "Inputs",
+      "description": "A track with two thumbs for picking a low and high value, Mantine's RangeSlider.",
+      "props": [],
+      "snippet": "<div data-ui=\"range-slider\" style=\"--lo:25%;--hi:70%\"><div data-part=\"track\"><span data-part=\"bar\"></span></div><input data-part=\"input\" type=\"range\" min=\"0\" max=\"100\" value=\"25\" aria-label=\"Lower bound\"><input data-part=\"input\" type=\"range\" min=\"0\" max=\"100\" value=\"70\" aria-label=\"Upper bound\"></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "RangeSlider"
+      }
+    },
+    {
+      "name": "Stepper",
+      "ui": "stepper",
+      "category": "Navigation",
+      "description": "Numbered steps that show progress through a process, Mantine's Stepper.",
+      "props": [],
+      "snippet": "<ol data-ui=\"stepper\"><li data-part=\"step\" data-state=\"completed\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"check\"></i></span><div data-part=\"label\">Audience</div><div data-part=\"description\">9,400 contacts</div></li><li data-part=\"step\" data-state=\"active\"><span data-part=\"icon\">2</span><div data-part=\"label\">Content</div><div data-part=\"description\">Draft written</div></li><li data-part=\"step\"><span data-part=\"icon\">3</span><div data-part=\"label\">Schedule</div><div data-part=\"description\">Not started</div></li></ol>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Stepper"
+      }
+    },
+    {
+      "name": "Tree",
+      "ui": "tree",
+      "category": "Navigation",
+      "description": "A nested list of items that open and close, Mantine's Tree.",
+      "props": [],
+      "snippet": "<ul data-ui=\"tree\"><li data-part=\"node\"><details open><summary data-part=\"control\"><i data-ui=\"icon\" data-name=\"chevron-down\" data-part=\"chevron\"></i><span>Lists</span></summary><ul data-part=\"children\"><li data-part=\"node\"><span data-part=\"leaf\">Trial users</span></li><li data-part=\"node\"><span data-part=\"leaf\">Subscribers</span></li></ul></details></li><li data-part=\"node\"><span data-part=\"leaf\">Archive</span></li></ul>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Tree"
+      }
+    },
+    {
+      "name": "Toggle",
+      "ui": "toggle",
+      "category": "Buttons",
+      "description": "A button that stays pressed or released, Mantine's Toggle.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"xs\"><button data-ui=\"toggle\" type=\"button\" aria-pressed=\"true\" aria-label=\"Bold\"><i data-ui=\"icon\" data-name=\"bolt\"></i></button><button data-ui=\"toggle\" type=\"button\" aria-pressed=\"false\" aria-label=\"Italic\"><i data-ui=\"icon\" data-name=\"star\"></i></button></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Toggle"
+      }
+    },
+    {
+      "name": "Copy Button",
+      "ui": "copy-button",
+      "category": "Buttons",
+      "description": "A button that copies a value and shows that it did, Mantine's CopyButton.",
+      "props": [],
+      "snippet": "<div data-ui=\"group\" data-gap=\"xs\"><button data-ui=\"copy-button\" data-copied=\"false\" type=\"button\"><i data-ui=\"icon\" data-name=\"file\"></i>Copy link</button><button data-ui=\"copy-button\" data-copied=\"true\" type=\"button\"><i data-ui=\"icon\" data-name=\"check\"></i>Copied</button></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "CopyButton"
+      }
+    },
+    {
+      "name": "Unstyled Button",
+      "ui": "unstyled-button",
+      "category": "Buttons",
+      "description": "A button with no styling, for building your own control, Mantine's UnstyledButton.",
+      "props": [],
+      "snippet": "<button data-ui=\"unstyled-button\" type=\"button\">Plain button, no styles</button>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "UnstyledButton"
+      }
+    },
+    {
+      "name": "Indicator",
+      "ui": "indicator",
+      "category": "Data display",
+      "description": "A small dot or label pinned to a corner of another element, Mantine's Indicator.",
+      "props": [
+        {
+          "name": "position",
+          "label": "Position",
+          "type": "choice",
+          "options": [
+            "top-end",
+            "top-start",
+            "bottom-end",
+            "bottom-start"
+          ],
+          "default": "top-end"
+        }
+      ],
+      "snippet": "<div data-ui=\"group\" data-gap=\"lg\"><span data-ui=\"indicator\"><span data-ui=\"avatar\" data-size=\"md\"><span data-part=\"initials\">AO</span></span><span data-part=\"dot\" aria-hidden=\"true\"></span></span><span data-ui=\"indicator\" data-position=\"bottom-end\" data-label=\"3\"><button data-ui=\"button\" data-variant=\"default\" data-size=\"sm\" type=\"button\">Inbox</button><span data-part=\"dot\" aria-hidden=\"true\"></span></span></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Indicator"
+      }
+    },
+    {
+      "name": "Spoiler",
+      "ui": "spoiler",
+      "category": "Typography",
+      "description": "A block of text cut short, with a control that shows the rest, Mantine's Spoiler.",
+      "props": [],
+      "snippet": "<details data-ui=\"spoiler\"><summary data-part=\"control\">Show more</summary><div data-part=\"content\"><p data-ui=\"text\" data-size=\"sm\">Bellwether groups opens by device and by hour, so you can see which readers come back. Each list keeps its own history, and the export keeps the same columns for every send, so a month of issues can be compared directly.</p></div></details>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Spoiler"
+      }
+    },
+    {
+      "name": "Ring Progress",
+      "ui": "ring-progress",
+      "category": "Feedback",
+      "description": "A circle that fills around as a value rises, with a label in the middle, Mantine's RingProgress.",
+      "props": [],
+      "snippet": "<div data-ui=\"ring-progress\"><svg viewBox=\"0 0 120 120\" aria-hidden=\"true\"><circle data-part=\"track\" cx=\"60\" cy=\"60\" r=\"50\"></circle><circle data-part=\"curve\" cx=\"60\" cy=\"60\" r=\"50\" style=\"--p:0.62\"></circle></svg><div data-part=\"label\">62%</div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "RingProgress"
+      }
+    },
+    {
+      "name": "Semi Circle Progress",
+      "ui": "semi-circle-progress",
+      "category": "Feedback",
+      "description": "A half-circle gauge that fills from left to right, Mantine's SemiCircleProgress.",
+      "props": [],
+      "snippet": "<div data-ui=\"semi-circle-progress\"><svg viewBox=\"0 0 120 64\" aria-hidden=\"true\"><path data-part=\"track\" d=\"M10 60 A50 50 0 0 1 110 60\"></path><path data-part=\"curve\" d=\"M10 60 A50 50 0 0 1 110 60\" pathLength=\"100\" style=\"--p:72\"></path></svg><div data-part=\"label\">72%</div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "SemiCircleProgress"
+      }
+    },
+    {
+      "name": "Image",
+      "ui": "image",
+      "category": "Data display",
+      "description": "A picture that fills its box with rounded corners, Mantine's Image.",
+      "props": [
+        {
+          "name": "radius",
+          "label": "Radius",
+          "type": "choice",
+          "options": [
+            "md",
+            "none",
+            "lg"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<img data-ui=\"image\" alt=\"Abstract chart placeholder\" width=\"240\" height=\"140\" src=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 140'%3E%3Crect width='240' height='140' fill='%23d0ebff'/%3E%3Cpath d='M20 110 L70 70 L110 90 L160 40 L220 100' fill='none' stroke='%23228be6' stroke-width='6'/%3E%3C/svg%3E\">",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Image"
+      }
+    },
+    {
+      "name": "Data List",
+      "ui": "data-list",
+      "category": "Data display",
+      "description": "Label and value pairs in two columns, Mantine's DataList.",
+      "props": [],
+      "snippet": "<dl data-ui=\"data-list\"><div data-part=\"item\"><dt data-part=\"label\">Campaign</dt><dd data-part=\"value\">Spring launch</dd></div><div data-part=\"item\"><dt data-part=\"label\">Sent</dt><dd data-part=\"value\">12,408</dd></div><div data-part=\"item\"><dt data-part=\"label\">Sent at</dt><dd data-part=\"value\">Tue 09:00</dd></div></dl>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "DataList"
+      }
+    },
+    {
+      "name": "Hover Card",
+      "ui": "hover-card",
+      "category": "Overlays",
+      "description": "A card that shows more about a control when it is hovered or focused, Mantine's HoverCard.",
+      "props": [],
+      "snippet": "<span data-ui=\"hover-card\"><button data-ui=\"button\" data-variant=\"subtle\" data-size=\"sm\" type=\"button\">@ada.okafor</button><span data-part=\"dropdown\" role=\"tooltip\"><span data-ui=\"avatar\" data-size=\"md\"><span data-part=\"initials\">AO</span></span><span data-part=\"name\">Ada Okafor</span><span data-ui=\"text\" data-size=\"xs\" data-dimmed=\"true\">Joined 2 March, 18 of 20 opened</span></span></span>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "HoverCard"
+      }
+    },
+    {
+      "name": "Dialog",
+      "ui": "dialog",
+      "category": "Overlays",
+      "description": "A small panel with a close button for a short message, Mantine's Dialog.",
+      "props": [],
+      "snippet": "<div data-ui=\"dialog\" data-part=\"panel\" role=\"dialog\" aria-label=\"Notice\"><div data-ui=\"text\" data-size=\"sm\">Your trial ends in 3 days.</div><button data-ui=\"close-button\" data-dialog-close type=\"button\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Dialog"
+      }
+    },
+    {
+      "name": "Overlay",
+      "ui": "overlay",
+      "category": "Overlays",
+      "description": "A dimmed layer over content, with an optional blur, Mantine's Overlay.",
+      "props": [],
+      "snippet": "<div data-part=\"overlay-frame\"><div data-ui=\"text\" data-size=\"sm\">Behind the overlay</div><div data-ui=\"overlay\" data-part=\"layer\"></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Overlay"
+      }
+    },
+    {
+      "name": "Loading Overlay",
+      "ui": "loading-overlay",
+      "category": "Overlays",
+      "description": "A dimmed layer with a spinner over a box while it loads, Mantine's LoadingOverlay.",
+      "props": [],
+      "snippet": "<div data-ui=\"loading-overlay\"><div data-ui=\"paper\" data-with-border=\"true\" data-padding=\"md\"><div data-ui=\"text\" data-size=\"sm\">Recipients: 12,408</div></div><div data-ui=\"overlay\" data-part=\"layer\"><span data-ui=\"loader\" role=\"status\" aria-label=\"Loading\"></span></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "LoadingOverlay"
+      }
+    },
+    {
+      "name": "Affix",
+      "ui": "affix",
+      "category": "Layout",
+      "description": "A box pinned to a corner of the screen, such as a floating action, Mantine's Affix.",
+      "props": [],
+      "snippet": "<div data-part=\"affix-frame\"><div data-ui=\"affix\" data-position=\"bottom-end\"><button data-ui=\"button\" data-size=\"sm\" type=\"button\"><i data-ui=\"icon\" data-name=\"plus\"></i>New campaign</button></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Affix"
+      }
+    },
+    {
+      "name": "Table Of Contents",
+      "ui": "table-of-contents",
+      "category": "Navigation",
+      "description": "A list of page headings that marks the one in view, indented by level, Mantine's TableOfContents.",
+      "props": [],
+      "snippet": "<nav data-ui=\"table-of-contents\" aria-label=\"On this page\"><a data-part=\"toc-link\" data-depth=\"1\" data-active=\"true\" href=\"#\">Overview</a><a data-part=\"toc-link\" data-depth=\"2\" href=\"#\">Send time</a><a data-part=\"toc-link\" data-depth=\"2\" href=\"#\">Open rate</a><a data-part=\"toc-link\" data-depth=\"1\" href=\"#\">Links</a></nav>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "TableOfContents"
+      }
+    },
+    {
+      "name": "App Shell",
+      "ui": "app-shell",
+      "category": "Layout",
+      "description": "A page frame with a header, a navbar, the main area and an aside, Mantine's AppShell.",
+      "props": [],
+      "snippet": "<div data-ui=\"app-shell\"><header data-part=\"header\">Bellwether</header><nav data-part=\"navbar\" aria-label=\"Main\"><span data-ui=\"text\" data-size=\"sm\">Analytics</span><span data-ui=\"text\" data-size=\"sm\" data-dimmed=\"true\">Campaigns</span></nav><main data-part=\"main\"><div data-ui=\"text\" data-size=\"sm\">Main content</div></main></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "AppShell"
+      }
+    },
+    {
+      "name": "Tour",
+      "ui": "tour",
+      "category": "Overlays",
+      "description": "A card that walks through steps in a product, with a counter and next and back buttons, Mantine's Tour.",
+      "props": [],
+      "snippet": "<div data-ui=\"tour\"><div data-part=\"head\"><span data-part=\"step-counter\">Step 2 of 4</span><button data-ui=\"close-button\" type=\"button\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"x\"></i></button></div><div data-part=\"title\">Schedule the send</div><p data-ui=\"text\" data-size=\"sm\" data-dimmed=\"true\">Pick a day and hour. Mantine suggests the best time for each list.</p><div data-part=\"navigation\"><button data-ui=\"button\" data-variant=\"default\" data-size=\"sm\" type=\"button\">Back</button><button data-ui=\"button\" data-size=\"sm\" type=\"button\">Next</button></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Tour"
+      }
+    },
+    {
+      "name": "Marquee",
+      "ui": "marquee",
+      "category": "Miscellaneous",
+      "description": "A line of content that scrolls past on a loop, Mantine's Marquee.",
+      "props": [],
+      "snippet": "<div data-ui=\"marquee\"><div data-part=\"track\"><span>Weekly digest</span><span>Open rate 46%</span><span>Send time: Tuesday 09:00</span><span>Weekly digest</span><span>Open rate 46%</span><span>Send time: Tuesday 09:00</span></div></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Marquee"
+      }
+    },
+    {
+      "name": "Menubar",
+      "ui": "menubar",
+      "category": "Navigation",
+      "description": "A horizontal bar of menu titles, such as File and Edit, Mantine's Menubar.",
+      "props": [],
+      "snippet": "<div data-ui=\"menubar\" role=\"menubar\"><button data-part=\"target\" type=\"button\" role=\"menuitem\" aria-expanded=\"true\">File</button><button data-part=\"target\" type=\"button\" role=\"menuitem\">Edit</button><button data-part=\"target\" type=\"button\" role=\"menuitem\">View</button><button data-part=\"target\" type=\"button\" role=\"menuitem\">Help</button></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Menubar"
+      }
+    },
+    {
+      "name": "Toolbar",
+      "ui": "toolbar",
+      "category": "Buttons",
+      "description": "A row of toggle buttons with dividers between groups, Mantine's Toolbar.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"toolbar\" role=\"toolbar\" aria-label=\"Text\"><button data-ui=\"toggle\" type=\"button\" aria-pressed=\"true\" aria-label=\"Bold\"><i data-ui=\"icon\" data-name=\"bolt\"></i></button><button data-ui=\"toggle\" type=\"button\" aria-pressed=\"false\" aria-label=\"Italic\"><i data-ui=\"icon\" data-name=\"star\"></i></button><span data-part=\"divider\"></span><button data-ui=\"toggle\" type=\"button\" aria-pressed=\"false\" aria-label=\"Link\"><i data-ui=\"icon\" data-name=\"file\"></i></button></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Toolbar"
+      }
+    },
+    {
+      "name": "Rating",
+      "ui": "rating",
+      "category": "Inputs",
+      "description": "A row of stars to pick a score, Mantine's Rating.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "md",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        }
+      ],
+      "snippet": "<div data-ui=\"rating\" role=\"radiogroup\" aria-label=\"Rating\"><label data-part=\"star\"><input data-part=\"input\" type=\"radio\" name=\"rate\" value=\"5\" aria-label=\"5 stars\"><span data-part=\"symbol\"><i data-ui=\"icon\" data-name=\"star\" data-part=\"outline\"></i><i data-ui=\"icon\" data-name=\"star-filled\" data-part=\"fill\"></i></span></label><label data-part=\"star\"><input data-part=\"input\" type=\"radio\" name=\"rate\" value=\"4\" aria-label=\"4 stars\"><span data-part=\"symbol\"><i data-ui=\"icon\" data-name=\"star\" data-part=\"outline\"></i><i data-ui=\"icon\" data-name=\"star-filled\" data-part=\"fill\"></i></span></label><label data-part=\"star\"><input data-part=\"input\" type=\"radio\" name=\"rate\" value=\"3\" checked aria-label=\"3 stars\"><span data-part=\"symbol\"><i data-ui=\"icon\" data-name=\"star\" data-part=\"outline\"></i><i data-ui=\"icon\" data-name=\"star-filled\" data-part=\"fill\"></i></span></label><label data-part=\"star\"><input data-part=\"input\" type=\"radio\" name=\"rate\" value=\"2\" aria-label=\"2 stars\"><span data-part=\"symbol\"><i data-ui=\"icon\" data-name=\"star\" data-part=\"outline\"></i><i data-ui=\"icon\" data-name=\"star-filled\" data-part=\"fill\"></i></span></label><label data-part=\"star\"><input data-part=\"input\" type=\"radio\" name=\"rate\" value=\"1\" aria-label=\"1 stars\"><span data-part=\"symbol\"><i data-ui=\"icon\" data-name=\"star\" data-part=\"outline\"></i><i data-ui=\"icon\" data-name=\"star-filled\" data-part=\"fill\"></i></span></label></div>",
+      "import": {
+        "package": "@mantine/core",
+        "name": "Rating"
+      }
+    },
+    {
+      "name": "Hero",
+      "ui": "hero",
+      "category": "Blocks",
+      "description": "A marketing opening: a title, a line of text, two buttons and a stats card beside them.",
+      "props": [],
+      "snippet": "<section data-ui=\"hero\" data-block=\"blocks/hero.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Feature grid",
+      "ui": "feature-grid",
+      "category": "Blocks",
+      "description": "Three features in cards, each with a theme icon.",
+      "props": [],
+      "snippet": "<section data-ui=\"feature-grid\" data-block=\"blocks/feature-grid.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Pricing",
+      "ui": "pricing",
+      "category": "Blocks",
+      "description": "Three plans in cards, with the middle one marked and a switch for yearly billing.",
+      "props": [],
+      "snippet": "<section data-ui=\"pricing\" data-block=\"blocks/pricing.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Sign in",
+      "ui": "sign-in",
+      "category": "Blocks",
+      "description": "A centred card with a vertical form.",
+      "props": [],
+      "snippet": "<section data-ui=\"sign-in\" data-block=\"blocks/sign-in.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Dashboard",
+      "ui": "dashboard",
+      "category": "Blocks",
+      "description": "A working screen: a navbar, stat cards, a table and a timeline.",
+      "props": [],
+      "snippet": "<section data-ui=\"dashboard\" data-block=\"blocks/dashboard.html\"></section>",
+      "kind": "composition"
+    }
+  ]
+}

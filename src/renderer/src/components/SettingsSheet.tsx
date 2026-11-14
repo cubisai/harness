@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Density, Motion, PermissionMode, SettingsView, Theme } from "../../../shared/types";
+import type { DesignReferenceStatus } from "../../../shared/design-mutation";
 import { DEFAULT_COMMIT_INSTRUCTIONS, MAX_RUNNING_CHOICES } from "../../../shared/types";
 import { api } from "../api";
 import { ProvidersSection } from "./ProviderSheet";
@@ -44,9 +45,10 @@ const isCheap = (m: { id: string; label: string }) => CHEAP_MODEL_HINTS.some((h)
 /** The left-nav groups, in order, and the sections each shows. */
 export const SETTINGS_GROUPS = [
   { id: "appearance", label: "Appearance", sections: ["Appearance"] },
-  { id: "threads", label: "Threads", sections: ["New threads", "Commit messages", "Background", "Editor"] },
+  { id: "threads", label: "Threads", sections: ["New threads", "Commit messages", "Background", "Issues", "Editor"] },
   { id: "agents", label: "Agents & Providers", sections: ["Providers", "Agents", "Antigravity"] },
   { id: "skills", label: "Skills & MCP", sections: ["Skills", "MCP servers"] },
+  { id: "design", label: "Design", sections: ["Design references"] },
   { id: "data", label: "Data & Security", sections: ["Data"] },
   { id: "updates", label: "Updates", sections: ["Updates"] },
   { id: "experiments", label: "Experiments", sections: ["Code mode"] },
@@ -351,6 +353,20 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             <p className="note">Alt+Enter sends a message to a new thread in the background. With a limit, extra background threads wait in the Running list and start when one finishes. With Own worktree on, each starts on its own git branch so its edits stay off your checkout.</p>
           </section>
           <section>
+            <h3>Issues</h3>
+            <div className="row">
+              <span className="label">File issue? cards</span>
+              <div className="segmented">
+                {([true, false] as const).map((on) => (
+                  <button key={String(on)} className={(settings.issueOffers ?? true) === on ? "on" : ""} onClick={() => update({ issueOffers: on })}>
+                    {on ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="note">In projects with an issue tracker (set up with /issue-setup), the background model reads each reply that mentions a problem. When the reply reports one it didn't fix, a File issue? card offers to file it. Each check costs a few hundred background-model tokens.</p>
+          </section>
+          <section>
             <h3>Editor</h3>
             <div className="row">
               <span className="label">Open files in</span>
@@ -429,6 +445,8 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
           </section>
         </>
       );
+    case "design":
+      return <DesignReferencesSection />;
     case "data":
       return (
         <section>
@@ -531,6 +549,159 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
         </section>
       );
   }
+}
+
+/** The GradientDeck design references: download, update or remove, and what is installed. */
+function DesignReferencesSection() {
+  const [status, setStatus] = useState<DesignReferenceStatus | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [busy, setBusy] = useState<"download" | "remove" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const unsubscribe = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void api()
+      .designReferences()
+      .then((s) => {
+        if (live) setStatus(s);
+      })
+      .catch((err: unknown) => {
+        if (live) setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  useEffect(
+    () => () => {
+      unsubscribe.current?.();
+      unsubscribe.current = null;
+    },
+    [],
+  );
+
+  const stop = () => {
+    unsubscribe.current?.();
+    unsubscribe.current = null;
+  };
+
+  const download = () => {
+    setBusy("download");
+    setError(null);
+    setProgress(null);
+    stop();
+    unsubscribe.current = api().onDesignReferenceProgress((p) => setProgress({ done: p.done, total: p.total }));
+    void api()
+      .designReferencesDownload()
+      .then((res) => {
+        stop();
+        setProgress(null);
+        setBusy(null);
+        if (res.ok) {
+          setStatus(res.status);
+          return;
+        }
+        if (res.code !== "cancelled") setError(res.message);
+        void api().designReferences().then(setStatus).catch(() => {});
+      })
+      .catch((err: unknown) => {
+        stop();
+        setProgress(null);
+        setBusy(null);
+        setError(err instanceof Error ? err.message : String(err));
+      });
+  };
+
+  const remove = () => {
+    setBusy("remove");
+    setError(null);
+    void api()
+      .designReferencesRemove()
+      .then((s) => setStatus(s))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setBusy(null));
+  };
+
+  const markAsked = () => {
+    void api()
+      .updateSettings({ designReferencesAsked: true })
+      .then((s) => useStore.setState({ settings: s }))
+      .catch(() => {});
+  };
+
+  const done = progress?.done ?? 0;
+  const total = progress?.total ?? 0;
+  const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  const statusText =
+    status === null
+      ? "…"
+      : status.state === "none"
+        ? "Not downloaded"
+        : `${status.count.toLocaleString()} references · updated ${new Date(status.fetchedAt).toLocaleDateString()}${status.missing > 0 ? ` · ${status.missing} unavailable` : ""} · ${Math.round(status.bytes / 1e6)} MB`;
+  const bar = (
+    <span className="sp-progress" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}>
+      <span style={{ display: "block", height: "100%", width: pct + "%", background: "var(--text)", borderRadius: "inherit" }} />
+    </span>
+  );
+
+  return (
+    <section>
+      <h3>Design references</h3>
+      <div className="row">
+        <span className="label">Status</span>
+        <span className="value">{statusText}</span>
+      </div>
+      <div className="row" style={{ flexWrap: "wrap" }}>
+        <span className="label">Download</span>
+        {busy === "download" ? (
+          <>
+            <span className="value">
+              {total > 0 ? `Downloading… ${done.toLocaleString()} of ${total.toLocaleString()}` : "Starting…"}
+            </span>
+            <button className="button ghost" onClick={() => void api().designReferencesCancel()}>
+              Cancel
+            </button>
+          </>
+        ) : status?.state === "installed" ? (
+          <>
+            <button className="button" disabled={busy !== null} onClick={download}>
+              Check for updates
+            </button>
+            <button className="button ghost" disabled={busy !== null} onClick={remove}>
+              Remove
+            </button>
+          </>
+        ) : (
+          <button
+            className="button primary"
+            disabled={status === null || busy !== null}
+            onClick={() => {
+              markAsked();
+              download();
+            }}
+          >
+            Download
+          </button>
+        )}
+      </div>
+      {busy === "download" && (
+        <div className="row">
+          <span className="label" />
+          {bar}
+        </div>
+      )}
+      {error && (
+        <p className="note" role="alert">
+          {error}
+        </p>
+      )}
+      <p className="note">
+        An additional resource for Design mode (about 43 MB, text only).
+      </p>
+    </section>
+  );
 }
 
 /**

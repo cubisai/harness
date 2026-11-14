@@ -1,0 +1,30 @@
+<section data-ui="dashboard">
+<nav data-part="navbar" aria-label="Main">
+<div data-ui="text" data-size="lg" data-weight="bold" data-part="brand">Bellwether</div>
+<a data-ui="nav-link" data-active="true" href="#"><span data-part="icon"><i data-ui="icon" data-name="chart-bar"></i></span><span data-part="label">Analytics</span></a>
+<a data-ui="nav-link" href="#"><span data-part="icon"><i data-ui="icon" data-name="mail"></i></span><span data-part="label">Campaigns</span></a>
+<a data-ui="nav-link" href="#"><span data-part="icon"><i data-ui="icon" data-name="user"></i></span><span data-part="label">Audience</span></a>
+<a data-ui="nav-link" href="#"><span data-part="icon"><i data-ui="icon" data-name="settings"></i></span><span data-part="label">Settings</span></a>
+</nav>
+<div data-part="main">
+<div data-ui="group" data-justify="space-between"><h2 data-ui="title" data-order="3">Analytics</h2><button data-ui="button" data-variant="default" data-size="sm" type="button">Export</button></div>
+<div data-ui="simple-grid" data-cols="3" data-spacing="md">
+<div data-ui="card" data-with-border="true" data-part="stat"><div data-ui="text" data-size="xs" data-dimmed="true">Recipients</div><div data-ui="text" data-size="xl" data-weight="bold">12,408</div></div>
+<div data-ui="card" data-with-border="true" data-part="stat"><div data-ui="text" data-size="xs" data-dimmed="true">Open rate</div><div data-ui="text" data-size="xl" data-weight="bold">46.2%</div></div>
+<div data-ui="card" data-with-border="true" data-part="stat"><div data-ui="text" data-size="xs" data-dimmed="true">Bounce rate</div><div data-ui="text" data-size="xl" data-weight="bold">1.2%</div></div>
+</div>
+<div data-ui="card" data-with-border="true" data-part="table-card">
+<table data-ui="table" data-striped="true" data-highlight-on-hover="true">
+<thead><tr><th data-part="th">Issue</th><th data-part="th">Sent</th><th data-part="th">Opened</th><th data-part="th">Status</th></tr></thead>
+<tbody>
+<tr data-part="tr"><td data-part="td">Spring launch</td><td data-part="td">12,408</td><td data-part="td">46.2%</td><td data-part="td"><span data-ui="badge" data-variant="light" data-color="teal">Sent</span></td></tr>
+<tr data-part="tr"><td data-part="td">Pricing update</td><td data-part="td">9,870</td><td data-part="td">38.4%</td><td data-part="td"><span data-ui="badge" data-variant="light" data-color="yellow">Draft</span></td></tr>
+</tbody>
+</table>
+</div>
+<ol data-ui="timeline" data-part="events">
+<li data-part="item"><span data-part="bullet"><i data-ui="icon" data-name="circle-check"></i></span><div data-part="title">Campaign sent</div><div data-part="body">Spring launch, 09:00 Tuesday.</div></li>
+<li data-part="item"><span data-part="bullet"><i data-ui="icon" data-name="mail"></i></span><div data-part="title">Half of opens in the first hour</div><div data-part="body">Most readers came from the subject line.</div></li>
+</ol>
+</div>
+</section>

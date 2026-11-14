@@ -43,12 +43,12 @@ export const CODE_DESCRIPTION = [
   // The trigger leads: models pick tools by description, and without it they reach for one read or shell call after another.
   "Use this to look around the project instead of two or more read, glob, grep, ls or cat calls: one script lists, reads and searches it all in one step.",
   "Run a JavaScript program in a sandbox and return what it prints and returns.",
-  "The code is the body of an async function: call tools as `await tools.<name>(args)`, which throws on an error (wrap a call that may fail in try/catch).",
-  'read, glob and grep return plain values, not text: glob gives string[] paths (empty when nothing matches); grep gives string[] files, or { path: count } with output_mode "count", or [{ path, line, text }] with "content"; read gives the file\'s text. Other tools return their text output.',
-  "`ALL_TOOLS` lists the tools, `searchTools(query)` ranks them, and `describeTool(name)` returns a TypeScript declaration.",
+  "The code is the body of an async function: call tools as `await tools.<name>(args)`, which throws on an error (wrap a call that may fail in try/catch, or use `await tools.readMany(paths, opts?)` for `{ path, content?, entries?, error? }[]` across a batch).",
+  'read, glob and grep return plain values, not text: glob gives string[] paths (empty when nothing matches, optional `limit`); grep gives string[] files, or { path: count } with output_mode "count", or [{ path, line, text, before?, after? }] with "content" (optional `limit` and `context`); read gives the file\'s text (or string[] entries for a folder). Other tools return their text output.',
+  "`ALL_TOOLS` lists the tools, `searchTools(query)` ranks them, `describeTool(name)` returns a TypeScript declaration, and `path` has POSIX string helpers (`join`, `dirname`, `basename`, `extname`, `normalize`).",
   "Batch: one broad call (a grep pattern like `a|b|c`, then filtering in JavaScript) beats a call per item, and Promise.all runs calls together.",
   "`store(key, value)` and `load(key)` keep JSON between scripts in this session, and a failed script's writes are dropped.",
-  "`console.log(...)` lines plus the returned value (JSON-stringified unless it's a string) are the result: return only what you need.",
+  "`console.log(...)` (and warn/error/info) lines plus the returned value (JSON-stringified unless it's a string) are the result: return only what you need.",
   "The sandbox has no filesystem, network, process, timers or modules (no require or import: reach files only through `tools`), and calls made before an error are not undone.",
 ].join(" ");
 
@@ -81,6 +81,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
       let stopReason: "timeout" | "abort" | null = null;
       let runtime: QuickJSRuntime | null = null;
       let context: QuickJSContext | null = null;
+      let disposeInstall: (() => void) | null = null;
       let stop: { promise: Promise<void>; done: () => void } | null = null;
       // Host promises of tool calls still in flight: freed before the context, or QuickJS aborts on a leak.
       const pending = new Set<QuickJSDeferredPromise>();
@@ -105,11 +106,12 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         context = live.newContext();
         // Writes go to a copy; only a successful run commits them to the session.
         const staged = new Map<string, string>(o.state);
-        install(context, live, o, logs, call.id, call.signal, staged, pending);
+        disposeInstall = install(context, live, o, logs, call.id, call.signal, staged, pending);
 
-        const evaluated = context.evalCode(`(async () => {\n${code}\n})()`);
+        // "script.js" names the file in error stacks; the wrapper adds one line, so user line 1 is file line 2.
+        const evaluated = context.evalCode(`(async () => {\n${code}\n})()`, "script.js");
         if (isFail(evaluated)) {
-          const message = errorText(context, evaluated.error);
+          const message = explain(errorText(context, evaluated.error), o);
           evaluated.error.dispose();
           return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
         }
@@ -131,17 +133,19 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
           return { text: failure(stopReason === "abort" ? STOPPED : timingOut(timeoutMs), logs), isError: true };
         }
         if (isFail(settled)) {
-          const message = errorText(context, settled.error);
+          const message = explain(errorText(context, settled.error), o);
           settled.error.dispose();
           return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
         }
+        const wasUndefined = context.typeof(settled.value) === "undefined";
         const rendered = render(context, settled.value);
         settled.value.dispose();
         if (o.state) {
           o.state.clear();
           for (const [key, value] of staged) o.state.set(key, value);
         }
-        const text = [...logs, `=> ${rendered}`].join("\n");
+        let text = [...logs, `=> ${rendered}`].join("\n");
+        if (wasUndefined && logs.length === 0) text += "\n\nThe script returned undefined and printed nothing: return a value (or console.log it) so there is something to read.";
         return { text: bound(text, { outputDir: o.outputDir, callId: call.id }) };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -149,6 +153,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
       } finally {
         for (const deferred of pending) if (deferred.alive) deferred.dispose();
         pending.clear();
+        disposeInstall?.();
         context?.dispose();
         runtime?.dispose();
       }
@@ -159,7 +164,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
 const STOPPED = "Interrupted by the user.";
 const timingOut = (timeoutMs: number): string => `Stopped after ${Math.round(timeoutMs / 1000)}s: the time limit was reached.`;
 
-/** The globals a script sees: `tools`, `ALL_TOOLS`, `searchTools`, `describeTool`, `store`, `load` and `console.log`. */
+/** The globals a script sees: `tools` (plus `tools.readMany`), `ALL_TOOLS`, `searchTools`, `describeTool`, `store`, `load`, `path` and `console`. */
 function install(
   context: QuickJSContext,
   runtime: QuickJSRuntime,
@@ -169,13 +174,36 @@ function install(
   signal: AbortSignal,
   staged: Map<string, string>,
   pending: Set<QuickJSDeferredPromise>,
-): void {
+): () => void {
+  // QuickJS's own JSON.parse, kept for the context's life: arrays and objects
+  // cross the WASM boundary once, as text, instead of a handle per element or
+  // property. The returned cleanup disposes it (the context doesn't).
+  const json = context.getProp(context.global, "JSON");
+  const jsonParse = context.getProp(json, "parse");
+  json.dispose();
+  const parseJson = (text: string): QuickJSHandle | null => {
+    const arg = context.newString(text);
+    try {
+      const res = context.callFunction(jsonParse, context.undefined, arg);
+      if (isFail(res)) {
+        res.error.dispose();
+        return null;
+      }
+      return res.value;
+    } finally {
+      arg.dispose();
+    }
+  };
+  const toH = (value: unknown): QuickJSHandle => toHandle(context, value, parseJson);
+
   const console_ = context.newObject();
-  const log = context.newFunction("log", (...handles) => {
-    logs.push(handles.map((h) => format(context.dump(h))).join(" "));
-  });
-  context.setProp(console_, "log", log);
-  log.dispose();
+  for (const level of ["log", "info", "debug", "warn", "error"]) {
+    const fn = context.newFunction(level, (...handles) => {
+      logs.push(handles.map((h) => format(context.dump(h))).join(" "));
+    });
+    context.setProp(console_, level, fn);
+    fn.dispose();
+  }
   context.setProp(context.global, "console", console_);
   console_.dispose();
 
@@ -183,7 +211,7 @@ function install(
 
   const all = context.newArray();
   exposed().forEach((tool, i) => {
-    const handle = toHandle(context, { name: tool.definition.name, description: firstSentence(tool.definition.description) });
+    const handle = toH({ name: tool.definition.name, description: firstSentence(tool.definition.description) });
     context.setProp(all, i, handle);
     handle.dispose();
   });
@@ -200,10 +228,7 @@ function install(
     const hits = ranked.length
       ? ranked
       : tools.filter((t) => t.definition.name.toLowerCase().includes(query.toLowerCase()) || t.definition.description.toLowerCase().includes(query.toLowerCase())).slice(0, limit);
-    return toHandle(
-      context,
-      hits.map((t) => ({ name: t.definition.name, description: t.definition.description })),
-    );
+    return toH(hits.map((t) => ({ name: t.definition.name, description: t.definition.description })));
   });
   context.setProp(context.global, "searchTools", search);
   search.dispose();
@@ -240,70 +265,135 @@ function install(
     const key = keyHandle ? context.getString(keyHandle) : "";
     const text = staged.get(key);
     if (text === undefined) return context.undefined;
-    try {
-      return toHandle(context, JSON.parse(text));
-    } catch {
-      return context.undefined;
-    }
+    // The stored JSON text crosses once, parsed inside QuickJS.
+    return parseJson(text) ?? context.undefined;
   });
   context.setProp(context.global, "load", load);
   load.dispose();
+
+  /** A host promise for the script to await: `work` settles it with a plain value or an error message. */
+  const defer = (work: () => Promise<{ value?: unknown; error?: string }>): QuickJSHandle => {
+    const deferred = context.newPromise();
+    pending.add(deferred);
+    const settle = (r: { value?: unknown; error?: string }): void => {
+      pending.delete(deferred);
+      if (!deferred.alive || !context.alive) return;
+      if (r.error !== undefined) {
+        const error = context.newError(r.error);
+        deferred.reject(error);
+        error.dispose();
+      } else {
+        const value = r.value !== undefined ? toH(r.value) : context.newString("");
+        deferred.resolve(value);
+        value.dispose();
+      }
+    };
+    work().then(settle, (err) => settle({ error: err instanceof Error ? err.message : String(err) }));
+    // A settled host promise resumes whatever in the script awaited it.
+    deferred.settled.then(() => {
+      if (runtime.alive) runtime.executePendingJobs();
+    });
+    return deferred.handle;
+  };
 
   const tools = context.newObject();
   for (const tool of o.tools()) {
     if (EXCLUDED.has(tool.definition.name)) continue;
     const fn = context.newFunction(tool.definition.name, (...handles) => {
-      const deferred = context.newPromise();
-      pending.add(deferred);
       const first = handles[0];
       let callArgs: Record<string, unknown> = {};
       if (first) {
         try {
           const dumped = context.dump(first);
           if (dumped && typeof dumped === "object" && !Array.isArray(dumped)) callArgs = dumped as Record<string, unknown>;
-          // A bare string is the tool's one required text argument: tools.read("a.ts"), tools.glob("**/*.md").
-          else if (typeof dumped === "string" && mainArg(tool)) callArgs = { [mainArg(tool)!]: dumped };
+          // A bare string is the tool's one required text argument: tools.read("a.ts"), tools.glob("**/*.md"), or tools.grep("pat", { output_mode: "content" }).
+          else if (typeof dumped === "string" && mainArg(tool)) {
+            const extra = handles[1] ? context.dump(handles[1]) : undefined;
+            const rest = extra && typeof extra === "object" && !Array.isArray(extra) ? (extra as Record<string, unknown>) : {};
+            callArgs = { ...rest, [mainArg(tool)!]: dumped };
+          }
         } catch {
           // Anything else reaches the tool as {}; its own validation reports the shape.
         }
       }
-      const settle = (r: { text: string; isError: boolean; data?: unknown }): void => {
-        pending.delete(deferred);
-        if (!deferred.alive || !context.alive) return;
-        if (r.isError) {
-          const error = context.newError(r.text);
-          deferred.reject(error);
-          error.dispose();
-        } else {
-          const value = r.data !== undefined ? toHandle(context, r.data) : context.newString(r.text);
-          deferred.resolve(value);
-          value.dispose();
-        }
-      };
-      o.broker(tool.definition.name, callArgs, parentId, signal).then(settle, (err) => settle({ text: err instanceof Error ? err.message : String(err), isError: true }));
-      // A settled host promise resumes whatever in the script awaited it.
-      deferred.settled.then(() => {
-        if (runtime.alive) runtime.executePendingJobs();
+      return defer(async () => {
+        const r = await o.broker(tool.definition.name, callArgs, parentId, signal);
+        // Errors throw in the script (wrap a call that may fail in try/catch).
+        if (r.isError) return { error: r.text };
+        return r.data !== undefined ? { value: r.data } : { value: r.text };
       });
-      return deferred.handle;
     });
     context.setProp(tools, tool.definition.name, fn);
     fn.dispose();
   }
+  // tools.readMany(paths, opts?): read every path through the same broker (rows and read-tracking like one read
+  // each), resolving to { path, content? | entries? | error? }[] — one missing or binary file doesn't fail the batch.
+  const readMany = context.newFunction("readMany", (pathsHandle, optsHandle) => {
+    let paths: unknown;
+    try {
+      paths = pathsHandle ? context.dump(pathsHandle) : undefined;
+    } catch {
+      paths = undefined;
+    }
+    let opts: Record<string, unknown> = {};
+    try {
+      const dumped = optsHandle ? context.dump(optsHandle) : undefined;
+      if (dumped && typeof dumped === "object" && !Array.isArray(dumped)) opts = dumped as Record<string, unknown>;
+    } catch {
+      // Ignore a bad opts: read's own defaults apply.
+    }
+    if (!Array.isArray(paths) || paths.some((p) => typeof p !== "string")) return fail("tools.readMany(paths, opts?): paths must be an array of strings.");
+    const list = paths as string[];
+    return defer(async () => {
+      const results = await Promise.all(
+        list.map(async (path) => {
+          try {
+            const r = await o.broker("read", { ...opts, path }, parentId, signal);
+            if (r.isError) return { path, error: r.text };
+            if (Array.isArray(r.data)) return { path, entries: r.data };
+            return { path, content: typeof r.data === "string" ? r.data : r.text };
+          } catch (err) {
+            return { path, error: err instanceof Error ? err.message : String(err) };
+          }
+        }),
+      );
+      return { value: results };
+    });
+  });
+  context.setProp(tools, "readMany", readMany);
+  context.setProp(tools, "read_many", readMany);
+  readMany.dispose();
   context.setProp(context.global, "tools", tools);
   tools.dispose();
+
+  // Pure string path helpers (POSIX semantics; no filesystem access).
+  const pathResult = context.evalCode(PATH_SNIPPET, "path.js");
+  if (isFail(pathResult)) pathResult.error.dispose();
+  else pathResult.value.dispose();
+
+  return () => {
+    if (jsonParse.alive) jsonParse.dispose();
+  };
 }
 
-/** Build a QuickJS value from a plain JSON one. */
-function toHandle(context: QuickJSContext, value: unknown): QuickJSHandle {
-  if (value === null) return context.null;
+/** Build a QuickJS value from a plain JSON one; arrays and objects cross once via the context's JSON.parse when given. */
+function toHandle(context: QuickJSContext, value: unknown, parseJson?: (text: string) => QuickJSHandle | null): QuickJSHandle {
+  if (value === null || value === undefined) return value === undefined ? context.undefined : context.null;
   if (typeof value === "string") return context.newString(value);
   if (typeof value === "number") return context.newNumber(value);
   if (typeof value === "boolean") return value ? context.true : context.false;
+  if (parseJson) {
+    try {
+      const parsed = parseJson(JSON.stringify(value));
+      if (parsed) return parsed;
+    } catch {
+      // Fall through to the recursive build.
+    }
+  }
   if (Array.isArray(value)) {
     const array = context.newArray();
     value.forEach((item, i) => {
-      const handle = toHandle(context, item);
+      const handle = toHandle(context, item, parseJson);
       context.setProp(array, i, handle);
       handle.dispose();
     });
@@ -311,18 +401,31 @@ function toHandle(context: QuickJSContext, value: unknown): QuickJSHandle {
   }
   const object = context.newObject();
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    const handle = toHandle(context, item);
+    const handle = toHandle(context, item, parseJson);
     context.setProp(object, key, handle);
     handle.dispose();
   }
   return object;
 }
 
-/** A thrown QuickJS value as text: an Error's message when it has one. */
+/** A thrown QuickJS value as text: an Error's message when it has one, prefixed with the script's own line number when the stack names one. */
 function errorText(context: QuickJSContext, handle: QuickJSHandle): string {
   const dumped = context.dump(handle);
-  if (dumped && typeof dumped === "object" && "message" in dumped) return String((dumped as { message: unknown }).message);
+  if (dumped && typeof dumped === "object" && "message" in dumped) {
+    const message = String((dumped as { message: unknown }).message);
+    const line = scriptLineOf((dumped as { stack?: unknown }).stack);
+    return line !== undefined ? `Line ${line}: ${message}` : message;
+  }
   return format(dumped);
+}
+
+/** The script's line number from the first script.js frame in a QuickJS stack (the async wrapper adds one line). */
+function scriptLineOf(stack: unknown): number | undefined {
+  if (typeof stack !== "string") return undefined;
+  const m = /script\.js:(\d+)/.exec(stack);
+  if (!m) return undefined;
+  const line = Number(m[1]) - 1;
+  return line >= 1 ? line : undefined;
 }
 
 /** The returned value: a string as itself, anything else as JSON. */
@@ -344,6 +447,64 @@ function json(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+/** The `path` global: pure string helpers with POSIX semantics, no filesystem access. */
+const PATH_SNIPPET = String.raw`
+globalThis.path = (() => {
+  const normalize = (p) => {
+    const s = String(p);
+    const abs = s.startsWith("/");
+    const parts = [];
+    for (const seg of s.split("/")) {
+      if (seg === "" || seg === ".") continue;
+      if (seg === "..") {
+        if (parts.length && parts[parts.length - 1] !== "..") parts.pop();
+        else if (!abs) parts.push("..");
+        continue;
+      }
+      parts.push(seg);
+    }
+    const joined = parts.join("/");
+    return abs ? "/" + joined : joined || ".";
+  };
+  const strip = (p) => {
+    const s = String(p);
+    let end = s.length;
+    while (end > 1 && s[end - 1] === "/") end--;
+    return s.slice(0, end);
+  };
+  return {
+    join: (...parts) => normalize(parts.filter((x) => typeof x === "string" && x !== "").join("/")),
+    normalize,
+    dirname: (p) => {
+      const s = strip(p);
+      const i = s.lastIndexOf("/");
+      return i < 0 ? "." : i === 0 ? "/" : s.slice(0, i);
+    },
+    basename: (p, ext) => {
+      const s = strip(p);
+      const b = s.slice(s.lastIndexOf("/") + 1);
+      return typeof ext === "string" && ext !== "" && b.endsWith(ext) ? b.slice(0, b.length - ext.length) : b;
+    },
+    extname: (p) => {
+      const s = String(p);
+      const b = s.slice(s.lastIndexOf("/") + 1);
+      const i = b.lastIndexOf(".");
+      return i > 0 ? b.slice(i) : "";
+    },
+  };
+})();
+`;
+
+/** QuickJS says only "not a function" for tools.shell(); name the tools a script has, since models try tools.bash, tools.ls and tools.cat. */
+function explain(message: string, o: CodeToolOptions): string {
+  if (/not defined|Cannot find|import|module/i.test(message) && /require|import|module|fs/i.test(message)) {
+    return `${message}. The sandbox has no require, import, module or fs: read files with tools.read (a folder lists), search with tools.grep and tools.glob.`;
+  }
+  if (!/not a function/.test(message)) return message;
+  const names = o.tools().map((t) => t.definition.name).filter((n) => !EXCLUDED.has(n));
+  return `${message}. A script's tools are: ${names.join(", ")}. Read files with tools.read (a folder lists), search with tools.grep and tools.glob; edits, shell commands and tools that change state (such as design_set_direction) are not available in a script: call those directly as tool calls, not through run_code.`;
 }
 
 /** Console output before an error still reaches the model, with the error after it. */

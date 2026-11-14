@@ -1,4 +1,4 @@
-// Self-improving CubiQ (plan .ai/plans/self-improve.md). The learner scores
+// Self-improving CubiQ. The learner scores
 // every turn of an opted-in project (S1, zero tokens); a failed turn is frozen
 // as an eval case (S3) and drafted into a candidate lesson on the cheap
 // background model (S2), idle-only and under the project's daily token cap.

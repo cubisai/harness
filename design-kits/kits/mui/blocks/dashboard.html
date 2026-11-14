@@ -1,0 +1,48 @@
+<section data-ui="dashboard">
+  <aside data-ui="drawer" data-variant="permanent">
+    <div data-part="brand"><i data-ui="icon" data-name="local-shipping"></i><span data-ui="typography" data-variant="h6" data-part="brand-name">Fleetwise</span></div>
+    <hr data-ui="divider">
+    <ul data-ui="list">
+      <li data-part="item"><button data-part="button" aria-selected="true"><span data-part="icon"><i data-ui="icon" data-name="dashboard"></i></span><span data-part="text"><span data-part="primary">Dashboard</span></span></button></li>
+      <li data-part="item"><button data-part="button"><span data-part="icon"><i data-ui="icon" data-name="directions-car"></i></span><span data-part="text"><span data-part="primary">Vehicles</span></span></button></li>
+      <li data-part="item"><button data-part="button"><span data-part="icon"><i data-ui="icon" data-name="group"></i></span><span data-part="text"><span data-part="primary">Drivers</span></span></button></li>
+      <li data-part="item"><button data-part="button"><span data-part="icon"><i data-ui="icon" data-name="route"></i></span><span data-part="text"><span data-part="primary">Routes</span></span></button></li>
+      <li data-part="item"><button data-part="button"><span data-part="icon"><i data-ui="icon" data-name="build"></i></span><span data-part="text"><span data-part="primary">Service</span></span></button></li>
+    </ul>
+    <hr data-ui="divider">
+    <ul data-ui="list">
+      <li data-part="item"><button data-part="button"><span data-part="icon"><i data-ui="icon" data-name="bar-chart"></i></span><span data-part="text"><span data-part="primary">Reports</span></span></button></li>
+      <li data-part="item"><button data-part="button"><span data-part="icon"><i data-ui="icon" data-name="settings"></i></span><span data-part="text"><span data-part="primary">Settings</span></span></button></li>
+    </ul>
+  </aside>
+  <div data-part="main">
+    <header data-ui="app-bar" data-position="static"><div data-part="toolbar"><div data-part="title">Dashboard</div><button data-ui="icon-button" data-color="inherit" aria-label="Search"><i data-ui="icon" data-name="search"></i></button><button data-ui="icon-button" data-color="inherit" aria-label="Alerts"><span data-ui="badge" data-color="error"><i data-ui="icon" data-name="notifications"></i><span data-part="badge">3</span></span></button></div></header>
+    <div data-part="body">
+      <div data-part="stats">
+        <div data-ui="card"><div data-part="content"><div data-ui="typography" data-variant="body2" data-color="text-secondary" data-gutter-bottom="true">Vehicles on route</div><div data-part="stat-row"><span data-ui="typography" data-variant="h4">42</span><span data-ui="chip" data-size="small" data-color="success" data-variant="outlined"><span data-part="label">+6%</span></span></div></div></div>
+        <div data-ui="card"><div data-part="content"><div data-ui="typography" data-variant="body2" data-color="text-secondary" data-gutter-bottom="true">On-time stops</div><div data-part="stat-row"><span data-ui="typography" data-variant="h4">96.4%</span><span data-ui="chip" data-size="small" data-color="success" data-variant="outlined"><span data-part="label">+1.2%</span></span></div></div></div>
+        <div data-ui="card"><div data-part="content"><div data-ui="typography" data-variant="body2" data-color="text-secondary" data-gutter-bottom="true">Fuel per mile</div><div data-part="stat-row"><span data-ui="typography" data-variant="h4">£0.31</span><span data-ui="chip" data-size="small" data-color="error" data-variant="outlined"><span data-part="label">+2%</span></span></div></div></div>
+        <div data-ui="card"><div data-part="content"><div data-ui="typography" data-variant="body2" data-color="text-secondary" data-gutter-bottom="true">Service due</div><div data-part="stat-row"><span data-ui="typography" data-variant="h4">7</span><span data-ui="chip" data-size="small" data-variant="outlined"><span data-part="label">this week</span></span></div></div></div>
+      </div>
+      <div data-part="columns">
+        <div data-ui="card"><div data-part="content"><div data-ui="typography" data-variant="h6">Miles driven</div><div data-ui="typography" data-variant="body2" data-color="text-secondary">Last seven days, in thousands</div>
+          <div data-part="chart" role="img" aria-label="Miles per day, highest on Thursday"><div data-part="bar" style="--at:58"><span data-part="bar-label">Mon</span></div><div data-part="bar" style="--at:72"><span data-part="bar-label">Tue</span></div><div data-part="bar" style="--at:65"><span data-part="bar-label">Wed</span></div><div data-part="bar" style="--at:90"><span data-part="bar-label">Thu</span></div><div data-part="bar" style="--at:78"><span data-part="bar-label">Fri</span></div><div data-part="bar" style="--at:34"><span data-part="bar-label">Sat</span></div><div data-part="bar" style="--at:20"><span data-part="bar-label">Sun</span></div></div>
+        </div></div>
+        <div data-ui="card"><div data-part="content"><div data-ui="typography" data-variant="h6" data-gutter-bottom="true">Fleet status</div>
+          <div data-part="meter"><div data-part="meter-row"><span data-ui="typography" data-variant="body2">On route</span><span data-ui="typography" data-variant="body2" data-color="text-secondary">42 of 60</span></div><div data-ui="linear-progress" data-variant="determinate" role="progressbar" aria-valuenow="70" style="--value:70"></div></div>
+          <div data-part="meter"><div data-part="meter-row"><span data-ui="typography" data-variant="body2">At depot</span><span data-ui="typography" data-variant="body2" data-color="text-secondary">11 of 60</span></div><div data-ui="linear-progress" data-variant="determinate" data-color="info" role="progressbar" aria-valuenow="18" style="--value:18"></div></div>
+          <div data-part="meter"><div data-part="meter-row"><span data-ui="typography" data-variant="body2">In service</span><span data-ui="typography" data-variant="body2" data-color="text-secondary">7 of 60</span></div><div data-ui="linear-progress" data-variant="determinate" data-color="warning" role="progressbar" aria-valuenow="12" style="--value:12"></div></div>
+        </div></div>
+      </div>
+      <div data-ui="paper" style="overflow-x:auto"><table data-ui="table">
+        <thead><tr><th>Vehicle</th><th>Driver</th><th>Route</th><th>Status</th><th data-align="right">Miles today</th></tr></thead>
+        <tbody>
+          <tr><td>Van 12</td><td>Priya Shah</td><td>Northern</td><td><span data-ui="chip" data-size="small" data-color="success"><span data-part="label">On time</span></span></td><td data-align="right">159</td></tr>
+          <tr><td>Van 18</td><td>Tom Reed</td><td>Pennine</td><td><span data-ui="chip" data-size="small" data-color="warning"><span data-part="label">Delayed</span></span></td><td data-align="right">237</td></tr>
+          <tr><td>Truck 4</td><td>Ana Lopes</td><td>Coastal</td><td><span data-ui="chip" data-size="small" data-color="success"><span data-part="label">On time</span></span></td><td data-align="right">262</td></tr>
+          <tr><td>Van 2</td><td>Sam Okafor</td><td>Depot</td><td><span data-ui="chip" data-size="small"><span data-part="label">In service</span></span></td><td data-align="right">0</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+</section>

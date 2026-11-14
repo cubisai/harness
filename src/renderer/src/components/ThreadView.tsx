@@ -10,9 +10,12 @@ import { anchorDelta, anchorFor, collapseTarget, stillPinned, trimmedReserve, ty
 import { displayOrder } from "../event-order";
 import { type FileRef, parseFileRef } from "../fileref";
 import { emptyLive, liveReasoningMode, visibleItems } from "../live";
+import { isCommandSkill } from "../commands";
 import { linkUrls, Markdown } from "../markdown";
 import { LinkCards, LinkChip } from "./LinkChip";
 import { relativeToThread, useStore } from "../store";
+import { DesignTurnCard } from "../design/DesignTurnCard";
+import { designDirName } from "../../../shared/design";
 import { dockedPlan, todoProgress } from "../todo";
 import { DiffView, diffsOf } from "./DiffView";
 import { ExpertIntro } from "./experts/ExpertChip";
@@ -46,15 +49,20 @@ function LiveReasoning({ text, newest }: { text: string; newest: boolean }) {
 }
 const NO_QUEUE: { text: string; skills?: string[] }[] = [];
 
-/** The skills a message ran with, as chips before its text. */
+/** The skills a message ran with, as chips before its text: "/issue" for the skills a "/" command runs, "$name" for the rest. */
 function SkillChips({ names }: { names: string[] }) {
+  const skills = useStore((s) => s.skills);
   return (
     <>
-      {names.map((n) => (
-        <span key={n} className="skill-chip">
-          ${n}
-        </span>
-      ))}
+      {names.map((n) => {
+        const entry = skills.find((s) => s.name === n);
+        return (
+          <span key={n} className="skill-chip">
+            {entry && isCommandSkill(entry) ? "/" : "$"}
+            {n}
+          </span>
+        );
+      })}
     </>
   );
 }
@@ -533,6 +541,7 @@ function SegmentRow({ seg, results, children, running, threadId, last }: { seg: 
   if (seg.kind === "turn-end") {
     return (
       <>
+        <DesignTurn threadId={threadId} turnSeq={seg.stored.seq} last={last} />
         <FileCards files={seg.changes?.files ?? []} turnSeq={seg.stored.seq} />
         {seg.changes && <ChangesCard changes={seg.changes} />}
         <TurnSources urls={seg.sources} answer={seg.answer} />
@@ -578,6 +587,19 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   docx: "Word document", sheet: "Spreadsheet", pptx: "Presentation", code: "Code", text: "Text",
 };
 
+/** Whether a thread's design pages get the design turn card (design threads) instead of plain file cards. */
+function useDesignTurns(threadId: string | null): boolean {
+  return useStore((s) => {
+    if (!threadId) return false;
+    return Object.values(s.threads).some((list) => list.some((t) => t.id === threadId && t.kind === "design"));
+  });
+}
+
+/** A v2 design turn's result: what the page is built from and the versions it wrote. */
+function DesignTurn({ threadId, turnSeq, last }: { threadId: string; turnSeq: number; last: boolean }) {
+  return useDesignTurns(threadId) ? <DesignTurnCard threadId={threadId} turnSeq={turnSeq} latest={last} /> : null;
+}
+
 /**
  * A card for each previewable file the turn wrote (the last three); Preview shows it in the panel.
  * `files` are the turn's Edit paths; files it wrote by command come from the artifacts recorded at its turn-end.
@@ -590,7 +612,10 @@ function FileCards({ files, turnSeq }: { files: string[]; turnSeq: number }) {
   const recorded = useStore((s) => (threadId ? s.artifactFiles[threadId] : undefined));
   const toRel = (path: string) => (threadId ? relativeToThread({ threads, projects }, threadId, path) : path);
   const written = (recorded ?? []).filter((f) => f.versions.some((v) => v.turnSeq === turnSeq)).map((f) => f.path);
-  const unique = [...new Map([...files, ...written].map((f) => [toRel(f), f])).values()];
+  // A v2 design thread's pages have the design turn card.
+  const designTurns = useDesignTurns(threadId);
+  const designDir = threadId ? `${designDirName(threadId)}/` : "";
+  const unique = [...new Map([...files, ...written].map((f) => [toRel(f), f])).values()].filter((f) => !(designTurns && toRel(f).startsWith(designDir) && toRel(f).endsWith(".html")));
   const shown = withoutExportSources(unique.filter(isPreviewable)).slice(-3);
   if (!shown.length) return null;
   return (
@@ -633,6 +658,59 @@ function ChangesCard({ changes }: { changes: TurnChanges }) {
       <span className="grow" />
       <button className="button" onClick={() => useStore.getState().showInspector("changes")}>
         Review
+      </button>
+    </div>
+  );
+}
+
+/** Offers the user already dismissed, as "thread:seq", kept across restarts (newest 200). */
+const DISMISSED_OFFERS = "cubiq.dismissedIssueOffers";
+
+function dismissedOffers(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(DISMISSED_OFFERS) ?? "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * "File issue? <title>" under a reply that named a problem it didn't fix (the app's
+ * reply check). File sends the user's yes, so the agent files it; Dismiss hides it.
+ * Gone once a later message is sent: the offer was about that reply.
+ */
+function IssueOfferCard({ stored, offer, threadId }: { stored: StoredEvent; offer: Extract<ThreadEvent, { kind: "issue-offer" }>; threadId: string }) {
+  const key = `${threadId}:${stored.seq}`;
+  const [dismissed, setDismissed] = useState(() => dismissedOffers().includes(key));
+  const answered = useStore((s) => (s.events[threadId] ?? []).some((x) => x.event.kind === "user" && x.seq > stored.seq));
+  const running = useStore((s) => Boolean(s.running[threadId]));
+  if (dismissed || answered) return null;
+  const dismiss = () => {
+    try {
+      localStorage.setItem(DISMISSED_OFFERS, JSON.stringify([...dismissedOffers(), key].slice(-200)));
+    } catch {
+      // Hidden for this session anyway.
+    }
+    setDismissed(true);
+  };
+  const file = () => {
+    const text = [`Yes, file an issue (${offer.type}): ${offer.title}`, offer.summary].filter(Boolean).join("\n\n");
+    const s = useStore.getState();
+    if (running) s.enqueue(threadId, text, []);
+    else void s.send(text, [], threadId);
+  };
+  return (
+    <div className="changes-card issue-offer" title={offer.summary || offer.title}>
+      <span className="changes-count">File issue?</span>
+      <span className="issue-offer-title">{offer.title}</span>
+      <span className="issue-offer-type">{offer.type}</span>
+      <span className="grow" />
+      <button className="button ghost" onClick={dismiss}>
+        Dismiss
+      </button>
+      <button className="button primary" onClick={file}>
+        File
       </button>
     </div>
   );
@@ -777,6 +855,8 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
       return <div className="error-card">{e.message}</div>;
     case "notice":
       return <div className="notice">{e.text}</div>;
+    case "issue-offer":
+      return threadId ? <IssueOfferCard stored={stored} offer={e} threadId={threadId} /> : null;
     case "plan": {
       // The live list is in the todo dock; history keeps one quiet line that opens to the list.
       const { done, total } = todoProgress(e.entries);

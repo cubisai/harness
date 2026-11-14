@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { selectorFor } from "../src/main/browser/picker";
-import { bridgeScript, describeElement, editableText, resolveTarget, snapTarget, type SelectionTarget } from "../src/main/design/bridge";
+import { bridgeScript, describeElement, editableText, resolveTarget, snapTarget, type SelectionTarget, restyledHref } from "../src/main/design/bridge";
 
 /** A minimal fake element: only the DOM surface the bridge helpers touch. */
 interface Fake {
@@ -175,5 +175,16 @@ describe("editableText", () => {
 describe("bridgeScript", () => {
   it("serializes with the page-side helpers to a parseable script body", () => {
     expect(() => new Function(bridgeScript(selectorFor))).not.toThrow();
+  });
+});
+
+describe("restyledHref", () => {
+  it("swaps the cache-buster on every theme switch, not only the first", () => {
+    expect(restyledHref("system/tokens.css", 1)).toBe("system/tokens.css?r=1");
+    // The second switch: what the first one left must still load (it used to become `tokens.css&r=2`, a 404).
+    expect(restyledHref("system/tokens.css?r=1", 2)).toBe("system/tokens.css?r=2");
+    expect(restyledHref("a.css?v=3", 2)).toBe("a.css?v=3&r=2");
+    expect(restyledHref("a.css?v=3&r=1", 2)).toBe("a.css?v=3&r=2");
+    expect(restyledHref("a.css?r=1&v=3", 2)).toBe("a.css?v=3&r=2");
   });
 });

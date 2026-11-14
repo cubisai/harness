@@ -109,7 +109,8 @@
   font-size: 12.5px;
   text-align: left;
 }
-.artifact-menu button:hover { background: var(--bg-hover); }
+.artifact-menu button:hover:not(:disabled) { background: var(--bg-hover); }
+.artifact-menu button:disabled { opacity: 0.4; cursor: default; }
 .artifact-menu button.on { background: var(--bg-selected); }
 
 .artifact-menu-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

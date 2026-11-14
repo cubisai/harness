@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import type { SkillEntry } from "../../../shared/types";
+import { isCommandSkill } from "../commands";
 import { useStore } from "../store";
 
 /**
@@ -9,7 +10,7 @@ import { useStore } from "../store";
 export function filterSkills(skills: SkillEntry[], query: string, design: boolean): SkillEntry[] {
   const q = query.trim().toLowerCase();
   return skills
-    .filter((s) => s.userInvocable !== false)
+    .filter((s) => s.userInvocable !== false && !isCommandSkill(s))
     .filter((s) => design || s.mode !== "design")
     .filter((s) => !q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q))
     .sort((a, b) => Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)));

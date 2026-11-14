@@ -216,6 +216,8 @@ export class SettingsStore {
     if (typeof patch.sidebarGroupByProject === "boolean") next.sidebarGroupByProject = patch.sidebarGroupByProject;
     if (typeof patch.uiBlocks === "boolean") next.uiBlocks = patch.uiBlocks;
     if (typeof patch.linkPreviews === "boolean") next.linkPreviews = patch.linkPreviews;
+    if (typeof patch.issueOffers === "boolean") next.issueOffers = patch.issueOffers;
+    if (typeof patch.designReferencesAsked === "boolean") next.designReferencesAsked = patch.designReferencesAsked;
     if (patch.splash && SPLASH_IDS.includes(patch.splash)) next.splash = patch.splash;
     // The Antigravity opt-in: the acknowledgement is stamped here, never trusted from
     // the caller, and the flag turns on only with a current one.

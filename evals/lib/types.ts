@@ -1,5 +1,5 @@
 // The eval contract: task files (evals/tasks/*.json), graders and stored
-// results. Plan: .ai/plans/eval-framework.md.
+// results.
 
 import type { McpServerEntry } from "../../src/shared/types";
 import type { HarnessTool } from "../../src/main/agents/types";

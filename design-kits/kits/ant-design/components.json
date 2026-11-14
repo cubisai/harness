@@ -1,0 +1,2743 @@
+{
+  "kitId": "ant-design",
+  "name": "Ant Design",
+  "version": "1.0.0",
+  "contractVersion": "1.0",
+  "package": "antd",
+  "compat": {
+    "themes": [
+      "geek-blue",
+      "purple",
+      "magenta",
+      "red",
+      "volcano",
+      "cyan",
+      "green"
+    ],
+    "migratesFrom": []
+  },
+  "components": [
+    {
+      "name": "Button",
+      "ui": "button",
+      "category": "General",
+      "description": "The action control: 32px, 6px radius, one primary per view. Types primary, default, dashed, text and link.",
+      "props": [
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "default",
+            "primary",
+            "dashed",
+            "text",
+            "link"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "auto",
+            "solid",
+            "outlined",
+            "dashed",
+            "filled",
+            "text",
+            "link"
+          ],
+          "default": "auto"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "default",
+            "primary",
+            "danger",
+            "magenta",
+            "purple",
+            "cyan"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "shape",
+          "label": "Shape",
+          "type": "choice",
+          "options": [
+            "default",
+            "circle",
+            "round"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "danger",
+          "label": "Danger",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "ghost",
+          "label": "Ghost",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "block",
+          "label": "Block",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "loading",
+          "label": "Loading",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"middle\"><div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\" data-align=\"center\"><button data-ui=\"button\" data-type=\"primary\">Primary</button><button data-ui=\"button\">Default</button><button data-ui=\"button\" data-type=\"dashed\">Dashed</button><button data-ui=\"button\" data-type=\"text\">Text</button><button data-ui=\"button\" data-type=\"link\">Link</button></div>\n<div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\" data-align=\"center\"><button data-ui=\"button\" data-type=\"primary\" data-danger=\"true\">Delete</button><button data-ui=\"button\" data-danger=\"true\">Void</button><button data-ui=\"button\" data-type=\"primary\" disabled>Disabled</button><button data-ui=\"button\" disabled>Disabled</button></div>\n<div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\" data-align=\"center\"><button data-ui=\"button\" data-type=\"primary\" data-size=\"large\">Large</button><button data-ui=\"button\" data-type=\"primary\">Middle</button><button data-ui=\"button\" data-type=\"primary\" data-size=\"small\">Small</button></div>\n<div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\" data-align=\"center\"><button data-ui=\"button\" data-type=\"primary\" data-shape=\"circle\" aria-label=\"Search\"><i data-ui=\"icon\" data-name=\"search\"></i></button><button data-ui=\"button\" data-shape=\"circle\">A</button><button data-ui=\"button\" data-type=\"primary\"><i data-ui=\"icon\" data-name=\"download\"></i>Download</button><button data-ui=\"button\" data-shape=\"round\">Round</button><button data-ui=\"button\" aria-label=\"Search\"><i data-ui=\"icon\" data-name=\"search\"></i></button><button data-ui=\"button\" data-type=\"primary\" data-loading=\"true\"><i data-ui=\"icon\" data-name=\"loading\"></i>Saving</button></div>\n<div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\" data-align=\"center\"><button data-ui=\"button\" data-variant=\"filled\" data-color=\"primary\">Filled</button><button data-ui=\"button\" data-variant=\"solid\" data-color=\"purple\">Solid</button><button data-ui=\"button\" data-variant=\"outlined\" data-color=\"cyan\">Outlined</button><button data-ui=\"button\" data-variant=\"text\" data-color=\"magenta\">Text</button></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Button"
+      }
+    },
+    {
+      "name": "FloatButton",
+      "ui": "float-button",
+      "category": "General",
+      "description": "A floating action at a corner of the page. It's fixed by default; data-static keeps it in the flow.",
+      "props": [
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "default",
+            "primary"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "shape",
+          "label": "Shape",
+          "type": "choice",
+          "options": [
+            "circle",
+            "square"
+          ],
+          "default": "circle"
+        },
+        {
+          "name": "static",
+          "label": "Static",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"middle\" data-wrap=\"true\" data-align=\"center\"><button data-ui=\"float-button\" data-static=\"true\" aria-label=\"Help\"><i data-ui=\"icon\" data-name=\"question-circle-outlined\"></i></button><button data-ui=\"float-button\" data-static=\"true\" data-type=\"primary\" aria-label=\"New invoice\"><i data-ui=\"icon\" data-name=\"plus\"></i></button><button data-ui=\"float-button\" data-static=\"true\" data-shape=\"square\" aria-label=\"Comments\"><i data-ui=\"icon\" data-name=\"comment\"></i><span data-part=\"description\">Help</span></button>\n<div data-ui=\"float-button-group\" data-static=\"true\"><button data-ui=\"float-button\" data-static=\"true\" data-shape=\"square\" aria-label=\"Sync\"><i data-ui=\"icon\" data-name=\"sync\"></i></button><button data-ui=\"float-button\" data-static=\"true\" data-shape=\"square\" aria-label=\"Top\"><i data-ui=\"icon\" data-name=\"vertical-align-top\"></i></button></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "FloatButton"
+      }
+    },
+    {
+      "name": "FloatButton Group",
+      "ui": "float-button-group",
+      "category": "General",
+      "description": "Float buttons joined into one stack.",
+      "props": [
+        {
+          "name": "static",
+          "label": "Static",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"float-button-group\" data-static=\"true\"><button data-ui=\"float-button\" data-static=\"true\" data-shape=\"square\" aria-label=\"Sync\"><i data-ui=\"icon\" data-name=\"sync\"></i></button><button data-ui=\"float-button\" data-static=\"true\" data-shape=\"square\" aria-label=\"Comments\"><i data-ui=\"icon\" data-name=\"comment\"></i></button></div>",
+      "import": {
+        "package": "antd",
+        "name": "FloatButton.Group"
+      }
+    },
+    {
+      "name": "Icon",
+      "ui": "icon",
+      "category": "General",
+      "description": "A line or solid icon, 1em wide, in the current colour. Set data-name: search, close, plus, edit, delete, check-circle and more (see DESIGN.md).",
+      "props": [
+        {
+          "name": "name",
+          "label": "Name",
+          "type": "text"
+        },
+        {
+          "name": "spin",
+          "label": "Spin",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "inherit",
+            "primary",
+            "success",
+            "warning",
+            "danger"
+          ],
+          "default": "inherit"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"middle\" data-wrap=\"true\" data-align=\"center\" style=\"font-size:20px\"><i data-ui=\"icon\" data-name=\"home\"></i><i data-ui=\"icon\" data-name=\"setting\"></i><i data-ui=\"icon\" data-name=\"mail\"></i><i data-ui=\"icon\" data-name=\"bell\"></i><i data-ui=\"icon\" data-name=\"search\"></i><i data-ui=\"icon\" data-name=\"user\"></i><i data-ui=\"icon\" data-name=\"file-text\"></i><i data-ui=\"icon\" data-name=\"bank\"></i><i data-ui=\"icon\" data-name=\"wallet\"></i><i data-ui=\"icon\" data-name=\"check-circle\" data-color=\"success\"></i><i data-ui=\"icon\" data-name=\"close-circle\" data-color=\"danger\"></i><i data-ui=\"icon\" data-name=\"exclamation-circle\" data-color=\"warning\"></i><i data-ui=\"icon\" data-name=\"info-circle\" data-color=\"primary\"></i><i data-ui=\"icon\" data-name=\"loading\" data-spin=\"true\"></i></div>",
+      "import": {
+        "package": "@ant-design/icons",
+        "name": "Icon"
+      }
+    },
+    {
+      "name": "Typography",
+      "ui": "typography",
+      "category": "General",
+      "description": "Headings 1 to 5, body text and links with Ant's scale. Inside it: mark, code, kbd, del, u and strong.",
+      "props": [
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "text",
+            "title",
+            "paragraph",
+            "link"
+          ],
+          "default": "text"
+        },
+        {
+          "name": "level",
+          "label": "Level",
+          "type": "choice",
+          "options": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5"
+          ],
+          "default": "1"
+        },
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "default",
+            "secondary",
+            "success",
+            "warning",
+            "danger",
+            "disabled"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "strong",
+          "label": "Strong",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "ellipsis",
+          "label": "Ellipsis",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<article data-ui=\"typography\">\n<h1 data-ui=\"typography\" data-variant=\"title\" data-level=\"1\">h1. Ledgerline</h1><h2 data-ui=\"typography\" data-variant=\"title\" data-level=\"2\">h2. Accounts payable</h2><h3 data-ui=\"typography\" data-variant=\"title\" data-level=\"3\">h3. Approvals</h3><h4 data-ui=\"typography\" data-variant=\"title\" data-level=\"4\">h4. This week</h4><h5 data-ui=\"typography\" data-variant=\"title\" data-level=\"5\">h5. Harbor Supply</h5>\n<p data-ui=\"typography\" data-variant=\"paragraph\">Every invoice is matched to its purchase order before it reaches an approver. Use <code>net-30</code> for standard terms, press <kbd>Enter</kbd> to approve, and <mark>check the amount</mark> when a <a data-ui=\"typography\" data-variant=\"link\" href=\"#\">vendor</a> changes bank details.</p>\n<div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\"><span data-ui=\"typography\">Default</span><span data-ui=\"typography\" data-type=\"secondary\">Secondary</span><span data-ui=\"typography\" data-type=\"success\">Success</span><span data-ui=\"typography\" data-type=\"warning\">Warning</span><span data-ui=\"typography\" data-type=\"danger\">Danger</span><span data-ui=\"typography\" data-type=\"disabled\">Disabled</span><span data-ui=\"typography\" data-strong=\"true\">Strong</span><span data-ui=\"typography\"><del>Deleted</del></span><span data-ui=\"typography\"><u>Underline</u></span></div>\n</article>",
+      "import": {
+        "package": "antd",
+        "name": "Typography"
+      }
+    },
+    {
+      "name": "Divider",
+      "ui": "divider",
+      "category": "Layout",
+      "description": "A hairline between sections, with optional text. 24px of margin above and below.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        },
+        {
+          "name": "title-placement",
+          "label": "Title Placement",
+          "type": "choice",
+          "options": [
+            "center",
+            "start",
+            "end"
+          ],
+          "default": "center"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "solid",
+            "dashed",
+            "dotted"
+          ],
+          "default": "solid"
+        },
+        {
+          "name": "plain",
+          "label": "Plain",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "large",
+            "middle",
+            "small"
+          ],
+          "default": "large"
+        }
+      ],
+      "snippet": "<div>\n<p data-ui=\"typography\" data-variant=\"paragraph\">Invoices received this month.</p><hr data-ui=\"divider\">\n<p data-ui=\"typography\" data-variant=\"paragraph\">Payments sent this month.</p><div data-ui=\"divider\" role=\"separator\"><span data-part=\"text\">Centre</span></div>\n<div data-ui=\"divider\" data-title-placement=\"start\" data-plain=\"true\" role=\"separator\"><span data-part=\"text\">Start, plain</span></div><hr data-ui=\"divider\" data-variant=\"dashed\">\n<span data-ui=\"typography\">Draft</span><hr data-ui=\"divider\" data-orientation=\"vertical\"><a data-ui=\"typography\" data-variant=\"link\" href=\"#\">Sent</a><hr data-ui=\"divider\" data-orientation=\"vertical\"><a data-ui=\"typography\" data-variant=\"link\" href=\"#\">Paid</a>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Divider"
+      }
+    },
+    {
+      "name": "Stack",
+      "ui": "stack",
+      "category": "Layout",
+      "description": "A column or row with a set gap, for page layout. The same as Flex, with the gap names every kit shares.",
+      "props": [
+        {
+          "name": "direction",
+          "label": "Direction",
+          "type": "choice",
+          "options": [
+            "column",
+            "row"
+          ],
+          "default": "column"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "md",
+            "none",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "stretch",
+            "start",
+            "center",
+            "end"
+          ],
+          "default": "stretch"
+        },
+        {
+          "name": "justify",
+          "label": "Justify",
+          "type": "choice",
+          "options": [
+            "start",
+            "center",
+            "end",
+            "between"
+          ],
+          "default": "start"
+        },
+        {
+          "name": "wrap",
+          "label": "Wrap",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"stack\" data-gap=\"sm\"><h5 data-ui=\"typography\" data-variant=\"title\" data-level=\"5\">Invoice 4021</h5><span data-ui=\"typography\" data-type=\"secondary\">Due 18 November, net-30.</span><div data-ui=\"stack\" data-direction=\"row\" data-gap=\"sm\"><button data-ui=\"button\" data-type=\"primary\">Approve</button><button data-ui=\"button\">Hold</button></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Flex"
+      }
+    },
+    {
+      "name": "Flex",
+      "ui": "flex",
+      "category": "Layout",
+      "description": "A flexbox with gaps of small (8px), middle (16px) or large (24px).",
+      "props": [
+        {
+          "name": "vertical",
+          "label": "Vertical",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "none",
+            "small",
+            "middle",
+            "large"
+          ],
+          "default": "none"
+        },
+        {
+          "name": "wrap",
+          "label": "Wrap",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "justify",
+          "label": "Justify",
+          "type": "choice",
+          "options": [
+            "start",
+            "center",
+            "end",
+            "between",
+            "around",
+            "evenly"
+          ],
+          "default": "start"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "stretch",
+            "start",
+            "center",
+            "end"
+          ],
+          "default": "stretch"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"middle\"><div data-ui=\"flex\" data-justify=\"between\" data-align=\"center\"><span data-ui=\"typography\" data-strong=\"true\">Harbor Supply</span><span data-ui=\"tag\" data-color=\"success\">Paid</span></div><div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\"><button data-ui=\"button\" data-type=\"primary\">Pay</button><button data-ui=\"button\">Schedule</button><button data-ui=\"button\" data-type=\"text\">Skip</button></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Flex"
+      }
+    },
+    {
+      "name": "Grid",
+      "ui": "grid",
+      "category": "Layout",
+      "description": "The 24-column grid: give children data-span, or set data-columns for equal columns. Collapses on narrow screens.",
+      "props": [
+        {
+          "name": "columns",
+          "label": "Columns",
+          "type": "choice",
+          "options": [
+            "24",
+            "1",
+            "2",
+            "3",
+            "4",
+            "6",
+            "12",
+            "auto"
+          ],
+          "default": "24"
+        },
+        {
+          "name": "gap",
+          "label": "Gap",
+          "type": "choice",
+          "options": [
+            "md",
+            "none",
+            "xs",
+            "sm",
+            "lg",
+            "xl"
+          ],
+          "default": "md"
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "stretch",
+            "start",
+            "center",
+            "end"
+          ],
+          "default": "stretch"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"small\">\n<div data-ui=\"grid\" data-gap=\"sm\"><div data-part=\"col\" data-span=\"12\">col-12</div><div data-part=\"col\" data-span=\"12\">col-12</div></div>\n<div data-ui=\"grid\" data-gap=\"sm\"><div data-part=\"col\" data-span=\"8\">col-8</div><div data-part=\"col\" data-span=\"8\">col-8</div><div data-part=\"col\" data-span=\"8\">col-8</div></div>\n<div data-ui=\"grid\" data-gap=\"sm\"><div data-part=\"col\" data-span=\"6\">col-6</div><div data-part=\"col\" data-span=\"18\">col-18</div></div>\n<div data-ui=\"grid\" data-columns=\"4\" data-gap=\"sm\"><div data-part=\"col\">1</div><div data-part=\"col\">2</div><div data-part=\"col\">3</div><div data-part=\"col\">4</div></div>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Row"
+      }
+    },
+    {
+      "name": "Layout",
+      "ui": "layout",
+      "category": "Layout",
+      "description": "A page frame: 64px header, 200px sider, content and footer on the layout colour.",
+      "props": [
+        {
+          "name": "has-sider",
+          "label": "Has Sider",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"layout\" style=\"min-block-size:280px\">\n<header data-part=\"header\"><span data-part=\"logo\">Ledgerline</span><nav data-ui=\"menu\" data-mode=\"horizontal\" data-theme=\"dark\" style=\"flex:1\"><a data-part=\"item\" href=\"#\" aria-current=\"page\">Invoices</a><a data-part=\"item\" href=\"#\">Vendors</a><a data-part=\"item\" href=\"#\">Reports</a></nav></header>\n<div data-ui=\"layout\" data-has-sider=\"true\">\n<aside data-part=\"sider\" data-theme=\"light\"><nav data-ui=\"menu\" data-mode=\"inline\"><a data-part=\"item\" href=\"#\" aria-current=\"page\"><i data-ui=\"icon\" data-name=\"inbox\" data-part=\"icon\"></i>Inbox</a><a data-part=\"item\" href=\"#\"><i data-ui=\"icon\" data-name=\"audit\" data-part=\"icon\"></i>To approve</a><a data-part=\"item\" href=\"#\"><i data-ui=\"icon\" data-name=\"bank\" data-part=\"icon\"></i>Payments</a></nav></aside>\n<div data-ui=\"layout\"><main data-part=\"content\"><div data-ui=\"card\"><div data-part=\"body\">Content</div></div></main><footer data-part=\"footer\">Ledgerline, 2026</footer></div>\n</div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Layout"
+      }
+    },
+    {
+      "name": "Masonry",
+      "ui": "masonry",
+      "category": "Layout",
+      "description": "Columns of uneven tiles, packed from the top.",
+      "props": [
+        {
+          "name": "columns",
+          "label": "Columns",
+          "type": "choice",
+          "options": [
+            "3",
+            "2",
+            "4"
+          ],
+          "default": "3"
+        },
+        {
+          "name": "gutter",
+          "label": "Gutter",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        }
+      ],
+      "snippet": "<div data-ui=\"masonry\" data-gutter=\"small\"><div data-ui=\"card\" style=\"block-size:72px\"><div data-part=\"body\" data-size=\"small\">1</div></div><div data-ui=\"card\" style=\"block-size:120px\"><div data-part=\"body\" data-size=\"small\">2</div></div><div data-ui=\"card\" style=\"block-size:56px\"><div data-part=\"body\" data-size=\"small\">3</div></div><div data-ui=\"card\" style=\"block-size:96px\"><div data-part=\"body\" data-size=\"small\">4</div></div><div data-ui=\"card\" style=\"block-size:64px\"><div data-part=\"body\" data-size=\"small\">5</div></div><div data-ui=\"card\" style=\"block-size:110px\"><div data-part=\"body\" data-size=\"small\">6</div></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Masonry"
+      }
+    },
+    {
+      "name": "Space",
+      "ui": "space",
+      "category": "Layout",
+      "description": "Even gaps between inline items, or a compact group whose borders join. An addon is a joined label.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "small",
+            "middle",
+            "large"
+          ],
+          "default": "small"
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        },
+        {
+          "name": "wrap",
+          "label": "Wrap",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "compact",
+          "label": "Compact",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "align",
+          "label": "Align",
+          "type": "choice",
+          "options": [
+            "center",
+            "start",
+            "end",
+            "baseline"
+          ],
+          "default": "center"
+        }
+      ],
+      "snippet": "<div data-ui=\"space\" data-orientation=\"vertical\" data-size=\"middle\">\n<div data-ui=\"space\"><button data-ui=\"button\" data-type=\"primary\">Approve</button><button data-ui=\"button\">Hold</button><button data-ui=\"button\" data-type=\"dashed\">Add note</button></div>\n<div data-ui=\"space\" data-compact=\"true\"><span data-part=\"addon\">Reference</span><input data-ui=\"input\" value=\"PO-118\" aria-label=\"Reference\"><button data-ui=\"button\" data-type=\"primary\">Save</button></div>\n<div data-ui=\"space\" data-compact=\"true\"><button data-ui=\"button\">Bold</button><button data-ui=\"button\">Italic</button><button data-ui=\"button\">Underline</button></div>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Space"
+      }
+    },
+    {
+      "name": "Splitter",
+      "ui": "splitter",
+      "category": "Layout",
+      "description": "Panels divided by a bar you can drag.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"splitter\" style=\"block-size:160px;box-shadow:0 0 8px var(--color-fill-secondary)\"><div data-part=\"panel\" style=\"flex-basis:40%\"><div data-ui=\"flex\" data-justify=\"center\" data-align=\"center\" style=\"block-size:100%\"><span data-ui=\"typography\" data-type=\"secondary\">Invoices</span></div></div><div data-part=\"bar\" role=\"separator\" aria-orientation=\"vertical\" tabindex=\"0\"></div><div data-part=\"panel\"><div data-ui=\"flex\" data-justify=\"center\" data-align=\"center\" style=\"block-size:100%\"><span data-ui=\"typography\" data-type=\"secondary\">Details</span></div></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Splitter"
+      }
+    },
+    {
+      "name": "Anchor",
+      "ui": "anchor",
+      "category": "Navigation",
+      "description": "Jump links for a long page, with an ink line on the active one.",
+      "props": [
+        {
+          "name": "direction",
+          "label": "Direction",
+          "type": "choice",
+          "options": [
+            "vertical",
+            "horizontal"
+          ],
+          "default": "vertical"
+        }
+      ],
+      "snippet": "<nav data-ui=\"anchor\" aria-label=\"On this page\"><a data-part=\"link\" href=\"#m-anchor\" aria-current=\"location\">Overview</a><a data-part=\"link\" href=\"#m-anchor\">Line items</a><div data-part=\"group\"><a data-part=\"link\" href=\"#m-anchor\">Tax</a><a data-part=\"link\" href=\"#m-anchor\">Discounts</a></div><a data-part=\"link\" href=\"#m-anchor\">History</a></nav>",
+      "import": {
+        "package": "antd",
+        "name": "Anchor"
+      }
+    },
+    {
+      "name": "Breadcrumb",
+      "ui": "breadcrumb",
+      "category": "Navigation",
+      "description": "The path to the current page. Links go dark on hover; the last item is the page.",
+      "props": [],
+      "snippet": "<nav data-ui=\"breadcrumb\" aria-label=\"Breadcrumb\"><ol data-part=\"list\"><li><a data-part=\"link\" href=\"#\"><i data-ui=\"icon\" data-name=\"home\"></i></a></li><li data-part=\"separator\" aria-hidden=\"true\">/</li><li><a data-part=\"link\" href=\"#\"><i data-ui=\"icon\" data-name=\"team\"></i><span>Vendors</span></a></li><li data-part=\"separator\" aria-hidden=\"true\">/</li><li><a data-part=\"link\" href=\"#\">Harbor Supply</a></li><li data-part=\"separator\" aria-hidden=\"true\">/</li><li data-part=\"current\" aria-current=\"page\">Invoice 4021</li></ol></nav>",
+      "import": {
+        "package": "antd",
+        "name": "Breadcrumb"
+      }
+    },
+    {
+      "name": "Dropdown",
+      "ui": "dropdown",
+      "category": "Navigation",
+      "description": "A menu of actions under a button, with 4px padding and 8px corners.",
+      "props": [],
+      "snippet": "<button data-ui=\"button\" popovertarget=\"dropdown-demo\" style=\"anchor-name:--dropdown-demo\">Actions<i data-ui=\"icon\" data-name=\"down\"></i></button>\n<div data-ui=\"dropdown\" popover id=\"dropdown-demo\" role=\"menu\" style=\"position-anchor:--dropdown-demo\"><div data-part=\"group-title\">Invoice</div><button data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"edit\" data-part=\"icon\"></i>Edit</button><button data-part=\"item\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"copy\" data-part=\"icon\"></i>Duplicate<span data-part=\"extra\">⌘D</span></button><button data-part=\"item\" role=\"menuitem\" disabled><i data-ui=\"icon\" data-name=\"printer\" data-part=\"icon\"></i>Print</button><hr data-part=\"divider\"><button data-part=\"item\" data-danger=\"true\" role=\"menuitem\"><i data-ui=\"icon\" data-name=\"delete\" data-part=\"icon\"></i>Void</button></div>",
+      "import": {
+        "package": "antd",
+        "name": "Dropdown"
+      }
+    },
+    {
+      "name": "Menu",
+      "ui": "menu",
+      "category": "Navigation",
+      "description": "Navigation in three modes: horizontal, vertical and inline, light or dark. Items are 40px with 8px corners.",
+      "props": [
+        {
+          "name": "mode",
+          "label": "Mode",
+          "type": "choice",
+          "options": [
+            "inline",
+            "vertical",
+            "horizontal"
+          ],
+          "default": "inline"
+        },
+        {
+          "name": "theme",
+          "label": "Theme",
+          "type": "choice",
+          "options": [
+            "light",
+            "dark"
+          ],
+          "default": "light"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"middle\">\n<nav data-ui=\"menu\" data-mode=\"horizontal\"><a data-part=\"item\" href=\"#\" aria-current=\"page\"><i data-ui=\"icon\" data-name=\"mail\" data-part=\"icon\"></i>Invoices</a><a data-part=\"item\" href=\"#\"><i data-ui=\"icon\" data-name=\"appstore\" data-part=\"icon\"></i>Vendors</a><a data-part=\"item\" data-disabled=\"true\"><i data-ui=\"icon\" data-name=\"setting\" data-part=\"icon\"></i>Settings</a></nav>\n<div data-ui=\"flex\" data-gap=\"middle\" data-wrap=\"true\" data-align=\"start\">\n<nav data-ui=\"menu\" data-mode=\"inline\" style=\"inline-size:256px\"><details data-part=\"sub\" open><summary data-part=\"title\"><i data-ui=\"icon\" data-name=\"mail\" data-part=\"icon\"></i>Invoices<i data-ui=\"icon\" data-name=\"down\" data-part=\"arrow\"></i></summary><div data-part=\"group-title\">Inbox</div><a data-part=\"item\" href=\"#\" aria-current=\"page\">To approve</a><a data-part=\"item\" href=\"#\">On hold</a></details><details data-part=\"sub\"><summary data-part=\"title\"><i data-ui=\"icon\" data-name=\"appstore\" data-part=\"icon\"></i>Vendors<i data-ui=\"icon\" data-name=\"down\" data-part=\"arrow\"></i></summary><a data-part=\"item\" href=\"#\">All vendors</a></details><hr data-part=\"divider\"><a data-part=\"item\" href=\"#\"><i data-ui=\"icon\" data-name=\"setting\" data-part=\"icon\"></i>Settings</a></nav>\n<nav data-ui=\"menu\" data-mode=\"inline\" data-theme=\"dark\" style=\"inline-size:220px\"><a data-part=\"item\" href=\"#\" aria-current=\"page\"><i data-ui=\"icon\" data-name=\"inbox\" data-part=\"icon\"></i>Inbox</a><a data-part=\"item\" href=\"#\"><i data-ui=\"icon\" data-name=\"bank\" data-part=\"icon\"></i>Payments</a><a data-part=\"item\" href=\"#\"><i data-ui=\"icon\" data-name=\"bar-chart\" data-part=\"icon\"></i>Reports</a></nav>\n</div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Menu"
+      }
+    },
+    {
+      "name": "Pagination",
+      "ui": "pagination",
+      "category": "Navigation",
+      "description": "Page numbers in 32px squares; the current one has a primary border. ui.js moves it.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"middle\">\n<nav data-ui=\"pagination\" aria-label=\"Pages\"><span data-part=\"total\">Total 85 items</span><button data-part=\"prev\" disabled aria-label=\"Previous\"><i data-ui=\"icon\" data-name=\"left\"></i></button><button data-part=\"item\" aria-current=\"page\">1</button><button data-part=\"item\">2</button><button data-part=\"item\">3</button><span data-part=\"ellipsis\" aria-hidden=\"true\"><i data-ui=\"icon\" data-name=\"ellipsis\"></i></span><button data-part=\"item\">9</button><button data-part=\"next\" aria-label=\"Next\"><i data-ui=\"icon\" data-name=\"right\"></i></button><label data-part=\"jumper\">Go to<input data-ui=\"input\" value=\"1\" aria-label=\"Page\"></label></nav>\n<nav data-ui=\"pagination\" data-size=\"small\" aria-label=\"Pages, small\"><button data-part=\"prev\" aria-label=\"Previous\"><i data-ui=\"icon\" data-name=\"left\"></i></button><button data-part=\"item\">1</button><button data-part=\"item\" aria-current=\"page\">2</button><button data-part=\"item\">3</button><button data-part=\"next\" aria-label=\"Next\"><i data-ui=\"icon\" data-name=\"right\"></i></button></nav>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Pagination"
+      }
+    },
+    {
+      "name": "Steps",
+      "ui": "steps",
+      "category": "Navigation",
+      "description": "Progress through a task: finished steps are tinted, the current one is solid. Set data-status on each item.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        },
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "default",
+            "dot"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "filled",
+            "outlined"
+          ],
+          "default": "filled"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"large\">\n<ol data-ui=\"steps\"><li data-part=\"item\" data-status=\"finish\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"check\"></i></span><div data-part=\"content\"><div data-part=\"title\">Received</div><div data-part=\"description\">Matched to PO 118.</div></div></li><li data-part=\"item\" data-status=\"process\" aria-current=\"step\"><span data-part=\"icon\">2</span><div data-part=\"content\"><div data-part=\"title\">Approval<span data-part=\"subtitle\">Left 2 days</span></div><div data-part=\"description\">With Mara Lind.</div></div></li><li data-part=\"item\" data-status=\"wait\"><span data-part=\"icon\">3</span><div data-part=\"content\"><div data-part=\"title\">Payment</div><div data-part=\"description\">Runs on Friday.</div></div></li></ol>\n<ol data-ui=\"steps\" data-size=\"small\"><li data-part=\"item\" data-status=\"finish\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"check\"></i></span><div data-part=\"content\"><div data-part=\"title\">Received</div></div></li><li data-part=\"item\" data-status=\"error\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"close\"></i></span><div data-part=\"content\"><div data-part=\"title\">Approval</div></div></li><li data-part=\"item\" data-status=\"wait\"><span data-part=\"icon\">3</span><div data-part=\"content\"><div data-part=\"title\">Payment</div></div></li></ol>\n<ol data-ui=\"steps\" data-type=\"dot\"><li data-part=\"item\" data-status=\"finish\"><span data-part=\"icon\"></span><div data-part=\"content\"><div data-part=\"title\">Received</div></div></li><li data-part=\"item\" data-status=\"process\"><span data-part=\"icon\"></span><div data-part=\"content\"><div data-part=\"title\">Approval</div></div></li><li data-part=\"item\" data-status=\"wait\"><span data-part=\"icon\"></span><div data-part=\"content\"><div data-part=\"title\">Payment</div></div></li></ol>\n<ol data-ui=\"steps\" data-orientation=\"vertical\"><li data-part=\"item\" data-status=\"finish\"><span data-part=\"icon\"><i data-ui=\"icon\" data-name=\"check\"></i></span><div data-part=\"content\"><div data-part=\"title\">Received</div><div data-part=\"description\">Matched to PO 118.</div></div></li><li data-part=\"item\" data-status=\"process\"><span data-part=\"icon\">2</span><div data-part=\"content\"><div data-part=\"title\">Approval</div><div data-part=\"description\">With Mara Lind.</div></div></li></ol>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Steps"
+      }
+    },
+    {
+      "name": "Tabs",
+      "ui": "tabs",
+      "category": "Navigation",
+      "description": "Line or card tabs. The line tab has a sliding 2px ink bar. Keep each tab's aria-controls on its panel's id.",
+      "props": [
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "line",
+            "card"
+          ],
+          "default": "line"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "tab-placement",
+          "label": "Tab Placement",
+          "type": "choice",
+          "options": [
+            "top",
+            "start"
+          ],
+          "default": "top"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"large\">\n<div data-ui=\"tabs\"><div data-part=\"list\" role=\"tablist\"><button role=\"tab\" aria-selected=\"true\" aria-controls=\"tabs-a\">Open</button><button role=\"tab\" aria-selected=\"false\" tabindex=\"-1\" aria-controls=\"tabs-b\">On hold</button><button role=\"tab\" aria-selected=\"false\" tabindex=\"-1\" aria-controls=\"tabs-c\">Paid</button><button role=\"tab\" aria-selected=\"false\" tabindex=\"-1\" disabled>Archived</button></div><div data-part=\"panel\" role=\"tabpanel\" id=\"tabs-a\">Twelve invoices are waiting for approval.</div><div data-part=\"panel\" role=\"tabpanel\" id=\"tabs-b\" hidden>Three invoices are on hold.</div><div data-part=\"panel\" role=\"tabpanel\" id=\"tabs-c\" hidden>Everything paid this month.</div></div>\n<div data-ui=\"tabs\" data-type=\"card\"><div data-part=\"list\" role=\"tablist\"><button role=\"tab\" aria-selected=\"true\" aria-controls=\"tabs-d\">Summary</button><button role=\"tab\" aria-selected=\"false\" tabindex=\"-1\" aria-controls=\"tabs-e\">Line items</button></div><div data-part=\"panel\" role=\"tabpanel\" id=\"tabs-d\">Harbor Supply, $4,180.00.</div><div data-part=\"panel\" role=\"tabpanel\" id=\"tabs-e\" hidden>Six line items.</div></div>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Tabs"
+      }
+    },
+    {
+      "name": "AutoComplete",
+      "ui": "auto-complete",
+      "category": "Data Entry",
+      "description": "A text input with suggestions that filter as you type.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "default",
+            "error",
+            "warning"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "borderless",
+            "underlined"
+          ],
+          "default": "outlined"
+        }
+      ],
+      "snippet": "<div data-ui=\"auto-complete\" style=\"anchor-name:--auto-complete-demo;inline-size:240px;max-inline-size:100%\"><input data-ui=\"input\" placeholder=\"Search vendors\" role=\"combobox\" autocomplete=\"off\" aria-label=\"Vendor\"><div data-part=\"popup\" popover id=\"auto-complete-demo\" role=\"listbox\" style=\"position-anchor:--auto-complete-demo\"><button data-part=\"option\" type=\"button\" role=\"option\">Harbor Supply</button><button data-part=\"option\" type=\"button\" role=\"option\">Kestrel Print</button><button data-part=\"option\" type=\"button\" role=\"option\">Oak and Iron</button><button data-part=\"option\" type=\"button\" role=\"option\">Tideline Freight</button></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "AutoComplete"
+      }
+    },
+    {
+      "name": "Cascader",
+      "ui": "cascader",
+      "category": "Data Entry",
+      "description": "Pick along a path, one column at a time. Mark each option with its own data-path and leaves with data-leaf.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "default",
+            "error",
+            "warning"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "borderless",
+            "underlined"
+          ],
+          "default": "outlined"
+        }
+      ],
+      "snippet": "<div data-ui=\"cascader\" style=\"anchor-name:--cascader-demo;inline-size:240px;max-inline-size:100%\"><button data-part=\"selector\" type=\"button\" popovertarget=\"cascader-demo\" aria-haspopup=\"listbox\"><span data-part=\"value\" data-placeholder=\"true\">Cost centre</span><i data-ui=\"icon\" data-name=\"down\" data-part=\"arrow\"></i></button><div data-part=\"popup\" popover id=\"cascader-demo\" style=\"position-anchor:--cascader-demo\">\n<ul data-part=\"column\" data-level=\"0\"><li><button data-part=\"option\" type=\"button\" data-path=\"ops\" aria-expanded=\"true\">Operations<i data-ui=\"icon\" data-name=\"right\" data-part=\"expand\"></i></button></li><li><button data-part=\"option\" type=\"button\" data-path=\"sales\">Sales<i data-ui=\"icon\" data-name=\"right\" data-part=\"expand\"></i></button></li></ul>\n<ul data-part=\"column\" data-level=\"1\" data-parent=\"ops\"><li><button data-part=\"option\" type=\"button\" data-path=\"ops/fleet\">Fleet<i data-ui=\"icon\" data-name=\"right\" data-part=\"expand\"></i></button></li><li><button data-part=\"option\" type=\"button\" data-path=\"ops/depot\" data-leaf=\"true\">Depot</button></li></ul>\n<ul data-part=\"column\" data-level=\"1\" data-parent=\"sales\" hidden><li><button data-part=\"option\" type=\"button\" data-path=\"sales/north\" data-leaf=\"true\">North</button></li><li><button data-part=\"option\" type=\"button\" data-path=\"sales/south\" data-leaf=\"true\">South</button></li></ul>\n<ul data-part=\"column\" data-level=\"2\" data-parent=\"ops/fleet\" hidden><li><button data-part=\"option\" type=\"button\" data-path=\"ops/fleet/fuel\" data-leaf=\"true\">Fuel</button></li><li><button data-part=\"option\" type=\"button\" data-path=\"ops/fleet/repairs\" data-leaf=\"true\">Repairs</button></li></ul>\n</div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Cascader"
+      }
+    },
+    {
+      "name": "Checkbox",
+      "ui": "checkbox",
+      "category": "Data Entry",
+      "description": "A 16px square check with its label. Checked is filled primary.",
+      "props": [
+        {
+          "name": "indeterminate",
+          "label": "Indeterminate",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\" data-align=\"center\"><label data-ui=\"checkbox\"><input type=\"checkbox\" checked><span>Checked</span></label><label data-ui=\"checkbox\"><input type=\"checkbox\"><span>Unchecked</span></label><label data-ui=\"checkbox\" data-indeterminate=\"true\"><input type=\"checkbox\"><span>Some</span></label><label data-ui=\"checkbox\"><input type=\"checkbox\" disabled><span>Disabled</span></label><label data-ui=\"checkbox\"><input type=\"checkbox\" checked disabled><span>Disabled</span></label></div>",
+      "import": {
+        "package": "antd",
+        "name": "Checkbox"
+      }
+    },
+    {
+      "name": "ColorPicker",
+      "ui": "color-picker",
+      "category": "Data Entry",
+      "description": "A swatch that opens a saturation pad, hue bar and hex field. Set the colour with --color on the part.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"color-picker\" style=\"--color:#1677ff;anchor-name:--color-picker-demo\"><button data-part=\"trigger\" type=\"button\" popovertarget=\"color-picker-demo\" aria-label=\"Brand colour\"><span data-part=\"swatch\"></span><span data-part=\"text\">#1677FF</span></button><div data-part=\"panel\" popover id=\"color-picker-demo\" style=\"position-anchor:--color-picker-demo\"><div data-part=\"pad\"><span data-part=\"pad-thumb\"></span></div><div data-part=\"row\"><span data-part=\"preview\"></span><input data-part=\"hue\" type=\"range\" min=\"0\" max=\"360\" value=\"215\" aria-label=\"Hue\"></div><input data-ui=\"input\" data-size=\"small\" data-part=\"hex\" value=\"#1677FF\" aria-label=\"Hex\"></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "ColorPicker"
+      }
+    },
+    {
+      "name": "DatePicker",
+      "ui": "date-picker",
+      "category": "Data Entry",
+      "description": "An input with a month panel in a popup. Write data-month and data-selected on the panel; ui.js draws the days.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "default",
+            "error",
+            "warning"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "borderless",
+            "underlined"
+          ],
+          "default": "outlined"
+        }
+      ],
+      "snippet": "<div data-ui=\"date-picker\" style=\"anchor-name:--date-picker-demo;inline-size:200px;max-inline-size:100%\"><span data-ui=\"input\"><input data-part=\"field\" placeholder=\"Select date\" value=\"2026-11-18\" aria-label=\"Due date\"><span data-part=\"suffix\"><button data-part=\"toggle\" type=\"button\" popovertarget=\"date-picker-demo\" aria-label=\"Open calendar\"><i data-ui=\"icon\" data-name=\"calendar\"></i></button></span></span><div data-part=\"popup\" popover id=\"date-picker-demo\" style=\"position-anchor:--date-picker-demo\"><div data-part=\"panel\" data-month=\"2026-11\" data-selected=\"2026-11-18\"></div></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "DatePicker"
+      }
+    },
+    {
+      "name": "Form",
+      "ui": "form",
+      "category": "Data Entry",
+      "description": "Labelled rows: horizontal, vertical or inline, with required marks, help and validation states.",
+      "props": [
+        {
+          "name": "layout",
+          "label": "Layout",
+          "type": "choice",
+          "options": [
+            "vertical",
+            "horizontal",
+            "inline"
+          ],
+          "default": "vertical"
+        }
+      ],
+      "snippet": "<form data-ui=\"form\" data-layout=\"horizontal\" style=\"max-inline-size:480px\">\n<div data-part=\"item\"><label data-part=\"label\" data-required=\"true\" for=\"form-demo-vendor\">Vendor</label><div data-part=\"control\"><input data-ui=\"input\" id=\"form-demo-vendor\" value=\"Harbor Supply\"></div></div>\n<div data-part=\"item\" data-status=\"error\"><label data-part=\"label\" data-required=\"true\" for=\"form-demo-amount\">Amount</label><div data-part=\"control\"><input data-ui=\"input\" data-status=\"error\" id=\"form-demo-amount\" value=\"4,180.0O\" aria-invalid=\"true\"><div data-part=\"explain\">Enter a number.</div></div></div>\n<div data-part=\"item\"><label data-part=\"label\" for=\"form-demo-note\">Note</label><div data-part=\"control\"><textarea data-ui=\"input\" id=\"form-demo-note\" rows=\"2\" placeholder=\"Optional\"></textarea><div data-part=\"extra\">Approvers can see this.</div></div></div>\n<div data-part=\"item\"><span data-part=\"label\"></span><div data-part=\"control\"><div data-ui=\"space\"><button data-ui=\"button\" data-type=\"primary\" type=\"button\">Submit</button><button data-ui=\"button\" type=\"button\">Reset</button></div></div></div>\n</form>",
+      "import": {
+        "package": "antd",
+        "name": "Form"
+      }
+    },
+    {
+      "name": "Input",
+      "ui": "input",
+      "category": "Data Entry",
+      "description": "A 32px field. Put data-ui on the input itself, or on a span holding a field, prefix and suffix. Also textarea, password, search.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "borderless",
+            "underlined"
+          ],
+          "default": "outlined"
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "default",
+            "error",
+            "warning"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"small\" style=\"max-inline-size:320px\">\n<input data-ui=\"input\" placeholder=\"Basic\" aria-label=\"Basic\">\n<input data-ui=\"input\" data-size=\"large\" placeholder=\"Large\" aria-label=\"Large\"><input data-ui=\"input\" data-size=\"small\" placeholder=\"Small\" aria-label=\"Small\">\n<span data-ui=\"input\"><span data-part=\"prefix\"><i data-ui=\"icon\" data-name=\"user\"></i></span><input data-part=\"field\" placeholder=\"Prefix and suffix\" aria-label=\"Name\"><span data-part=\"suffix\"><i data-ui=\"icon\" data-name=\"info-circle-outlined\"></i></span></span>\n<span data-ui=\"input\"><input data-part=\"field\" type=\"password\" value=\"secret\" aria-label=\"Password\"><span data-part=\"suffix\"><button data-part=\"reveal\" type=\"button\" aria-label=\"Show password\"><i data-ui=\"icon\" data-name=\"eye-invisible\"></i></button></span></span>\n<div data-ui=\"space\" data-compact=\"true\"><input data-ui=\"input\" placeholder=\"Search invoices\" aria-label=\"Search\"><button data-ui=\"button\" data-type=\"primary\" aria-label=\"Search\"><i data-ui=\"icon\" data-name=\"search\"></i></button></div>\n<input data-ui=\"input\" data-variant=\"filled\" placeholder=\"Filled\" aria-label=\"Filled\"><input data-ui=\"input\" data-variant=\"borderless\" placeholder=\"Borderless\" aria-label=\"Borderless\"><input data-ui=\"input\" data-variant=\"underlined\" placeholder=\"Underlined\" aria-label=\"Underlined\">\n<input data-ui=\"input\" data-status=\"error\" placeholder=\"Error\" aria-label=\"Error\"><input data-ui=\"input\" data-status=\"warning\" placeholder=\"Warning\" aria-label=\"Warning\"><input data-ui=\"input\" disabled value=\"Disabled\" aria-label=\"Disabled\">\n<textarea data-ui=\"input\" rows=\"2\" placeholder=\"TextArea\" aria-label=\"Notes\"></textarea>\n<div data-ui=\"input-otp\" role=\"group\" aria-label=\"Code\"><input data-ui=\"input\" maxlength=\"1\" value=\"4\" aria-label=\"Digit 1\"><input data-ui=\"input\" maxlength=\"1\" value=\"0\" aria-label=\"Digit 2\"><input data-ui=\"input\" maxlength=\"1\" value=\"2\" aria-label=\"Digit 3\"><input data-ui=\"input\" maxlength=\"1\" aria-label=\"Digit 4\"><input data-ui=\"input\" maxlength=\"1\" aria-label=\"Digit 5\"><input data-ui=\"input\" maxlength=\"1\" aria-label=\"Digit 6\"></div>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Input"
+      }
+    },
+    {
+      "name": "Input OTP",
+      "ui": "input-otp",
+      "category": "Data Entry",
+      "description": "Separate boxes for a one-time code. Typing moves to the next box.",
+      "props": [],
+      "snippet": "<div data-ui=\"input-otp\" role=\"group\" aria-label=\"Sign-in code\"><input data-ui=\"input\" maxlength=\"1\" aria-label=\"Digit 1\"><input data-ui=\"input\" maxlength=\"1\" aria-label=\"Digit 2\"><input data-ui=\"input\" maxlength=\"1\" aria-label=\"Digit 3\"><input data-ui=\"input\" maxlength=\"1\" aria-label=\"Digit 4\"></div>",
+      "import": {
+        "package": "antd",
+        "name": "Input.OTP"
+      }
+    },
+    {
+      "name": "InputNumber",
+      "ui": "input-number",
+      "category": "Data Entry",
+      "description": "A number field 90px wide; its step buttons appear on hover. Set min, max and step on the input.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "borderless",
+            "underlined"
+          ],
+          "default": "outlined"
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "default",
+            "error",
+            "warning"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\" data-align=\"center\"><span data-ui=\"input-number\"><input data-part=\"field\" inputmode=\"decimal\" value=\"30\" min=\"0\" max=\"90\" step=\"1\" aria-label=\"Payment terms\"><span data-part=\"handlers\"><button data-part=\"step\" data-step=\"1\" type=\"button\" tabindex=\"-1\" aria-label=\"Increase\"><i data-ui=\"icon\" data-name=\"up\"></i></button><button data-part=\"step\" data-step=\"-1\" type=\"button\" tabindex=\"-1\" aria-label=\"Decrease\"><i data-ui=\"icon\" data-name=\"down\"></i></button></span></span>\n<span data-ui=\"input-number\" data-size=\"large\"><input data-part=\"field\" inputmode=\"decimal\" value=\"3\" aria-label=\"Large\"><span data-part=\"handlers\"><button data-part=\"step\" data-step=\"1\" type=\"button\" tabindex=\"-1\" aria-label=\"Increase\"><i data-ui=\"icon\" data-name=\"up\"></i></button><button data-part=\"step\" data-step=\"-1\" type=\"button\" tabindex=\"-1\" aria-label=\"Decrease\"><i data-ui=\"icon\" data-name=\"down\"></i></button></span></span>\n<span data-ui=\"input-number\" data-size=\"small\"><input data-part=\"field\" inputmode=\"decimal\" value=\"3\" aria-label=\"Small\"><span data-part=\"handlers\"><button data-part=\"step\" data-step=\"1\" type=\"button\" tabindex=\"-1\" aria-label=\"Increase\"><i data-ui=\"icon\" data-name=\"up\"></i></button><button data-part=\"step\" data-step=\"-1\" type=\"button\" tabindex=\"-1\" aria-label=\"Decrease\"><i data-ui=\"icon\" data-name=\"down\"></i></button></span></span>\n<span data-ui=\"input-number\" data-disabled=\"true\"><input data-part=\"field\" disabled value=\"30\" aria-label=\"Disabled\"></span></div>",
+      "import": {
+        "package": "antd",
+        "name": "InputNumber"
+      }
+    },
+    {
+      "name": "Mentions",
+      "ui": "mentions",
+      "category": "Data Entry",
+      "description": "A text field where typing @ opens a list of people.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "default",
+            "error",
+            "warning"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "borderless",
+            "underlined"
+          ],
+          "default": "outlined"
+        }
+      ],
+      "snippet": "<div data-ui=\"mentions\" style=\"anchor-name:--mentions-demo;inline-size:320px;max-inline-size:100%\"><textarea data-ui=\"input\" data-part=\"field\" rows=\"2\" placeholder=\"Type @ to mention someone\" aria-label=\"Comment\"></textarea><div data-part=\"popup\" popover=\"manual\" id=\"mentions-demo\" role=\"listbox\" style=\"position-anchor:--mentions-demo\"><button data-part=\"option\" type=\"button\" role=\"option\">Mara Lind</button><button data-part=\"option\" type=\"button\" role=\"option\">Tomas Reyes</button><button data-part=\"option\" type=\"button\" role=\"option\">Ines Okafor</button></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Mentions"
+      }
+    },
+    {
+      "name": "Radio",
+      "ui": "radio",
+      "category": "Data Entry",
+      "description": "One choice from a set: a 16px circle with its label, or joined radio buttons, outlined or solid.",
+      "props": [
+        {
+          "name": "option-type",
+          "label": "Option Type",
+          "type": "choice",
+          "options": [
+            "default",
+            "button"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "button-style",
+          "label": "Button Style",
+          "type": "choice",
+          "options": [
+            "outline",
+            "solid"
+          ],
+          "default": "outline"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"middle\">\n<div data-ui=\"radio\" role=\"radiogroup\"><label data-part=\"option\"><input type=\"radio\" name=\"radio-a\" checked><span>Net 30</span></label><label data-part=\"option\"><input type=\"radio\" name=\"radio-a\"><span>Net 60</span></label><label data-part=\"option\"><input type=\"radio\" name=\"radio-a\"><span>On receipt</span></label><label data-part=\"option\"><input type=\"radio\" name=\"radio-a\" disabled><span>Disabled</span></label></div>\n<div data-ui=\"radio\" data-option-type=\"button\" role=\"radiogroup\"><label data-part=\"option\"><input type=\"radio\" name=\"radio-b\" checked><span>Daily</span></label><label data-part=\"option\"><input type=\"radio\" name=\"radio-b\"><span>Weekly</span></label><label data-part=\"option\"><input type=\"radio\" name=\"radio-b\"><span>Monthly</span></label></div>\n<div data-ui=\"radio\" data-option-type=\"button\" data-button-style=\"solid\" role=\"radiogroup\"><label data-part=\"option\"><input type=\"radio\" name=\"radio-c\" checked><span>Daily</span></label><label data-part=\"option\"><input type=\"radio\" name=\"radio-c\"><span>Weekly</span></label><label data-part=\"option\"><input type=\"radio\" name=\"radio-c\" disabled><span>Monthly</span></label></div>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Radio"
+      }
+    },
+    {
+      "name": "Rate",
+      "ui": "rate",
+      "category": "Data Entry",
+      "description": "Stars for a score. Set --value; add the input to let people change it, in half steps if its step is 0.5.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"small\" data-align=\"start\"><div data-ui=\"rate\" style=\"--value:3\"><input data-part=\"input\" type=\"range\" min=\"0\" max=\"5\" step=\"1\" value=\"3\" aria-label=\"Vendor rating\"></div><div data-ui=\"rate\" style=\"--value:2.5\"><input data-part=\"input\" type=\"range\" min=\"0\" max=\"5\" step=\"0.5\" value=\"2.5\" aria-label=\"Half steps\"></div><div data-ui=\"rate\" data-size=\"small\" data-disabled=\"true\" style=\"--value:4\" role=\"img\" aria-label=\"4 stars\"></div><div data-ui=\"rate\" data-size=\"large\" data-disabled=\"true\" style=\"--value:1\" role=\"img\" aria-label=\"1 star\"></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Rate"
+      }
+    },
+    {
+      "name": "Select",
+      "ui": "select",
+      "category": "Data Entry",
+      "description": "Pick from a popup list. Options are 32px; the chosen one is tinted and semi-bold. data-mode=\"multiple\" shows tags.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "borderless",
+            "underlined"
+          ],
+          "default": "outlined"
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "default",
+            "error",
+            "warning"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "mode",
+          "label": "Mode",
+          "type": "choice",
+          "options": [
+            "single",
+            "multiple"
+          ],
+          "default": "single"
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\" data-align=\"center\">\n<div data-ui=\"select\" style=\"anchor-name:--select-demo;inline-size:160px;max-inline-size:100%\">\n<button data-part=\"selector\" type=\"button\" popovertarget=\"select-demo\" aria-haspopup=\"listbox\"><span data-part=\"value\">Harbor Supply</span><i data-ui=\"icon\" data-name=\"down\" data-part=\"arrow\"></i></button>\n<div data-part=\"popup\" popover id=\"select-demo\" role=\"listbox\" style=\"position-anchor:--select-demo\"><button data-part=\"option\" type=\"button\" role=\"option\" aria-selected=\"true\">Harbor Supply</button><button data-part=\"option\" type=\"button\" role=\"option\">Kestrel Print</button><button data-part=\"option\" type=\"button\" role=\"option\">Oak and Iron</button><button data-part=\"option\" type=\"button\" role=\"option\">Tideline Freight</button></div>\n</div>\n<div data-ui=\"select\" data-size=\"large\" style=\"anchor-name:--select-demo-lg;inline-size:120px;max-inline-size:100%\">\n<button data-part=\"selector\" type=\"button\" popovertarget=\"select-demo-lg\" aria-haspopup=\"listbox\"><span data-part=\"value\">Large</span><i data-ui=\"icon\" data-name=\"down\" data-part=\"arrow\"></i></button>\n<div data-part=\"popup\" popover id=\"select-demo-lg\" role=\"listbox\" style=\"position-anchor:--select-demo-lg\"><button data-part=\"option\" type=\"button\" role=\"option\" aria-selected=\"true\">Large</button><button data-part=\"option\" type=\"button\" role=\"option\">Other</button></div>\n</div>\n<div data-ui=\"select\" data-size=\"small\" style=\"anchor-name:--select-demo-sm;inline-size:120px;max-inline-size:100%\">\n<button data-part=\"selector\" type=\"button\" popovertarget=\"select-demo-sm\" aria-haspopup=\"listbox\"><span data-part=\"value\">Small</span><i data-ui=\"icon\" data-name=\"down\" data-part=\"arrow\"></i></button>\n<div data-part=\"popup\" popover id=\"select-demo-sm\" role=\"listbox\" style=\"position-anchor:--select-demo-sm\"><button data-part=\"option\" type=\"button\" role=\"option\" aria-selected=\"true\">Small</button><button data-part=\"option\" type=\"button\" role=\"option\">Other</button></div>\n</div>\n<div data-ui=\"select\" data-variant=\"filled\" style=\"anchor-name:--select-demo-f;inline-size:120px;max-inline-size:100%\">\n<button data-part=\"selector\" type=\"button\" popovertarget=\"select-demo-f\" aria-haspopup=\"listbox\"><span data-part=\"value\">Filled</span><i data-ui=\"icon\" data-name=\"down\" data-part=\"arrow\"></i></button>\n<div data-part=\"popup\" popover id=\"select-demo-f\" role=\"listbox\" style=\"position-anchor:--select-demo-f\"><button data-part=\"option\" type=\"button\" role=\"option\" aria-selected=\"true\">Filled</button><button data-part=\"option\" type=\"button\" role=\"option\">Other</button></div>\n</div>\n<div data-ui=\"select\" data-disabled=\"true\" style=\"inline-size:120px\"><button data-part=\"selector\" type=\"button\" disabled><span data-part=\"value\">Disabled</span><i data-ui=\"icon\" data-name=\"down\" data-part=\"arrow\"></i></button></div>\n<div data-ui=\"select\" data-mode=\"multiple\" style=\"anchor-name:--select-multi;inline-size:300px;max-inline-size:100%\"><button data-part=\"selector\" type=\"button\" popovertarget=\"select-multi\" aria-haspopup=\"listbox\"><span data-part=\"value\"><span data-part=\"chip\">Fleet<i data-ui=\"icon\" data-name=\"close\" data-part=\"chip-close\"></i></span><span data-part=\"chip\">Depot<i data-ui=\"icon\" data-name=\"close\" data-part=\"chip-close\"></i></span></span><i data-ui=\"icon\" data-name=\"down\" data-part=\"arrow\"></i></button><div data-part=\"popup\" popover id=\"select-multi\" role=\"listbox\" style=\"position-anchor:--select-multi\"><button data-part=\"option\" type=\"button\" role=\"option\" aria-selected=\"true\">Fleet<i data-ui=\"icon\" data-name=\"check\" data-part=\"tick\"></i></button><button data-part=\"option\" type=\"button\" role=\"option\" aria-selected=\"true\">Depot<i data-ui=\"icon\" data-name=\"check\" data-part=\"tick\"></i></button><button data-part=\"option\" type=\"button\" role=\"option\">Sales<i data-ui=\"icon\" data-name=\"check\" data-part=\"tick\"></i></button></div></div>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Select"
+      }
+    },
+    {
+      "name": "Slider",
+      "ui": "slider",
+      "category": "Data Entry",
+      "description": "One thumb or two on a 4px rail, with optional marks. Set --from and --to; ui.js keeps them current.",
+      "props": [
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        },
+        {
+          "name": "disabled",
+          "label": "Disabled",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"middle\" style=\"max-inline-size:320px\"><div data-ui=\"slider\" style=\"--to:30\"><input data-part=\"thumb\" type=\"range\" value=\"30\" aria-label=\"Threshold\"></div><div data-ui=\"slider\" style=\"--from:20;--to:50\"><input data-part=\"thumb\" type=\"range\" value=\"20\" aria-label=\"From\"><input data-part=\"thumb\" type=\"range\" value=\"50\" aria-label=\"To\"></div><div data-ui=\"slider\" style=\"--to:37\"><input data-part=\"thumb\" type=\"range\" value=\"37\" aria-label=\"With marks\"><div data-part=\"marks\"><span data-part=\"mark\" style=\"--at:0\">0</span><span data-part=\"mark\" style=\"--at:26\">26</span><span data-part=\"mark\" style=\"--at:37\">37</span><span data-part=\"mark\" style=\"--at:100\">100</span></div></div><div data-ui=\"slider\" data-disabled=\"true\" style=\"--to:40\"><input data-part=\"thumb\" type=\"range\" value=\"40\" disabled aria-label=\"Disabled\"></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Slider"
+      }
+    },
+    {
+      "name": "Switch",
+      "ui": "switch",
+      "category": "Data Entry",
+      "description": "An on or off control: 44 by 22px with an 18px handle, primary when on.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "small"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "loading",
+          "label": "Loading",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\" data-align=\"center\"><label data-ui=\"switch\"><input type=\"checkbox\" role=\"switch\" checked aria-label=\"On\"><span data-part=\"handle\"></span></label><label data-ui=\"switch\"><input type=\"checkbox\" role=\"switch\" aria-label=\"Off\"><span data-part=\"handle\"></span></label><label data-ui=\"switch\"><input type=\"checkbox\" role=\"switch\" checked disabled aria-label=\"Disabled\"><span data-part=\"handle\"></span></label><label data-ui=\"switch\" data-size=\"small\"><input type=\"checkbox\" role=\"switch\" checked aria-label=\"Small\"><span data-part=\"handle\"></span></label><label data-ui=\"switch\"><input type=\"checkbox\" role=\"switch\" checked aria-label=\"With text\"><span data-part=\"handle\"></span><span data-part=\"on\">Auto</span><span data-part=\"off\">Off</span></label><label data-ui=\"switch\" data-loading=\"true\"><input type=\"checkbox\" role=\"switch\" checked aria-label=\"Saving\"><span data-part=\"handle\"><i data-ui=\"icon\" data-name=\"loading\"></i></span></label></div>",
+      "import": {
+        "package": "antd",
+        "name": "Switch"
+      }
+    },
+    {
+      "name": "TimePicker",
+      "ui": "time-picker",
+      "category": "Data Entry",
+      "description": "An input with hour, minute and second columns in a popup. ui.js draws the columns from data-value.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "default",
+            "error",
+            "warning"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "borderless",
+            "underlined"
+          ],
+          "default": "outlined"
+        }
+      ],
+      "snippet": "<div data-ui=\"time-picker\" data-value=\"09:30:00\" style=\"anchor-name:--time-picker-demo;inline-size:160px;max-inline-size:100%\"><span data-ui=\"input\"><input data-part=\"field\" placeholder=\"Select time\" value=\"09:30:00\" aria-label=\"Run time\"><span data-part=\"suffix\"><button data-part=\"toggle\" type=\"button\" popovertarget=\"time-picker-demo\" aria-label=\"Open time columns\"><i data-ui=\"icon\" data-name=\"clock-circle\"></i></button></span></span><div data-part=\"popup\" popover id=\"time-picker-demo\" style=\"position-anchor:--time-picker-demo\"><div data-part=\"columns\"></div><div data-part=\"footer\"><button data-ui=\"button\" data-type=\"link\" data-size=\"small\" data-part=\"now\" type=\"button\">Now</button><button data-ui=\"button\" data-type=\"primary\" data-size=\"small\" data-part=\"ok\" type=\"button\">OK</button></div></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "TimePicker"
+      }
+    },
+    {
+      "name": "Transfer",
+      "ui": "transfer",
+      "category": "Data Entry",
+      "description": "Two 180px lists with buttons between them. Tick items, then move them across.",
+      "props": [],
+      "snippet": "<div data-ui=\"transfer\">\n<div data-part=\"list\"><div data-part=\"header\"><label data-ui=\"checkbox\"><input type=\"checkbox\" data-part=\"all\" aria-label=\"Select all\"></label><span data-part=\"count\">3 items</span><span data-part=\"title\">Vendors</span></div><ul data-part=\"body\"><li data-part=\"item\"><label data-ui=\"checkbox\"><input type=\"checkbox\"><span>Harbor Supply</span></label></li><li data-part=\"item\"><label data-ui=\"checkbox\"><input type=\"checkbox\" checked><span>Kestrel Print</span></label></li><li data-part=\"item\"><label data-ui=\"checkbox\"><input type=\"checkbox\"><span>Oak and Iron</span></label></li></ul></div>\n<div data-part=\"operations\"><button data-ui=\"button\" data-type=\"primary\" data-size=\"small\" data-transfer=\"right\" aria-label=\"Move right\"><i data-ui=\"icon\" data-name=\"right\"></i></button><button data-ui=\"button\" data-size=\"small\" data-transfer=\"left\" aria-label=\"Move left\"><i data-ui=\"icon\" data-name=\"left\"></i></button></div>\n<div data-part=\"list\"><div data-part=\"header\"><label data-ui=\"checkbox\"><input type=\"checkbox\" data-part=\"all\" aria-label=\"Select all\"></label><span data-part=\"count\">1 item</span><span data-part=\"title\">Approved</span></div><ul data-part=\"body\"><li data-part=\"item\"><label data-ui=\"checkbox\"><input type=\"checkbox\"><span>Tideline Freight</span></label></li></ul></div>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Transfer"
+      }
+    },
+    {
+      "name": "TreeSelect",
+      "ui": "tree-select",
+      "category": "Data Entry",
+      "description": "A select whose popup is a tree.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "default",
+            "error",
+            "warning"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled",
+            "borderless",
+            "underlined"
+          ],
+          "default": "outlined"
+        }
+      ],
+      "snippet": "<div data-ui=\"tree-select\" style=\"anchor-name:--tree-select-demo;inline-size:240px;max-inline-size:100%\"><button data-part=\"selector\" type=\"button\" popovertarget=\"tree-select-demo\" aria-haspopup=\"tree\"><span data-part=\"value\" data-placeholder=\"true\">Account</span><i data-ui=\"icon\" data-name=\"down\" data-part=\"arrow\"></i></button><div data-part=\"popup\" popover id=\"tree-select-demo\" style=\"position-anchor:--tree-select-demo\"><ul data-ui=\"tree\" role=\"tree\"><li data-part=\"node\" role=\"treeitem\" aria-expanded=\"true\"><div data-part=\"row\"><button data-part=\"switcher\" type=\"button\" aria-label=\"Toggle\"><i data-ui=\"icon\" data-name=\"caret-down\"></i></button><span data-part=\"title\">Assets</span></div><ul data-part=\"group\"><li data-part=\"node\" role=\"treeitem\"><div data-part=\"row\"><span data-part=\"switcher\"></span><span data-part=\"title\">Cash</span></div></li><li data-part=\"node\" role=\"treeitem\"><div data-part=\"row\"><span data-part=\"switcher\"></span><span data-part=\"title\">Receivables</span></div></li></ul></li><li data-part=\"node\" role=\"treeitem\"><div data-part=\"row\"><span data-part=\"switcher\"></span><span data-part=\"title\">Liabilities</span></div></li></ul></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "TreeSelect"
+      }
+    },
+    {
+      "name": "Upload",
+      "ui": "upload",
+      "category": "Data Entry",
+      "description": "A button, a drop area or picture cards, with a list of files under it.",
+      "props": [
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "select",
+            "drag"
+          ],
+          "default": "select"
+        },
+        {
+          "name": "list-type",
+          "label": "List Type",
+          "type": "choice",
+          "options": [
+            "text",
+            "picture-card"
+          ],
+          "default": "text"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"middle\" style=\"max-inline-size:420px\">\n<div data-ui=\"upload\"><label data-ui=\"button\"><i data-ui=\"icon\" data-name=\"upload\"></i>Upload invoice<input data-part=\"input\" type=\"file\" hidden></label><ul data-part=\"list\"><li data-part=\"item\"><i data-ui=\"icon\" data-name=\"paper-clip\" data-part=\"icon\"></i><span data-part=\"name\">invoice-4021.pdf</span><button data-part=\"remove\" type=\"button\" aria-label=\"Remove\"><i data-ui=\"icon\" data-name=\"delete\"></i></button></li><li data-part=\"item\" data-status=\"error\"><i data-ui=\"icon\" data-name=\"paper-clip\" data-part=\"icon\"></i><span data-part=\"name\">scan-too-large.pdf</span><button data-part=\"remove\" type=\"button\" aria-label=\"Remove\"><i data-ui=\"icon\" data-name=\"delete\"></i></button></li></ul></div>\n<label data-ui=\"upload\" data-type=\"drag\"><input data-part=\"input\" type=\"file\" hidden><i data-ui=\"icon\" data-name=\"inbox\" data-part=\"drag-icon\"></i><span data-part=\"drag-text\">Click or drag a file here to upload</span><span data-part=\"drag-hint\">PDF, up to 20 MB. Files stay in this workspace.</span></label>\n<div data-ui=\"upload\" data-list-type=\"picture-card\"><ul data-part=\"list\"><li data-part=\"item\"><i data-ui=\"icon\" data-name=\"file-text\" data-part=\"icon\"></i><span data-part=\"name\">4021.pdf</span></li><li><label data-part=\"card-button\"><i data-ui=\"icon\" data-name=\"plus\"></i><span>Upload</span><input data-part=\"input\" type=\"file\" hidden></label></li></ul></div>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Upload"
+      }
+    },
+    {
+      "name": "Avatar",
+      "ui": "avatar",
+      "category": "Data Display",
+      "description": "A 32px picture, initials or icon, round or square.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "small",
+            "large"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "shape",
+          "label": "Shape",
+          "type": "choice",
+          "options": [
+            "circle",
+            "square"
+          ],
+          "default": "circle"
+        },
+        {
+          "name": "tone",
+          "label": "Tone",
+          "type": "choice",
+          "options": [
+            "default",
+            "primary",
+            "orange",
+            "green",
+            "purple"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"small\" data-align=\"center\" data-wrap=\"true\"><span data-ui=\"avatar\" data-size=\"large\"><i data-ui=\"icon\" data-name=\"user\"></i></span><span data-ui=\"avatar\"><i data-ui=\"icon\" data-name=\"user\"></i></span><span data-ui=\"avatar\" data-size=\"small\"><i data-ui=\"icon\" data-name=\"user\"></i></span><span data-ui=\"avatar\" data-shape=\"square\" data-size=\"large\"><i data-ui=\"icon\" data-name=\"user\"></i></span><span data-ui=\"avatar\" data-shape=\"square\"><i data-ui=\"icon\" data-name=\"user\"></i></span><span data-ui=\"avatar\" data-tone=\"primary\">ML</span><span data-ui=\"avatar\" data-tone=\"orange\">TR</span><span data-ui=\"avatar\" data-tone=\"green\">IO</span>\n<div data-ui=\"avatar-group\"><span data-ui=\"avatar\" data-tone=\"primary\">M</span><span data-ui=\"avatar\" data-tone=\"orange\">T</span><span data-ui=\"avatar\" data-tone=\"purple\">I</span><span data-ui=\"avatar\">+2</span></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Avatar"
+      }
+    },
+    {
+      "name": "Avatar Group",
+      "ui": "avatar-group",
+      "category": "Data Display",
+      "description": "Avatars that overlap by 8px, each with a ring in the surface colour.",
+      "props": [],
+      "snippet": "<div data-ui=\"avatar-group\"><span data-ui=\"avatar\" data-tone=\"primary\">M</span><span data-ui=\"avatar\" data-tone=\"orange\">T</span><span data-ui=\"avatar\" data-tone=\"green\">I</span></div>",
+      "import": {
+        "package": "antd",
+        "name": "Avatar.Group"
+      }
+    },
+    {
+      "name": "Badge",
+      "ui": "badge",
+      "category": "Data Display",
+      "description": "A red count or dot on the corner of something, a status dot with text, or a ribbon across a card.",
+      "props": [
+        {
+          "name": "dot",
+          "label": "Dot",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "none",
+            "success",
+            "processing",
+            "default",
+            "error",
+            "warning"
+          ],
+          "default": "none"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "small"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "none",
+            "magenta",
+            "green",
+            "cyan",
+            "purple"
+          ],
+          "default": "none"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"middle\">\n<div data-ui=\"flex\" data-gap=\"large\" data-wrap=\"true\" data-align=\"center\"><span data-ui=\"badge\"><span data-ui=\"avatar\" data-shape=\"square\" data-size=\"large\"><i data-ui=\"icon\" data-name=\"user\"></i></span><sup data-part=\"count\">5</sup></span><span data-ui=\"badge\"><span data-ui=\"avatar\" data-shape=\"square\" data-size=\"large\"><i data-ui=\"icon\" data-name=\"user\"></i></span><sup data-part=\"count\">99+</sup></span><span data-ui=\"badge\" data-dot=\"true\"><span data-ui=\"avatar\" data-shape=\"square\" data-size=\"large\"><i data-ui=\"icon\" data-name=\"user\"></i></span><sup data-part=\"count\"></sup></span><span data-ui=\"badge\" data-color=\"green\"><sup data-part=\"count\" data-standalone=\"true\">12</sup></span><span data-ui=\"badge\" data-size=\"small\"><sup data-part=\"count\" data-standalone=\"true\">4</sup></span></div>\n<div data-ui=\"flex\" data-gap=\"middle\" data-wrap=\"true\"><span data-ui=\"badge\" data-status=\"success\"><span data-part=\"dot\"></span><span data-part=\"text\">Paid</span></span><span data-ui=\"badge\" data-status=\"error\"><span data-part=\"dot\"></span><span data-part=\"text\">Failed</span></span><span data-ui=\"badge\" data-status=\"default\"><span data-part=\"dot\"></span><span data-part=\"text\">Draft</span></span><span data-ui=\"badge\" data-status=\"processing\"><span data-part=\"dot\"></span><span data-part=\"text\">Sending</span></span><span data-ui=\"badge\" data-status=\"warning\"><span data-part=\"dot\"></span><span data-part=\"text\">On hold</span></span></div>\n<div data-ui=\"badge-ribbon\" style=\"max-inline-size:280px\"><div data-ui=\"card\" data-size=\"small\"><div data-part=\"header\"><div data-part=\"title\">Harbor Supply</div></div><div data-part=\"body\">Preferred vendor since 2022.</div></div><span data-part=\"ribbon\">Preferred</span></div>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Badge"
+      }
+    },
+    {
+      "name": "Badge Ribbon",
+      "ui": "badge-ribbon",
+      "category": "Data Display",
+      "description": "A ribbon that folds over the corner of a card.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "end",
+            "start"
+          ],
+          "default": "end"
+        }
+      ],
+      "snippet": "<div data-ui=\"badge-ribbon\" style=\"max-inline-size:280px\"><div data-ui=\"card\"><div data-part=\"body\">Invoice 4021</div></div><span data-part=\"ribbon\">Overdue</span></div>",
+      "import": {
+        "package": "antd",
+        "name": "Badge.Ribbon"
+      }
+    },
+    {
+      "name": "Calendar",
+      "ui": "calendar",
+      "category": "Data Display",
+      "description": "A whole month, full page or as a small card. Write data-month, data-selected and data-events; ui.js draws the days.",
+      "props": [
+        {
+          "name": "fullscreen",
+          "label": "Fullscreen",
+          "type": "choice",
+          "options": [
+            "true",
+            "false"
+          ],
+          "default": "true"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"large\"><div data-ui=\"calendar\" data-month=\"2026-11\" data-selected=\"2026-11-18\" data-events=\"2026-11-06:success:Pay run;2026-11-18:warning:Harbor due;2026-11-18:error:Kestrel late;2026-11-27:success:Pay run\"></div><div data-ui=\"calendar\" data-fullscreen=\"false\" data-month=\"2026-11\" data-selected=\"2026-11-09\" style=\"max-inline-size:300px\"></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Calendar"
+      }
+    },
+    {
+      "name": "Card",
+      "ui": "card",
+      "category": "Data Display",
+      "description": "A bordered surface with 8px corners: 56px header, 24px body, optional cover and action row.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "small"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "borderless"
+          ],
+          "default": "outlined"
+        },
+        {
+          "name": "hoverable",
+          "label": "Hoverable",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "default",
+            "inner"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"grid\" data-columns=\"2\" data-gap=\"md\" data-align=\"start\">\n<div data-ui=\"card\"><div data-part=\"header\"><div data-part=\"title\">Harbor Supply</div><a data-part=\"extra\" data-ui=\"typography\" data-variant=\"link\" href=\"#\">More</a></div><div data-part=\"body\"><p data-ui=\"typography\" data-variant=\"paragraph\">Four open invoices, $12,940 due this month.</p><span data-ui=\"typography\" data-type=\"secondary\">Last paid on 3 October.</span></div></div>\n<div data-ui=\"card\" data-hoverable=\"true\"><div data-part=\"cover\" style=\"block-size:96px\"><i data-ui=\"icon\" data-name=\"file-text\"></i></div><div data-part=\"body\"><div data-part=\"meta\"><span data-ui=\"avatar\" data-tone=\"primary\">ML</span><div data-part=\"meta-detail\"><div data-part=\"meta-title\">Mara Lind</div><div data-part=\"meta-description\">Approves invoices over $5,000.</div></div></div></div><ul data-part=\"actions\"><li><button aria-label=\"Settings\"><i data-ui=\"icon\" data-name=\"setting\"></i></button></li><li><button aria-label=\"Edit\"><i data-ui=\"icon\" data-name=\"edit\"></i></button></li><li><button aria-label=\"More\"><i data-ui=\"icon\" data-name=\"ellipsis\"></i></button></li></ul></div>\n<div data-ui=\"card\" data-size=\"small\"><div data-part=\"header\"><div data-part=\"title\">Small card</div></div><div data-part=\"body\">Twelve invoices.</div></div>\n<div data-ui=\"card\" data-variant=\"borderless\"><div data-part=\"body\">Borderless, on a shadow.</div></div>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Card"
+      }
+    },
+    {
+      "name": "Carousel",
+      "ui": "carousel",
+      "category": "Data Display",
+      "description": "Slides that snap into place, with dashes along the bottom. ui.js moves between them.",
+      "props": [
+        {
+          "name": "dot-placement",
+          "label": "Dot Placement",
+          "type": "choice",
+          "options": [
+            "bottom",
+            "top"
+          ],
+          "default": "bottom"
+        }
+      ],
+      "snippet": "<div data-ui=\"carousel\"><div data-part=\"track\" tabindex=\"0\"><div data-part=\"slide\" style=\"background:var(--geekblue-7)\">Approve from anywhere</div><div data-part=\"slide\" style=\"background:var(--cyan-7)\">Match every purchase order</div><div data-part=\"slide\" style=\"background:var(--purple-7)\">Pay on Friday, every Friday</div></div><button data-part=\"arrow\" data-dir=\"-1\" aria-label=\"Previous\"><i data-ui=\"icon\" data-name=\"left\"></i></button><button data-part=\"arrow\" data-dir=\"1\" aria-label=\"Next\"><i data-ui=\"icon\" data-name=\"right\"></i></button><div data-part=\"dots\"><button data-part=\"dot\" aria-current=\"true\" aria-label=\"Slide 1\"></button><button data-part=\"dot\" aria-label=\"Slide 2\"></button><button data-part=\"dot\" aria-label=\"Slide 3\"></button></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Carousel"
+      }
+    },
+    {
+      "name": "Collapse",
+      "ui": "collapse",
+      "category": "Data Display",
+      "description": "Panels that fold, in a bordered box. Give the details a shared name to allow one open at a time.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "bordered",
+          "label": "Bordered",
+          "type": "choice",
+          "options": [
+            "true",
+            "false"
+          ],
+          "default": "true"
+        },
+        {
+          "name": "ghost",
+          "label": "Ghost",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "expand-icon-placement",
+          "label": "Expand Icon Placement",
+          "type": "choice",
+          "options": [
+            "start",
+            "end"
+          ],
+          "default": "start"
+        }
+      ],
+      "snippet": "<div data-ui=\"collapse\"><details data-part=\"panel\" name=\"collapse-demo\" open><summary data-part=\"header\"><i data-ui=\"icon\" data-name=\"right\" data-part=\"arrow\"></i><span data-part=\"title\">Payment terms</span></summary><div data-part=\"content\">Net 30 from the invoice date, unless the vendor record says otherwise.</div></details><details data-part=\"panel\" name=\"collapse-demo\"><summary data-part=\"header\"><i data-ui=\"icon\" data-name=\"right\" data-part=\"arrow\"></i><span data-part=\"title\">Bank details</span></summary><div data-part=\"content\">Changes need a second approver.</div></details><details data-part=\"panel\" name=\"collapse-demo\"><summary data-part=\"header\"><i data-ui=\"icon\" data-name=\"right\" data-part=\"arrow\"></i><span data-part=\"title\">Tax</span><span data-part=\"extra\"><i data-ui=\"icon\" data-name=\"setting\"></i></span></summary><div data-part=\"content\">VAT is split out on each line.</div></details></div>",
+      "import": {
+        "package": "antd",
+        "name": "Collapse"
+      }
+    },
+    {
+      "name": "Descriptions",
+      "ui": "descriptions",
+      "category": "Data Display",
+      "description": "Label and value pairs in columns, plain or bordered.",
+      "props": [
+        {
+          "name": "bordered",
+          "label": "Bordered",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "column",
+          "label": "Column",
+          "type": "choice",
+          "options": [
+            "3",
+            "1",
+            "2",
+            "4"
+          ],
+          "default": "3"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "layout",
+          "label": "Layout",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"large\">\n<section data-ui=\"descriptions\"><div data-part=\"header\"><div data-part=\"title\">Invoice 4021</div><button data-ui=\"button\" data-type=\"primary\">Edit</button></div><dl data-part=\"view\"><div data-part=\"item\"><dt data-part=\"label\">Vendor</dt><dd data-part=\"content\">Harbor Supply</dd></div><div data-part=\"item\"><dt data-part=\"label\">Terms</dt><dd data-part=\"content\">Net 30</dd></div><div data-part=\"item\"><dt data-part=\"label\">Due</dt><dd data-part=\"content\">18 November 2026</dd></div><div data-part=\"item\"><dt data-part=\"label\">PO</dt><dd data-part=\"content\">118</dd></div><div data-part=\"item\" data-span=\"2\"><dt data-part=\"label\">Remit to</dt><dd data-part=\"content\">14 Quay Road, Bristol</dd></div></dl></section>\n<section data-ui=\"descriptions\" data-bordered=\"true\"><dl data-part=\"view\"><div data-part=\"item\"><dt data-part=\"label\">Amount</dt><dd data-part=\"content\">$4,180.00</dd></div><div data-part=\"item\"><dt data-part=\"label\">Tax</dt><dd data-part=\"content\">$836.00</dd></div><div data-part=\"item\"><dt data-part=\"label\">Status</dt><dd data-part=\"content\"><span data-ui=\"badge\" data-status=\"processing\"><span data-part=\"dot\"></span><span data-part=\"text\">Approving</span></span></dd></div></dl></section>\n</div>",
+      "import": {
+        "package": "antd",
+        "name": "Descriptions"
+      }
+    },
+    {
+      "name": "Empty",
+      "ui": "empty",
+      "category": "Data Display",
+      "description": "A quiet box and a line of text for when there's nothing here yet.",
+      "props": [
+        {
+          "name": "image",
+          "label": "Image",
+          "type": "choice",
+          "options": [
+            "default",
+            "simple"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"large\" data-wrap=\"true\" data-justify=\"around\"><div data-ui=\"empty\"><svg data-part=\"image\" viewBox=\"0 0 64 41\" aria-hidden=\"true\"><ellipse cx=\"32\" cy=\"33\" rx=\"32\" ry=\"7\" fill=\"var(--color-fill-tertiary)\"/><path d=\"M55 13.3 44.9 1.8C44.4 1.1 43.7.7 43 .7H21c-.7 0-1.4.4-1.9 1.1L9 13.3v9.2h46z\" fill=\"none\" stroke=\"var(--color-border)\"/><path d=\"M41.6 16.4c0-1.6 1-2.9 2.2-2.9H55v18.1c0 2.1-1.3 3.9-3 3.9H12c-1.7 0-3-1.8-3-3.9V13.5h11.2c1.2 0 2.2 1.3 2.2 2.9 0 1.6 1 2.9 2.2 2.9h14.8c1.2 0 2.2-1.4 2.2-2.9z\" fill=\"var(--color-fill-quaternary)\" stroke=\"var(--color-border)\"/></svg><p data-part=\"description\">No invoices</p><div data-part=\"footer\"><button data-ui=\"button\" data-type=\"primary\">Add invoice</button></div></div><div data-ui=\"empty\" data-image=\"simple\"><svg data-part=\"image\" viewBox=\"0 0 64 41\" aria-hidden=\"true\"><ellipse cx=\"32\" cy=\"33\" rx=\"32\" ry=\"7\" fill=\"var(--color-fill-tertiary)\"/><path d=\"M55 13.3 44.9 1.8C44.4 1.1 43.7.7 43 .7H21c-.7 0-1.4.4-1.9 1.1L9 13.3v9.2h46z\" fill=\"none\" stroke=\"var(--color-border)\"/><path d=\"M41.6 16.4c0-1.6 1-2.9 2.2-2.9H55v18.1c0 2.1-1.3 3.9-3 3.9H12c-1.7 0-3-1.8-3-3.9V13.5h11.2c1.2 0 2.2 1.3 2.2 2.9 0 1.6 1 2.9 2.2 2.9h14.8c1.2 0 2.2-1.4 2.2-2.9z\" fill=\"var(--color-fill-quaternary)\" stroke=\"var(--color-border)\"/></svg><p data-part=\"description\">No data</p></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Empty"
+      }
+    },
+    {
+      "name": "Image",
+      "ui": "image",
+      "category": "Data Display",
+      "description": "A picture with a hover mask; clicking opens the preview over the page.",
+      "props": [],
+      "snippet": "<div data-ui=\"image\" style=\"inline-size:200px\"><button data-part=\"trigger\" type=\"button\" data-dialog-open=\"image-demo\" aria-label=\"Preview scan\"><span data-part=\"img\" style=\"block-size:130px;background:var(--color-surface-3)\"><i data-ui=\"icon\" data-name=\"file-text\"></i></span><span data-part=\"mask\"><i data-ui=\"icon\" data-name=\"eye\"></i>Preview</span></button><dialog data-part=\"preview\" id=\"image-demo\" aria-label=\"Scan preview\"><div data-part=\"stage\"><i data-ui=\"icon\" data-name=\"file-text\"></i></div><div data-part=\"operations\"><button type=\"button\" aria-label=\"Zoom out\"><i data-ui=\"icon\" data-name=\"minus\"></i></button><button type=\"button\" aria-label=\"Zoom in\"><i data-ui=\"icon\" data-name=\"plus\"></i></button><button type=\"button\" aria-label=\"Rotate\"><i data-ui=\"icon\" data-name=\"reload\"></i></button><button type=\"button\" data-dialog-close aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"close\"></i></button></div></dialog></div>",
+      "import": {
+        "package": "antd",
+        "name": "Image"
+      }
+    },
+    {
+      "name": "List",
+      "ui": "list",
+      "category": "Data Display",
+      "description": "Rows with hairlines between them, an avatar, a title and actions. Deprecated by Ant in favour of Listy; kept for existing pages.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "bordered",
+          "label": "Bordered",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"list\" data-bordered=\"true\"><div data-part=\"header\">Awaiting approval</div><ul data-part=\"items\"><li data-part=\"item\"><div data-part=\"meta\"><span data-ui=\"avatar\" data-tone=\"primary\">HS</span><div data-part=\"meta-content\"><div data-part=\"meta-title\"><a href=\"#\">Harbor Supply</a></div><div data-part=\"meta-description\">Invoice 4021, $4,180.00</div></div></div><ul data-part=\"actions\"><li><a href=\"#\">approve</a></li><li><a href=\"#\">hold</a></li></ul></li><li data-part=\"item\"><div data-part=\"meta\"><span data-ui=\"avatar\" data-tone=\"orange\">KP</span><div data-part=\"meta-content\"><div data-part=\"meta-title\"><a href=\"#\">Kestrel Print</a></div><div data-part=\"meta-description\">Invoice 4022, $620.00</div></div></div><ul data-part=\"actions\"><li><a href=\"#\">approve</a></li><li><a href=\"#\">hold</a></li></ul></li></ul><div data-part=\"footer\">2 of 12</div></div>",
+      "import": {
+        "package": "antd",
+        "name": "List"
+      }
+    },
+    {
+      "name": "Listy",
+      "ui": "listy",
+      "category": "Data Display",
+      "description": "A scrolling list with sticky group headers and row hover. Set its height on the part.",
+      "props": [
+        {
+          "name": "hoverable",
+          "label": "Hoverable",
+          "type": "choice",
+          "options": [
+            "true",
+            "false"
+          ],
+          "default": "true"
+        }
+      ],
+      "snippet": "<div data-ui=\"listy\" style=\"max-block-size:220px\"><div data-part=\"group-header\">This week</div><div data-part=\"item\">Harbor Supply, $4,180.00</div><div data-part=\"item\">Kestrel Print, $620.00</div><div data-part=\"item\">Oak and Iron, $1,212.50</div><div data-part=\"group-header\">Next week</div><div data-part=\"item\">Tideline Freight, $8,900.00</div><div data-part=\"item\">Quay Stationers, $96.40</div><div data-part=\"item\">Northgate Cleaning, $340.00</div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Listy"
+      }
+    },
+    {
+      "name": "Popover",
+      "ui": "popover",
+      "category": "Data Display",
+      "description": "A small card over a trigger: a title, some content and an arrow.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "bottom",
+            "top",
+            "left",
+            "right"
+          ],
+          "default": "bottom"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-type=\"primary\" popovertarget=\"popover-demo\" style=\"anchor-name:--popover-demo\">Open popover</button><div data-ui=\"popover\" popover id=\"popover-demo\" style=\"position-anchor:--popover-demo\"><div data-part=\"title\">Harbor Supply</div><div data-part=\"content\">Net 30, paid on Fridays.</div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Popover"
+      }
+    },
+    {
+      "name": "QRCode",
+      "ui": "qr-code",
+      "category": "Data Display",
+      "description": "A QR code on a bordered white plate. This one is real and reads ledgerline.example/i/4021; replace its path with your own.",
+      "props": [
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "svg"
+          ],
+          "default": "svg"
+        },
+        {
+          "name": "bordered",
+          "label": "Bordered",
+          "type": "choice",
+          "options": [
+            "true",
+            "false"
+          ],
+          "default": "true"
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "active",
+            "loading",
+            "expired"
+          ],
+          "default": "active"
+        }
+      ],
+      "snippet": "<div data-ui=\"qr-code\" role=\"img\" aria-label=\"QR code for invoice 4021\"><svg viewBox=\"0 0 29 29\" shape-rendering=\"crispEdges\"><path d=\"M0 0h7v1h-7zM8 0h1v1h-1zM11 0h5v1h-5zM18 0h1v1h-1zM22 0h7v1h-7zM0 1h1v1h-1zM6 1h1v1h-1zM9 1h4v1h-4zM15 1h1v1h-1zM18 1h1v1h-1zM20 1h1v1h-1zM22 1h1v1h-1zM28 1h1v1h-1zM0 2h1v1h-1zM2 2h3v1h-3zM6 2h1v1h-1zM8 2h1v1h-1zM10 2h1v1h-1zM12 2h2v1h-2zM17 2h1v1h-1zM19 2h2v1h-2zM22 2h1v1h-1zM24 2h3v1h-3zM28 2h1v1h-1zM0 3h1v1h-1zM2 3h3v1h-3zM6 3h1v1h-1zM9 3h1v1h-1zM11 3h1v1h-1zM15 3h4v1h-4zM22 3h1v1h-1zM24 3h3v1h-3zM28 3h1v1h-1zM0 4h1v1h-1zM2 4h3v1h-3zM6 4h1v1h-1zM9 4h2v1h-2zM15 4h3v1h-3zM22 4h1v1h-1zM24 4h3v1h-3zM28 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM8 5h2v1h-2zM11 5h4v1h-4zM16 5h1v1h-1zM22 5h1v1h-1zM28 5h1v1h-1zM0 6h7v1h-7zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h7v1h-7zM10 7h1v1h-1zM13 7h1v1h-1zM0 8h1v1h-1zM2 8h1v1h-1zM6 8h2v1h-2zM9 8h1v1h-1zM11 8h3v1h-3zM15 8h2v1h-2zM23 8h1v1h-1zM26 8h1v1h-1zM28 8h1v1h-1zM0 9h2v1h-2zM3 9h3v1h-3zM7 9h1v1h-1zM9 9h2v1h-2zM12 9h1v1h-1zM16 9h2v1h-2zM19 9h2v1h-2zM22 9h2v1h-2zM27 9h2v1h-2zM1 10h2v1h-2zM5 10h2v1h-2zM12 10h3v1h-3zM16 10h2v1h-2zM19 10h1v1h-1zM22 10h1v1h-1zM25 10h2v1h-2zM28 10h1v1h-1zM0 11h4v1h-4zM7 11h3v1h-3zM11 11h2v1h-2zM14 11h3v1h-3zM20 11h2v1h-2zM23 11h1v1h-1zM25 11h1v1h-1zM1 12h1v1h-1zM4 12h1v1h-1zM6 12h3v1h-3zM10 12h5v1h-5zM16 12h1v1h-1zM19 12h2v1h-2zM22 12h2v1h-2zM28 12h1v1h-1zM3 13h1v1h-1zM8 13h3v1h-3zM13 13h2v1h-2zM19 13h5v1h-5zM27 13h2v1h-2zM0 14h2v1h-2zM3 14h5v1h-5zM11 14h1v1h-1zM15 14h1v1h-1zM17 14h1v1h-1zM19 14h6v1h-6zM28 14h1v1h-1zM7 15h1v1h-1zM9 15h2v1h-2zM13 15h1v1h-1zM18 15h3v1h-3zM22 15h2v1h-2zM3 16h1v1h-1zM5 16h3v1h-3zM9 16h5v1h-5zM15 16h1v1h-1zM18 16h1v1h-1zM20 16h1v1h-1zM22 16h2v1h-2zM28 16h1v1h-1zM1 17h1v1h-1zM3 17h2v1h-2zM7 17h1v1h-1zM9 17h2v1h-2zM15 17h1v1h-1zM17 17h1v1h-1zM19 17h1v1h-1zM22 17h2v1h-2zM26 17h3v1h-3zM0 18h4v1h-4zM5 18h2v1h-2zM11 18h1v1h-1zM13 18h4v1h-4zM19 18h1v1h-1zM24 18h2v1h-2zM28 18h1v1h-1zM2 19h1v1h-1zM4 19h1v1h-1zM8 19h1v1h-1zM11 19h1v1h-1zM14 19h2v1h-2zM18 19h1v1h-1zM20 19h1v1h-1zM23 19h1v1h-1zM0 20h2v1h-2zM6 20h2v1h-2zM11 20h5v1h-5zM19 20h7v1h-7zM27 20h1v1h-1zM8 21h2v1h-2zM12 21h4v1h-4zM17 21h1v1h-1zM20 21h1v1h-1zM24 21h3v1h-3zM28 21h1v1h-1zM0 22h7v1h-7zM8 22h3v1h-3zM15 22h4v1h-4zM20 22h1v1h-1zM22 22h1v1h-1zM24 22h1v1h-1zM28 22h1v1h-1zM0 23h1v1h-1zM6 23h1v1h-1zM10 23h1v1h-1zM12 23h2v1h-2zM18 23h3v1h-3zM24 23h1v1h-1zM27 23h1v1h-1zM0 24h1v1h-1zM2 24h3v1h-3zM6 24h1v1h-1zM9 24h1v1h-1zM11 24h3v1h-3zM15 24h1v1h-1zM18 24h8v1h-8zM27 24h2v1h-2zM0 25h1v1h-1zM2 25h3v1h-3zM6 25h1v1h-1zM9 25h1v1h-1zM12 25h1v1h-1zM15 25h1v1h-1zM17 25h1v1h-1zM20 25h2v1h-2zM24 25h3v1h-3zM28 25h1v1h-1zM0 26h1v1h-1zM2 26h3v1h-3zM6 26h1v1h-1zM8 26h2v1h-2zM13 26h1v1h-1zM15 26h2v1h-2zM21 26h1v1h-1zM24 26h1v1h-1zM27 26h2v1h-2zM0 27h1v1h-1zM6 27h1v1h-1zM9 27h5v1h-5zM16 27h1v1h-1zM18 27h1v1h-1zM20 27h1v1h-1zM22 27h1v1h-1zM25 27h1v1h-1zM0 28h7v1h-7zM8 28h1v1h-1zM10 28h1v1h-1zM14 28h2v1h-2zM18 28h1v1h-1zM20 28h1v1h-1zM22 28h1v1h-1zM25 28h1v1h-1zM28 28h1v1h-1z\"/></svg></div>",
+      "import": {
+        "package": "antd",
+        "name": "QRCode"
+      }
+    },
+    {
+      "name": "Segmented",
+      "ui": "segmented",
+      "category": "Data Display",
+      "description": "A set of options on a grey track, the chosen one raised on white.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "middle",
+            "small",
+            "large"
+          ],
+          "default": "middle"
+        },
+        {
+          "name": "block",
+          "label": "Block",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "shape",
+          "label": "Shape",
+          "type": "choice",
+          "options": [
+            "default",
+            "round"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "orientation",
+          "label": "Orientation",
+          "type": "choice",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"small\" data-align=\"start\"><div data-ui=\"segmented\" role=\"radiogroup\"><label data-part=\"item\"><input type=\"radio\" name=\"segmented-a\" checked><span>Daily</span></label><label data-part=\"item\"><input type=\"radio\" name=\"segmented-a\"><span>Weekly</span></label><label data-part=\"item\"><input type=\"radio\" name=\"segmented-a\"><span>Monthly</span></label><label data-part=\"item\"><input type=\"radio\" name=\"segmented-a\" disabled><span>Yearly</span></label></div><div data-ui=\"segmented\" data-size=\"large\" role=\"radiogroup\"><label data-part=\"item\"><input type=\"radio\" name=\"segmented-b\" checked><span><i data-ui=\"icon\" data-name=\"unordered-list\"></i>List</span></label><label data-part=\"item\"><input type=\"radio\" name=\"segmented-b\"><span><i data-ui=\"icon\" data-name=\"appstore\"></i>Board</span></label></div><div data-ui=\"segmented\" data-size=\"small\" role=\"radiogroup\"><label data-part=\"item\"><input type=\"radio\" name=\"segmented-c\" checked><span>Small</span></label><label data-part=\"item\"><input type=\"radio\" name=\"segmented-c\"><span>Other</span></label></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Segmented"
+      }
+    },
+    {
+      "name": "Statistic",
+      "ui": "statistic",
+      "category": "Data Display",
+      "description": "A big number with a small grey title.",
+      "props": [
+        {
+          "name": "tone",
+          "label": "Tone",
+          "type": "choice",
+          "options": [
+            "default",
+            "success",
+            "danger"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"grid\" data-columns=\"3\" data-gap=\"md\"><div data-ui=\"statistic\"><div data-part=\"title\">Open invoices</div><div data-part=\"content\"><span data-part=\"value\">112,893</span></div></div><div data-ui=\"statistic\" data-tone=\"success\"><div data-part=\"title\">Paid this month</div><div data-part=\"content\"><span data-part=\"prefix\"><i data-ui=\"icon\" data-name=\"arrow-up\"></i></span><span data-part=\"value\">11.28</span><span data-part=\"suffix\">%</span></div></div><div data-ui=\"statistic\" data-tone=\"danger\"><div data-part=\"title\">Overdue</div><div data-part=\"content\"><span data-part=\"prefix\"><i data-ui=\"icon\" data-name=\"arrow-down\"></i></span><span data-part=\"value\">9.30</span><span data-part=\"suffix\">%</span></div></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Statistic"
+      }
+    },
+    {
+      "name": "Table",
+      "ui": "table",
+      "category": "Data Display",
+      "description": "Rows on a #fafafa header with 16px cells, sort carets and row selection. Sizes middle and small.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "large",
+            "middle",
+            "small"
+          ],
+          "default": "large"
+        },
+        {
+          "name": "bordered",
+          "label": "Bordered",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"table\"><div data-part=\"scroll\"><table><thead><tr><th data-part=\"selection\"><label data-ui=\"checkbox\"><input type=\"checkbox\" data-part=\"all\" aria-label=\"Select all\"></label></th><th aria-sort=\"none\"><button data-part=\"sort\" type=\"button\">Vendor<span data-part=\"carets\"><i data-ui=\"icon\" data-name=\"caret-up\"></i><i data-ui=\"icon\" data-name=\"caret-down\"></i></span></button></th><th>Status</th><th data-align=\"right\" aria-sort=\"descending\"><button data-part=\"sort\" type=\"button\">Amount<span data-part=\"carets\"><i data-ui=\"icon\" data-name=\"caret-up\"></i><i data-ui=\"icon\" data-name=\"caret-down\"></i></span></button></th><th>Action</th></tr></thead><tbody><tr><td data-part=\"selection\"><label data-ui=\"checkbox\"><input type=\"checkbox\" aria-label=\"Select Tideline Freight\"></label></td><td>Tideline Freight</td><td><span data-ui=\"tag\" data-color=\"processing\">Approving</span></td><td data-align=\"right\">8,900.00</td><td><a data-ui=\"typography\" data-variant=\"link\" href=\"#\">Open</a></td></tr><tr aria-selected=\"true\"><td data-part=\"selection\"><label data-ui=\"checkbox\"><input type=\"checkbox\" checked aria-label=\"Select Harbor Supply\"></label></td><td>Harbor Supply</td><td><span data-ui=\"tag\" data-color=\"success\">Paid</span></td><td data-align=\"right\">4,180.00</td><td><a data-ui=\"typography\" data-variant=\"link\" href=\"#\">Open</a></td></tr><tr><td data-part=\"selection\"><label data-ui=\"checkbox\"><input type=\"checkbox\" aria-label=\"Select Kestrel Print\"></label></td><td>Kestrel Print</td><td><span data-ui=\"tag\" data-color=\"error\">Late</span></td><td data-align=\"right\">620.00</td><td><a data-ui=\"typography\" data-variant=\"link\" href=\"#\">Open</a></td></tr></tbody></table></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Table"
+      }
+    },
+    {
+      "name": "Tag",
+      "ui": "tag",
+      "category": "Data Display",
+      "description": "A small 22px label, grey or in a preset colour. Status colours for state, presets for categories.",
+      "props": [
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "default",
+            "success",
+            "processing",
+            "warning",
+            "error",
+            "magenta",
+            "red",
+            "volcano",
+            "orange",
+            "gold",
+            "lime",
+            "green",
+            "cyan",
+            "blue",
+            "geekblue",
+            "purple"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "filled",
+            "solid",
+            "outlined"
+          ],
+          "default": "filled"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"small\"><div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\"><span data-ui=\"tag\">Default</span><a data-ui=\"tag\" href=\"#\">Link</a><span data-ui=\"tag\">Closable<button data-part=\"close\" aria-label=\"Remove\"><i data-ui=\"icon\" data-name=\"close\"></i></button></span><span data-ui=\"tag\"><i data-ui=\"icon\" data-name=\"tag\"></i>With icon</span></div><div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\"><span data-ui=\"tag\" data-color=\"magenta\">magenta</span><span data-ui=\"tag\" data-color=\"red\">red</span><span data-ui=\"tag\" data-color=\"volcano\">volcano</span><span data-ui=\"tag\" data-color=\"orange\">orange</span><span data-ui=\"tag\" data-color=\"gold\">gold</span><span data-ui=\"tag\" data-color=\"lime\">lime</span><span data-ui=\"tag\" data-color=\"green\">green</span><span data-ui=\"tag\" data-color=\"cyan\">cyan</span><span data-ui=\"tag\" data-color=\"blue\">blue</span><span data-ui=\"tag\" data-color=\"geekblue\">geekblue</span><span data-ui=\"tag\" data-color=\"purple\">purple</span></div><div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\"><span data-ui=\"tag\" data-color=\"success\"><i data-ui=\"icon\" data-name=\"check-circle-outlined\"></i>success</span><span data-ui=\"tag\" data-color=\"processing\"><i data-ui=\"icon\" data-name=\"sync\"></i>processing</span><span data-ui=\"tag\" data-color=\"error\"><i data-ui=\"icon\" data-name=\"close-circle-outlined\"></i>error</span><span data-ui=\"tag\" data-color=\"warning\"><i data-ui=\"icon\" data-name=\"exclamation-circle-outlined\"></i>warning</span></div><div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\"><span data-ui=\"tag\" data-variant=\"solid\" data-color=\"success\">solid</span><span data-ui=\"tag\" data-variant=\"solid\" data-color=\"geekblue\">solid</span><span data-ui=\"tag\" data-variant=\"outlined\" data-color=\"purple\">outlined</span></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Tag"
+      }
+    },
+    {
+      "name": "Timeline",
+      "ui": "timeline",
+      "category": "Data Display",
+      "description": "Events down a line, each with a small ring. Colour a ring with data-color.",
+      "props": [
+        {
+          "name": "mode",
+          "label": "Mode",
+          "type": "choice",
+          "options": [
+            "start",
+            "alternate",
+            "end"
+          ],
+          "default": "start"
+        },
+        {
+          "name": "variant",
+          "label": "Variant",
+          "type": "choice",
+          "options": [
+            "outlined",
+            "filled"
+          ],
+          "default": "outlined"
+        }
+      ],
+      "snippet": "<ol data-ui=\"timeline\"><li data-part=\"item\"><span data-part=\"dot\"></span><div data-part=\"content\">Received 2 November</div></li><li data-part=\"item\" data-color=\"success\"><span data-part=\"dot\"></span><div data-part=\"content\">Matched to PO 118<br>3 November</div></li><li data-part=\"item\" data-color=\"error\"><span data-part=\"dot\"></span><div data-part=\"content\">Amount differs by $12.00</div></li><li data-part=\"item\" data-color=\"gray\"><span data-part=\"dot\"></span><div data-part=\"content\">Awaiting approval</div></li></ol>",
+      "import": {
+        "package": "antd",
+        "name": "Timeline"
+      }
+    },
+    {
+      "name": "Tooltip",
+      "ui": "tooltip",
+      "category": "Data Display",
+      "description": "A short dark label with an arrow, on hover or focus.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "top",
+            "bottom",
+            "left",
+            "right"
+          ],
+          "default": "top"
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "type": "choice",
+          "options": [
+            "none",
+            "magenta",
+            "green",
+            "cyan",
+            "purple"
+          ],
+          "default": "none"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\"><span data-ui=\"tooltip\"><button data-ui=\"button\">Top</button><span data-part=\"popup\" role=\"tooltip\">Approve invoice</span></span><span data-ui=\"tooltip\" data-placement=\"bottom\"><button data-ui=\"button\">Bottom</button><span data-part=\"popup\" role=\"tooltip\">Hold invoice</span></span><span data-ui=\"tooltip\" data-placement=\"right\"><button data-ui=\"button\">Right</button><span data-part=\"popup\" role=\"tooltip\">Open vendor</span></span><span data-ui=\"tooltip\" data-color=\"purple\"><button data-ui=\"button\">Purple</button><span data-part=\"popup\" role=\"tooltip\">Coloured</span></span></div>",
+      "import": {
+        "package": "antd",
+        "name": "Tooltip"
+      }
+    },
+    {
+      "name": "Tour",
+      "ui": "tour",
+      "category": "Data Display",
+      "description": "A guided walk: a card by each target, with a bright cut-out over the page. data-target holds the target's id.",
+      "props": [
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "default",
+            "primary"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"small\"><button data-ui=\"button\" data-type=\"primary\" data-tour-open=\"tour-demo\">Start tour</button><button data-ui=\"button\" id=\"tour-demo-a\">Approve</button><button data-ui=\"button\" id=\"tour-demo-b\">Hold</button></div>\n<div data-ui=\"tour\" popover=\"manual\" id=\"tour-demo\"><div data-part=\"spot\"></div><div data-part=\"card\"><button data-part=\"close\" type=\"button\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"close\"></i></button><div data-part=\"step\" data-target=\"tour-demo-a\"><div data-part=\"title\">Approve</div><div data-part=\"description\">Sends the invoice to Friday's pay run.</div></div><div data-part=\"step\" data-target=\"tour-demo-b\" hidden><div data-part=\"title\">Hold</div><div data-part=\"description\">Keeps it out of the run until you release it.</div></div><div data-part=\"footer\"><div data-part=\"dots\"></div><button data-ui=\"button\" data-size=\"small\" data-part=\"prev\" type=\"button\">Previous</button><button data-ui=\"button\" data-type=\"primary\" data-size=\"small\" data-part=\"next\" type=\"button\">Next</button></div></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Tour"
+      }
+    },
+    {
+      "name": "Tree",
+      "ui": "tree",
+      "category": "Data Display",
+      "description": "Nested nodes, 24px tall and indented by 24px, with carets and optional checkboxes.",
+      "props": [],
+      "snippet": "<ul data-ui=\"tree\" role=\"tree\"><li data-part=\"node\" role=\"treeitem\" aria-expanded=\"true\"><div data-part=\"row\"><button data-part=\"switcher\" type=\"button\" aria-label=\"Toggle\"><i data-ui=\"icon\" data-name=\"caret-down\"></i></button><label data-ui=\"checkbox\"><input type=\"checkbox\" aria-label=\"Assets\"></label><span data-part=\"title\">Assets</span></div><ul data-part=\"group\"><li data-part=\"node\" role=\"treeitem\" aria-expanded=\"true\"><div data-part=\"row\"><button data-part=\"switcher\" type=\"button\" aria-label=\"Toggle\"><i data-ui=\"icon\" data-name=\"caret-down\"></i></button><label data-ui=\"checkbox\"><input type=\"checkbox\" checked aria-label=\"Cash\"></label><span data-part=\"title\">Cash</span></div><ul data-part=\"group\"><li data-part=\"node\" role=\"treeitem\" aria-selected=\"true\"><div data-part=\"row\"><span data-part=\"switcher\"></span><label data-ui=\"checkbox\"><input type=\"checkbox\" checked aria-label=\"Operating\"></label><span data-part=\"title\">Operating</span></div></li><li data-part=\"node\" role=\"treeitem\"><div data-part=\"row\"><span data-part=\"switcher\"></span><label data-ui=\"checkbox\"><input type=\"checkbox\" checked aria-label=\"Payroll\"></label><span data-part=\"title\">Payroll</span></div></li></ul></li><li data-part=\"node\" role=\"treeitem\" aria-expanded=\"false\"><div data-part=\"row\"><button data-part=\"switcher\" type=\"button\" aria-label=\"Toggle\"><i data-ui=\"icon\" data-name=\"caret-down\"></i></button><label data-ui=\"checkbox\"><input type=\"checkbox\" aria-label=\"Receivables\"></label><span data-part=\"title\">Receivables</span></div><ul data-part=\"group\"><li data-part=\"node\" role=\"treeitem\"><div data-part=\"row\"><span data-part=\"switcher\"></span><label data-ui=\"checkbox\"><input type=\"checkbox\" aria-label=\"Trade\"></label><span data-part=\"title\">Trade</span></div></li></ul></li></ul></li></ul>",
+      "import": {
+        "package": "antd",
+        "name": "Tree"
+      }
+    },
+    {
+      "name": "Alert",
+      "ui": "alert",
+      "category": "Feedback",
+      "description": "A tinted message box by type, with a border and 8px corners. Banner runs edge to edge.",
+      "props": [
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "info",
+            "success",
+            "warning",
+            "error"
+          ],
+          "default": "info"
+        },
+        {
+          "name": "banner",
+          "label": "Banner",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"small\"><div data-ui=\"alert\" data-type=\"success\" role=\"alert\"><i data-ui=\"icon\" data-name=\"check-circle\" data-part=\"icon\"></i><div data-part=\"content\"><div data-part=\"message\">Payment run sent to the bank.</div></div></div><div data-ui=\"alert\" role=\"alert\"><i data-ui=\"icon\" data-name=\"info-circle\" data-part=\"icon\"></i><div data-part=\"content\"><div data-part=\"message\">Friday's run closes at 3pm.</div></div></div><div data-ui=\"alert\" data-type=\"warning\" role=\"alert\"><i data-ui=\"icon\" data-name=\"exclamation-circle\" data-part=\"icon\"></i><div data-part=\"content\"><div data-part=\"message\">Harbor Supply changed its bank details.</div></div><div data-part=\"action\"><button data-ui=\"button\" data-size=\"small\">Review</button></div></div><div data-ui=\"alert\" data-type=\"error\" role=\"alert\"><i data-ui=\"icon\" data-name=\"close-circle\" data-part=\"icon\"></i><div data-part=\"content\"><div data-part=\"message\">The amount doesn't match the purchase order.</div></div><button data-part=\"close\" type=\"button\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"close\"></i></button></div>\n<div data-ui=\"alert\" data-type=\"info\" role=\"alert\"><i data-ui=\"icon\" data-name=\"info-circle-outlined\" data-part=\"icon\"></i><div data-part=\"content\"><div data-part=\"message\">Approval rules changed</div><div data-part=\"description\">Invoices over $5,000 now need two approvers. Anything already in progress keeps the old rule.</div></div></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Alert"
+      }
+    },
+    {
+      "name": "Drawer",
+      "ui": "drawer",
+      "category": "Feedback",
+      "description": "A 378px panel from a screen edge with a close button at its left and a dimmed page behind.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "right",
+            "left",
+            "top",
+            "bottom"
+          ],
+          "default": "right"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "large"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-type=\"primary\" data-dialog-open=\"drawer-demo\">Open drawer</button><dialog data-ui=\"drawer\" id=\"drawer-demo\" aria-labelledby=\"drawer-demo-title\"><div data-part=\"header\"><button data-part=\"close\" type=\"button\" data-dialog-close aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"close\"></i></button><div data-part=\"title\" id=\"drawer-demo-title\">Invoice 4021</div></div><div data-part=\"body\"><p data-ui=\"typography\" data-variant=\"paragraph\">Harbor Supply, $4,180.00, due 18 November.</p></div><div data-part=\"footer\"><div data-ui=\"space\"><button data-ui=\"button\" data-dialog-close>Cancel</button><button data-ui=\"button\" data-type=\"primary\" data-dialog-close>Approve</button></div></div></dialog>",
+      "import": {
+        "package": "antd",
+        "name": "Drawer"
+      }
+    },
+    {
+      "name": "Message",
+      "ui": "message",
+      "category": "Feedback",
+      "description": "A brief note at the top of the page that leaves after 3 seconds. Without popover it sits in place.",
+      "props": [
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "info",
+            "success",
+            "warning",
+            "error",
+            "loading"
+          ],
+          "default": "info"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"small\" data-align=\"start\"><button data-ui=\"button\" popovertarget=\"message-demo\">Show message</button><div data-ui=\"message\" data-type=\"success\" role=\"status\"><i data-ui=\"icon\" data-name=\"check-circle\" data-part=\"icon\"></i><span>Invoice approved</span></div><div data-ui=\"message\" data-type=\"error\" role=\"status\"><i data-ui=\"icon\" data-name=\"close-circle\" data-part=\"icon\"></i><span>Could not reach the bank</span></div><div data-ui=\"message\" data-type=\"loading\" role=\"status\"><i data-ui=\"icon\" data-name=\"loading\" data-part=\"icon\"></i><span>Sending</span></div></div><div data-ui=\"message\" popover id=\"message-demo\" data-type=\"info\" role=\"status\"><i data-ui=\"icon\" data-name=\"info-circle\" data-part=\"icon\"></i><span>Friday's run closes at 3pm</span></div>",
+      "import": {
+        "package": "antd",
+        "name": "message"
+      }
+    },
+    {
+      "name": "Modal",
+      "ui": "modal",
+      "category": "Feedback",
+      "description": "A 520px dialog, 100px from the top: title, body and buttons at the right. Confirm adds a status icon.",
+      "props": [
+        {
+          "name": "width",
+          "label": "Width",
+          "type": "choice",
+          "options": [
+            "default",
+            "small",
+            "large"
+          ],
+          "default": "default"
+        },
+        {
+          "name": "centered",
+          "label": "Centered",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "confirm",
+          "label": "Confirm",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"space\"><button data-ui=\"button\" data-type=\"primary\" data-dialog-open=\"modal-demo\">Open modal</button><button data-ui=\"button\" data-dialog-open=\"modal-confirm\">Confirm</button></div><dialog data-ui=\"modal\" id=\"modal-demo\" aria-labelledby=\"modal-demo-title\"><button data-part=\"close\" type=\"button\" data-dialog-close aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"close\"></i></button><div data-part=\"title\" id=\"modal-demo-title\">Approve invoice 4021?</div><div data-part=\"body\"><p data-ui=\"typography\">It joins Friday's pay run. Harbor Supply is paid $4,180.00.</p></div><div data-part=\"footer\"><button data-ui=\"button\" data-dialog-close>Cancel</button><button data-ui=\"button\" data-type=\"primary\" data-dialog-close autofocus>OK</button></div></dialog><dialog data-ui=\"modal\" data-confirm=\"true\" id=\"modal-confirm\" aria-labelledby=\"modal-confirm-title\"><i data-ui=\"icon\" data-name=\"exclamation-circle\" data-part=\"confirm-icon\"></i><div data-part=\"title\" id=\"modal-confirm-title\">Void this invoice?</div><div data-part=\"body\">This can't be undone.</div><div data-part=\"footer\"><button data-ui=\"button\" data-dialog-close>Cancel</button><button data-ui=\"button\" data-type=\"primary\" data-danger=\"true\" data-dialog-close>Void</button></div></dialog>",
+      "import": {
+        "package": "antd",
+        "name": "Modal"
+      }
+    },
+    {
+      "name": "Notification",
+      "ui": "notification",
+      "category": "Feedback",
+      "description": "A 384px card at the top right, leaving after 4.5 seconds. Without popover it sits in place.",
+      "props": [
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "open",
+            "success",
+            "info",
+            "warning",
+            "error"
+          ],
+          "default": "open"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"small\" data-align=\"start\"><button data-ui=\"button\" popovertarget=\"notification-demo\">Show notification</button><div data-ui=\"notification\" data-type=\"success\" role=\"status\" style=\"max-inline-size:100%\"><i data-ui=\"icon\" data-name=\"check-circle\" data-part=\"icon\"></i><div data-part=\"message\">Payment sent</div><div data-part=\"description\">Harbor Supply was paid $4,180.00 this morning.</div><button data-part=\"close\" type=\"button\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"close\"></i></button></div></div><div data-ui=\"notification\" popover id=\"notification-demo\" data-type=\"info\" role=\"status\"><i data-ui=\"icon\" data-name=\"info-circle\" data-part=\"icon\"></i><div data-part=\"message\">Run closes at 3pm</div><div data-part=\"description\">Six invoices are still waiting for approval.</div><button data-part=\"close\" type=\"button\" popovertarget=\"notification-demo\" popovertargetaction=\"hide\" aria-label=\"Close\"><i data-ui=\"icon\" data-name=\"close\"></i></button></div>",
+      "import": {
+        "package": "antd",
+        "name": "notification"
+      }
+    },
+    {
+      "name": "Popconfirm",
+      "ui": "popconfirm",
+      "category": "Feedback",
+      "description": "A small question over the button that triggered it, with Cancel and OK.",
+      "props": [
+        {
+          "name": "placement",
+          "label": "Placement",
+          "type": "choice",
+          "options": [
+            "top",
+            "bottom"
+          ],
+          "default": "top"
+        }
+      ],
+      "snippet": "<button data-ui=\"button\" data-danger=\"true\" popovertarget=\"popconfirm-demo\" style=\"anchor-name:--popconfirm-demo\">Delete</button><div data-ui=\"popconfirm\" popover id=\"popconfirm-demo\" style=\"position-anchor:--popconfirm-demo\"><div data-part=\"message\"><i data-ui=\"icon\" data-name=\"exclamation-circle\" data-part=\"icon\"></i><div><div data-part=\"title\">Delete this draft?</div><div data-part=\"description\">The scan stays in the vendor's file.</div></div></div><div data-part=\"buttons\"><button data-ui=\"button\" data-size=\"small\" popovertarget=\"popconfirm-demo\" popovertargetaction=\"hide\">No</button><button data-ui=\"button\" data-type=\"primary\" data-size=\"small\" popovertarget=\"popconfirm-demo\" popovertargetaction=\"hide\">Yes</button></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Popconfirm"
+      }
+    },
+    {
+      "name": "Progress",
+      "ui": "progress",
+      "category": "Feedback",
+      "description": "A rounded 8px line or a ring. Set --percent; the status sets the colour and the end icon.",
+      "props": [
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "choice",
+          "options": [
+            "line",
+            "circle",
+            "dashboard"
+          ],
+          "default": "line"
+        },
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "normal",
+            "active",
+            "success",
+            "exception"
+          ],
+          "default": "normal"
+        },
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "small"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"small\"><div data-ui=\"progress\" style=\"--percent:30\" role=\"progressbar\" aria-valuenow=\"30\"><div data-part=\"rail\"><div data-part=\"track\"></div></div><span data-part=\"text\">30%</span></div><div data-ui=\"progress\" data-status=\"active\" style=\"--percent:50\" role=\"progressbar\" aria-valuenow=\"50\"><div data-part=\"rail\"><div data-part=\"track\"></div></div><span data-part=\"text\">50%</span></div><div data-ui=\"progress\" data-status=\"exception\" style=\"--percent:70\" role=\"progressbar\" aria-valuenow=\"70\"><div data-part=\"rail\"><div data-part=\"track\"></div></div><span data-part=\"text\"><i data-ui=\"icon\" data-name=\"close-circle\"></i></span></div><div data-ui=\"progress\" data-status=\"success\" style=\"--percent:100\" role=\"progressbar\" aria-valuenow=\"100\"><div data-part=\"rail\"><div data-part=\"track\"></div></div><span data-part=\"text\"><i data-ui=\"icon\" data-name=\"check-circle\"></i></span></div>\n<div data-ui=\"flex\" data-gap=\"middle\" data-wrap=\"true\" data-align=\"center\"><div data-ui=\"progress\" data-type=\"circle\" style=\"--percent:75\" role=\"progressbar\" aria-valuenow=\"75\"><svg viewBox=\"0 0 100 100\"><circle data-part=\"rail\" cx=\"50\" cy=\"50\" r=\"47\" pathLength=\"100\"></circle><circle data-part=\"track\" cx=\"50\" cy=\"50\" r=\"47\" pathLength=\"100\"></circle></svg><span data-part=\"text\">75%</span></div><div data-ui=\"progress\" data-type=\"circle\" data-status=\"success\" style=\"--percent:100\" role=\"progressbar\" aria-valuenow=\"100\"><svg viewBox=\"0 0 100 100\"><circle data-part=\"rail\" cx=\"50\" cy=\"50\" r=\"47\" pathLength=\"100\"></circle><circle data-part=\"track\" cx=\"50\" cy=\"50\" r=\"47\" pathLength=\"100\"></circle></svg><span data-part=\"text\"><i data-ui=\"icon\" data-name=\"check\"></i></span></div><div data-ui=\"progress\" data-type=\"circle\" data-size=\"small\" data-status=\"exception\" style=\"--percent:70\" role=\"progressbar\" aria-valuenow=\"70\"><svg viewBox=\"0 0 100 100\"><circle data-part=\"rail\" cx=\"50\" cy=\"50\" r=\"47\" pathLength=\"100\"></circle><circle data-part=\"track\" cx=\"50\" cy=\"50\" r=\"47\" pathLength=\"100\"></circle></svg><span data-part=\"text\"><i data-ui=\"icon\" data-name=\"close\"></i></span></div></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Progress"
+      }
+    },
+    {
+      "name": "Result",
+      "ui": "result",
+      "category": "Feedback",
+      "description": "The end of a task: a 72px status icon, a title, a line of text and the next actions.",
+      "props": [
+        {
+          "name": "status",
+          "label": "Status",
+          "type": "choice",
+          "options": [
+            "info",
+            "success",
+            "warning",
+            "error"
+          ],
+          "default": "info"
+        }
+      ],
+      "snippet": "<div data-ui=\"result\" data-status=\"success\"><i data-ui=\"icon\" data-name=\"check-circle\" data-part=\"icon\"></i><div data-part=\"title\">Pay run sent</div><div data-part=\"subtitle\">Six vendors will be paid by Monday. Reference 2026-1106.</div><div data-part=\"extra\"><button data-ui=\"button\" data-type=\"primary\">Back to invoices</button><button data-ui=\"button\">View run</button></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Result"
+      }
+    },
+    {
+      "name": "Skeleton",
+      "ui": "skeleton",
+      "category": "Feedback",
+      "description": "Grey shapes that stand in for content while it loads, with an optional shimmer.",
+      "props": [
+        {
+          "name": "active",
+          "label": "Active",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "round",
+          "label": "Round",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-vertical=\"true\" data-gap=\"middle\"><div data-ui=\"skeleton\" data-active=\"true\"><span data-part=\"avatar\"></span><div data-part=\"content\"><span data-part=\"title\"></span><span data-part=\"line\"></span><span data-part=\"line\"></span><span data-part=\"line\" style=\"inline-size:61%\"></span></div></div><div data-ui=\"skeleton\"><div data-ui=\"flex\" data-gap=\"small\" data-wrap=\"true\"><span data-part=\"button\"></span><span data-part=\"input\"></span><span data-part=\"image\"><i data-ui=\"icon\" data-name=\"picture\"></i></span></div></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Skeleton"
+      }
+    },
+    {
+      "name": "Spin",
+      "ui": "spin",
+      "category": "Feedback",
+      "description": "Four dots that turn, while a section loads. Wrap content to blur it underneath.",
+      "props": [
+        {
+          "name": "size",
+          "label": "Size",
+          "type": "choice",
+          "options": [
+            "default",
+            "small",
+            "large"
+          ],
+          "default": "default"
+        }
+      ],
+      "snippet": "<div data-ui=\"flex\" data-gap=\"large\" data-align=\"center\" data-wrap=\"true\"><span data-ui=\"spin\" data-size=\"small\" role=\"status\" aria-label=\"Loading\"></span><span data-ui=\"spin\" role=\"status\" aria-label=\"Loading\"></span><span data-ui=\"spin\" data-size=\"large\" role=\"status\" aria-label=\"Loading\"></span><div data-ui=\"spin-container\" style=\"flex:1 1 240px\"><span data-ui=\"spin\" role=\"status\" aria-label=\"Loading\"></span><div data-part=\"content\"><div data-ui=\"alert\" role=\"alert\"><i data-ui=\"icon\" data-name=\"info-circle\" data-part=\"icon\"></i><div data-part=\"content\"><div data-part=\"message\">Loading this month's invoices</div><div data-part=\"description\">Reading from the ledger.</div></div></div></div></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Spin"
+      }
+    },
+    {
+      "name": "Spin Container",
+      "ui": "spin-container",
+      "category": "Feedback",
+      "description": "Blurs what's inside it and centres a spinner over the top.",
+      "props": [],
+      "snippet": "<div data-ui=\"spin-container\"><span data-ui=\"spin\" role=\"status\" aria-label=\"Loading\"></span><div data-part=\"content\"><div data-ui=\"card\"><div data-part=\"body\">Invoice 4021</div></div></div></div>",
+      "import": {
+        "package": "antd",
+        "name": "Spin"
+      }
+    },
+    {
+      "name": "Watermark",
+      "ui": "watermark",
+      "category": "Feedback",
+      "description": "Faint repeated text over a section. Set it with --mark: an SVG holding your text, as in this snippet.",
+      "props": [],
+      "snippet": "<div data-ui=\"watermark\" style=\"--mark:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='120'%3E%3Ctext x='24' y='70' transform='rotate(-22 100 60)' font-family='sans-serif' font-size='16' fill='gray' fill-opacity='.22'%3ELedgerline draft%3C/text%3E%3C/svg%3E&quot;)\"><p data-ui=\"typography\" data-variant=\"paragraph\">This statement is a draft. It becomes final when the month closes and the controller signs it.</p><p data-ui=\"typography\" data-variant=\"paragraph\">Figures can still change until then.</p></div>",
+      "import": {
+        "package": "antd",
+        "name": "Watermark"
+      }
+    },
+    {
+      "name": "Affix",
+      "ui": "affix",
+      "category": "Other",
+      "description": "Keeps something in view as the page scrolls. Set --offset for the gap from the top.",
+      "props": [
+        {
+          "name": "position",
+          "label": "Position",
+          "type": "choice",
+          "options": [
+            "top",
+            "bottom"
+          ],
+          "default": "top"
+        }
+      ],
+      "snippet": "<div data-ui=\"affix\" style=\"--offset:12px\"><button data-ui=\"button\" data-type=\"primary\">Save changes</button></div>",
+      "import": {
+        "package": "antd",
+        "name": "Affix"
+      }
+    },
+    {
+      "name": "BorderBeam",
+      "ui": "border-beam",
+      "category": "Other",
+      "description": "A light that runs along a container's border, for one thing worth noticing. Decoration only.",
+      "props": [
+        {
+          "name": "on-hover",
+          "label": "On Hover",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "snippet": "<div data-ui=\"card\" style=\"position:relative;max-inline-size:360px\"><div data-part=\"header\"><div data-part=\"title\">Workspace overview</div></div><div data-part=\"body\">Open invoices, payment runs and recent changes in one panel.</div><span data-ui=\"border-beam\"></span></div>",
+      "import": {
+        "package": "antd",
+        "name": "BorderBeam"
+      }
+    },
+    {
+      "name": "Hero",
+      "ui": "hero",
+      "category": "Blocks",
+      "description": "A marketing opening: title, line of text, two buttons and a product panel.",
+      "props": [],
+      "snippet": "<section data-ui=\"hero\" data-block=\"blocks/hero.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Feature grid",
+      "ui": "feature-grid",
+      "category": "Blocks",
+      "description": "Six features in cards, each with a tinted icon.",
+      "props": [],
+      "snippet": "<section data-ui=\"feature-grid\" data-block=\"blocks/feature-grid.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Pricing",
+      "ui": "pricing",
+      "category": "Blocks",
+      "description": "Three plans in cards with a switch for yearly billing.",
+      "props": [],
+      "snippet": "<section data-ui=\"pricing\" data-block=\"blocks/pricing.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Sign in",
+      "ui": "sign-in",
+      "category": "Blocks",
+      "description": "A centred card with a vertical form.",
+      "props": [],
+      "snippet": "<section data-ui=\"sign-in\" data-block=\"blocks/sign-in.html\"></section>",
+      "kind": "composition"
+    },
+    {
+      "name": "Dashboard",
+      "ui": "dashboard",
+      "category": "Blocks",
+      "description": "A working screen: dark sider, stat cards, a table and a run timeline.",
+      "props": [],
+      "snippet": "<section data-ui=\"dashboard\" data-block=\"blocks/dashboard.html\"></section>",
+      "kind": "composition"
+    }
+  ]
+}

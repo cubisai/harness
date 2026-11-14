@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { announceSelection, elementLabel, readSelected, scopeBlock, selectionKey, withScope, type SelectedElement } from "../src/shared/selection";
+import { announceSelection, contextBlock, elementLabel, readSelected, scopeBlock, selectionKey, withScope, type SelectedElement } from "../src/shared/selection";
 
 const el = (over: Partial<SelectedElement> = {}): SelectedElement => ({
   selector: "main > button:nth-of-type(2)",
@@ -78,5 +78,17 @@ describe("selection text", () => {
     expect(announceSelection([el()])).toBe('Selected button "Get started"');
     expect(announceSelection([el(), el(), el()])).toBe("3 elements selected");
     expect(selectionKey([el({ id: "cta" }), el()])).toBe("cta|main > button:nth-of-type(2)");
+  });
+});
+
+describe("contextBlock", () => {
+  it("names the page and the elements, with no instructions", () => {
+    expect(contextBlock("designs/ab/index.html", [el({ id: "cta-start" })], "Button")).toBe(
+      ["Button in designs/ab/index.html (1 element)", '1. <button> data-agent-id="cta-start" · selector `main > button:nth-of-type(2)` · text "Get started"', "```html", "<button>Get started</button>", "```"].join("\n"),
+    );
+    expect(contextBlock("p.html", [el(), el({ tag: "h1", selector: "h1", text: "", html: "<h1></h1>" })])).toBe(
+      ["From p.html (2 elements)", '1. <button> · selector `main > button:nth-of-type(2)` · text "Get started"', "2. <h1> · selector `h1`"].join("\n"),
+    );
+    expect(contextBlock("p.html", [])).toBe("");
   });
 });

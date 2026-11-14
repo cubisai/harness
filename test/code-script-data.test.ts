@@ -114,4 +114,66 @@ describe("run_code script values", () => {
     expect(res.text).toContain("Promise<string[]>");
     expect(res.text).toContain("Promise<string /* a file's raw text */ | string[] /* a directory's entries */>");
   });
+
+  it("pages files over 2 MB with offset/limit, normalizes CRLF, and batches tolerant reads via readMany", async () => {
+    const outputDir = tempDir();
+    const { dir, run } = setup({ outputDir });
+    const bigLine = "x".repeat(1000);
+    writeFileSync(join(dir, "big.txt"), Array.from({ length: 2200 }, (_, i) => `${i + 1}:${bigLine}`).join("\n"));
+    writeFileSync(join(dir, "crlf.txt"), "first\r\nsecond\r\nthird\r\n");
+    writeFileSync(join(dir, "bin.dat"), Buffer.from([0, 1, 2, 3]));
+
+    const unpaged = await run(`return await tools.read("big.txt");`);
+    expect(unpaged.isError).toBe(true);
+    expect(unpaged.text).toContain("offset and limit");
+
+    const paged = await run(`
+      const win = await tools.read({ filePath: "big.txt", startLine: 2, endLine: 3 });
+      const crlf = await tools.read({ file_path: "crlf.txt", offset: 1, limit: 2 });
+      const batch = await tools.readMany(["src/a.ts", "src", "missing.txt", "bin.dat"]);
+      return {
+        winLines: win.split("\\n").map((l) => l.slice(0, 6)),
+        crlfAnchored: /^first\\nsecond$/.test(crlf),
+        batch: batch.map((b) => ({ path: b.path, hasContent: typeof b.content === "string", entries: b.entries, hasError: typeof b.error === "string" })),
+      };
+    `);
+    expect(paged.isError).toBeFalsy();
+    const parsed = JSON.parse(paged.text.slice(paged.text.indexOf("=> ") + 3));
+    expect(parsed).toEqual({
+      winLines: ["2:xxxx", "3:xxxx"],
+      crlfAnchored: true,
+      batch: [
+        { path: "src/a.ts", hasContent: true, hasError: false },
+        { path: "src", hasContent: false, entries: ["a.ts", "b.ts"], hasError: false },
+        { path: "missing.txt", hasContent: false, hasError: true },
+        { path: "bin.dat", hasContent: false, hasError: true },
+      ],
+    });
+  });
+
+  it("keeps long grep content lines intact, supports context + limit, and accepts camelCase aliases", async () => {
+    const { dir, run } = setup();
+    const longValue = "Z".repeat(900);
+    writeFileSync(join(dir, "src", "long.ts"), `// before\nexport const LONG = "${longValue}";\n// after\n`);
+
+    const res = await run(`
+      const rows = await tools.grep({ query: "LONG", include: "*.ts", ignoreCase: true, outputMode: "lines", context: 1 });
+      const cappedGlob = await tools.glob({ glob: "**/*.ts", dir: "src", limit: 1 });
+      const cappedGrep = await tools.grep({ regex: "export", output_mode: "content", limit: 2 });
+      return {
+        len: rows[0].text.length,
+        before: rows[0].before,
+        after: rows[0].after,
+        cappedGlobLen: cappedGlob.length,
+        cappedGrepLen: cappedGrep.length,
+      };
+    `);
+    expect(res.isError).toBeFalsy();
+    const parsed = JSON.parse(res.text.slice(res.text.indexOf("=> ") + 3));
+    expect(parsed.len).toBeGreaterThan(900);
+    expect(parsed.before).toEqual(["1:// before"]);
+    expect(parsed.after).toEqual(["3:// after"]);
+    expect(parsed.cappedGlobLen).toBe(1);
+    expect(parsed.cappedGrepLen).toBe(2);
+  });
 });

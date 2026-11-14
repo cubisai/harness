@@ -9,7 +9,17 @@ dist/
 # Local test keys (never commit)
 .env
 .env.*
+!.env.example
 # Eval fixtures may carry their own dist/ (e.g. the generated-dist task).
 !evals/fixtures/*/dist/
 # The bench app profile, project copies and logs.
 bench/.state/
+bench/results/
+
+# Local working notes and agent instructions (kept on the dev machine, not shipped).
+/HANDOFF.md
+/CLAUDE.md
+/AGENTS.md
+/.cubiq/
+/*.mov
+/Screenshot*.png

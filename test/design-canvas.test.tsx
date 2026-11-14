@@ -22,15 +22,20 @@ describe("design frame", () => {
     expect(viewportForDevice("mobile")).toBe("mobile");
     expect(viewportForDevice("tablet")).toBe("tablet");
     expect(viewportForDevice("slide")).toBe("slide");
-    // A desktop page, or one that declares nothing, keeps Fit as before.
-    expect(viewportForDevice("desktop")).toBe("fit");
-    expect(viewportForDevice(undefined)).toBe("fit");
+    // A desktop page, or one that declares nothing, opens on Desktop.
+    expect(viewportForDevice("desktop")).toBe("desktop");
+    expect(viewportForDevice(undefined)).toBe("desktop");
     // A 390 × 844 phone in a short stage scales down to show all of it.
     expect(frameLayout("mobile", "fit", { width: 1000, height: 600 }, true).scale).toBeCloseTo((600 - 48) / 844);
   });
 
   it("accepts only well-formed bridge messages", () => {
     expect(readBridgeMessage({ source: "cubiq-design", type: "ready" })).toEqual({ type: "ready" });
+    expect(readBridgeMessage({ source: "cubiq-design", type: "ready", loaded: "a1-x9" })).toEqual({ type: "ready", loaded: "a1-x9" });
+    expect(readBridgeMessage({ source: "cubiq-design", type: "ready", loaded: "<b>" })).toEqual({ type: "ready" });
+    expect(readBridgeMessage({ source: "cubiq-design", type: "patched", ok: true, n: 3 })).toEqual({ type: "patched", ok: true, n: 3 });
+    expect(readBridgeMessage({ source: "cubiq-design", type: "patched", ok: "yes", n: 3 })).toEqual({ type: "patched", ok: false, n: 3 });
+    expect(readBridgeMessage({ source: "cubiq-design", type: "patched", ok: true })).toBeNull();
     expect(readBridgeMessage({ source: "cubiq-design", type: "scroll", x: 0, y: 120 })).toEqual({ type: "scroll", x: 0, y: 120 });
     expect(readBridgeMessage({ source: "other", type: "ready" })).toBeNull();
     expect(readBridgeMessage({ source: "cubiq-design", type: "scroll", x: "1", y: 2 })).toBeNull();
@@ -47,12 +52,7 @@ describe("design frame", () => {
     expect(readBridgeMessage({ ...msg, lost: 3.5 })).toEqual({ type: "selection", elements: [selected], lost: 0 });
   });
 
-  it("accepts an in-place text edit and a refusal, and rejects bad ones", () => {
-    const edit = { source: "cubiq-design", type: "text-edit", id: "cta-buy", before: "Buy now", after: "Start free trial" };
-    expect(readBridgeMessage(edit)).toEqual({ type: "text-edit", id: "cta-buy", before: "Buy now", after: "Start free trial" });
-    expect(readBridgeMessage({ ...edit, id: "bad id" })).toBeNull();
-    expect(readBridgeMessage({ ...edit, after: "x".repeat(2001) })).toBeNull();
-    expect(readBridgeMessage({ ...edit, before: 5 })).toBeNull();
+  it("accepts an edit refusal and rejects an empty one", () => {
     expect(readBridgeMessage({ source: "cubiq-design", type: "edit-refused", reason: "That text has no stable id; ask the agent to change it." })).toEqual({
       type: "edit-refused",
       reason: "That text has no stable id; ask the agent to change it.",

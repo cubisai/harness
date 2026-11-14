@@ -7,6 +7,7 @@ import type {
   BrowserState,
   DevicePreset,
   EditorInfo,
+  IssueSummary,
   AgentLimits,
   AppUpdateStatus,
   LiveDelta,
@@ -18,6 +19,7 @@ import type {
   PermissionRequest,
   PlanDecision,
   PlanRequest,
+  Question,
   QuestionAnswer,
   QuestionRequest,
   Project,
@@ -29,6 +31,7 @@ import type {
   ThreadKind,
   ThreadTotals,
 } from "../../shared/types";
+import type { DocumentStatus } from "../../shared/design-mutation";
 import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
@@ -36,15 +39,22 @@ import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { threadKind, waitingThreads } from "./sections";
 import { readSession, restoreDraft, restoreTarget, writeSession } from "./session";
+import { setupMessage, setupQuestions } from "./issueSetup";
 import { buildInCodePrompt, buildThreadPatch, designDirName, handoffPath } from "../../shared/design";
 import type { SelectedElement } from "../../shared/selection";
 import type { PrototypeTier } from "../../shared/tiers";
 import type { TurnScore } from "../../shared/learn";
+import type { DesignChip, SystemWhere } from "./design/intent";
 
 /** A design thread's canvas selection: the page it is on and its elements. */
+/** What the next message is about, chosen from the Composer rather than typed. */
+export type { DesignChip };
+
 export interface DesignSelection {
   page: string;
   elements: SelectedElement[];
+  /** The kit's names for the elements (`StatCard`), in order, when the canvas knows them: the Composer chip's label. */
+  names?: string[];
 }
 
 /** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. */
@@ -61,6 +71,8 @@ interface Draft {
   permissionMode?: PermissionMode;
   /** A design thread's design system (absent = the project's default). */
   designSystem?: string;
+  /** The issue picked before the thread exists; it applies only in the project it was picked in. */
+  issue?: { projectId: string; issue: IssueSummary };
 }
 
 interface State {
@@ -74,6 +86,9 @@ interface State {
   /** The About sheet is open (macOS app menu, or Settings → Updates). */
   aboutOpen: boolean;
   setAboutOpen(open: boolean): void;
+  /** The "Download design references" sheet. */
+  referencesSheetOpen: boolean;
+  setReferencesSheetOpen(open: boolean): void;
   /** The context sheet is open; true with contextSheetThread null means a new thread in the selected project. */
   contextSheetOpen: boolean;
   contextSheetThread: string | null;
@@ -173,6 +188,8 @@ interface State {
   setInboxOpen(open: boolean): void;
   /** Panel widths and collapse state; the raw setting, drawn through clampLayout. */
   paneLayout: PaneLayout;
+  /** The sidebar in the design studio: folded unless opened there, without touching the saved layout. Null outside it. */
+  studioFold: boolean | null;
   setPaneLayout(patch: Partial<PaneLayout>, persist: boolean): void;
   inspectorOpen: boolean;
   inspectorTab: InspectorTab;
@@ -207,10 +224,24 @@ interface State {
   designReload: Record<string, number>;
   /** Each open design thread's latest change: a counter and the raw changed paths (null = unknown), so the board regenerates only the artboards it affects. */
   designChange: Record<string, { n: number; paths: string[] | null }>;
+  /** Open design pages' save and undo state, by document id, with a counter that moves when conflicts wait to be fetched. */
+  designDocuments: Record<string, { status: DocumentStatus; conflicts: number }>;
   /** Each design thread's selected elements on its canvas (one page): chips in the composer, scope for the next message. */
   designSelection: Record<string, DesignSelection>;
   /** Set (or clear, with null or no elements) a design thread's selection. */
   setDesignSelection(threadId: string, selection: DesignSelection | null): void;
+  /** A one-shot ask from across the app to a thread's studio: show a view, or open the style picker. */
+  studioRequest: { threadId: string; view?: "design" | "system"; picker?: boolean; version?: number } | null;
+  requestStudio(request: { threadId: string; view?: "design" | "system"; picker?: boolean; version?: number } | null): void;
+  /** The system change a thread can still step back from: its toast, and what `Undo` and ⌘Z do. `page` means the page's own undo carries it. */
+  systemStep: Record<string, { text: string; undo: (() => Promise<unknown>) | "page" }>;
+  setSystemStep(threadId: string, step: { text: string; undo: (() => Promise<unknown>) | "page" } | null): void;
+  /** The chip a design thread's next message goes out with (`+` menu, System mode). */
+  designChip: Record<string, DesignChip>;
+  setDesignChip(threadId: string, chip: DesignChip | null): void;
+  /** Where System mode is while it's open (its Composer chips: `Library · Colors · Default · Light`). Absent on the page. */
+  designSystemWhere: Record<string, SystemWhere>;
+  setDesignSystemWhere(threadId: string, where: SystemWhere | null): void;
   /** Reference images handed to a design thread's composer from elsewhere (the canvas's Draw tool); the composer takes them. */
   pendingRefs: Record<string, { path: string; thumb: string }[]>;
   addDesignRefs(threadId: string, refs: { path: string; thumb: string }[]): void;
@@ -226,6 +257,16 @@ interface State {
   /** Bumped by the composer's "/model" command so the model picker opens. */
   openPickerRequest: number;
   requestModelPicker(): void;
+  /** Bumped by the composer's "/issue" command so the + menu opens on its Issues flyout. */
+  issuePickerRequest: number;
+  requestIssuePicker(): void;
+  /** Set (null clears) the issue the open thread works on, or the draft's when there's no thread yet. */
+  setIssue(issue: IssueSummary | null): Promise<void>;
+  /**
+   * Run an issue command's bundled skill (issue, issue-setup, triage, pr) in the open thread, or a new one.
+   * /issue-setup hands it the origin remote; a bare /pr, the thread's issue.
+   */
+  runIssueCommand(skill: string, args: string): Promise<void>;
   diffVersion: number; // bumps when a turn ends, so the diff refreshes
   /** Bumped by "learn-changed", so an open Learned tab refetches its lessons. */
   learnVersion: number;
@@ -313,7 +354,20 @@ function upsertThread(list: Thread[] | undefined, thread: Thread): Thread[] {
   return [thread, ...rest].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-function findThread(threads: Record<string, Thread[]>, id: string): Thread | undefined {
+/** Resolvers for question cards the app raised itself, by request id. */
+const appAnswers = new Map<string, (answer: QuestionAnswer) => void>();
+let appAsked = 0;
+
+/** Put an app-owned question card in the thread's request dock and wait for the answer ("dismiss" when skipped). */
+function askInApp(threadId: string, questions: Question[]): Promise<QuestionAnswer> {
+  const requestId = `app:${++appAsked}`;
+  return new Promise((resolve) => {
+    appAnswers.set(requestId, resolve);
+    useStore.setState((s) => ({ questions: [...s.questions, { requestId, threadId, questions }] }));
+  });
+}
+
+export function findThread(threads: Record<string, Thread[]>, id: string): Thread | undefined {
   return Object.values(threads)
     .flat()
     .find((t) => t.id === id);
@@ -453,6 +507,10 @@ export const useStore = create<State>((set, get) => ({
   aboutOpen: false,
   setAboutOpen(open) {
     set({ aboutOpen: open });
+  },
+  referencesSheetOpen: false,
+  setReferencesSheetOpen(open) {
+    set({ referencesSheetOpen: open });
   },
   contextSheetOpen: false,
   contextSheetThread: null,
@@ -669,6 +727,7 @@ export const useStore = create<State>((set, get) => ({
     set({ inboxOpen: open });
   },
   paneLayout: { ...DEFAULT_LAYOUT },
+  studioFold: null,
   inspectorOpen: false,
   inspectorTab: "changes",
   artifact: null,
@@ -684,6 +743,7 @@ export const useStore = create<State>((set, get) => ({
   composerInsert: null,
   designReload: {},
   designChange: {},
+  designDocuments: {},
   designSelection: {},
   setDesignSelection(threadId, selection) {
     set((s) => {
@@ -691,6 +751,37 @@ export const useStore = create<State>((set, get) => ({
       if (selection && selection.elements.length) next[threadId] = selection;
       else delete next[threadId];
       return { designSelection: next };
+    });
+  },
+  studioRequest: null,
+  requestStudio(request) {
+    set({ studioRequest: request });
+  },
+  systemStep: {},
+  setSystemStep(threadId, step) {
+    set((s) => {
+      const next = { ...s.systemStep };
+      if (step) next[threadId] = step;
+      else delete next[threadId];
+      return { systemStep: next };
+    });
+  },
+  designChip: {},
+  setDesignChip(threadId, chip) {
+    set((s) => {
+      const next = { ...s.designChip };
+      if (chip) next[threadId] = chip;
+      else delete next[threadId];
+      return { designChip: next };
+    });
+  },
+  designSystemWhere: {},
+  setDesignSystemWhere(threadId, where) {
+    set((s) => {
+      const next = { ...s.designSystemWhere };
+      if (where) next[threadId] = where;
+      else delete next[threadId];
+      return { designSystemWhere: next };
     });
   },
   composerDraft: null,
@@ -796,6 +887,58 @@ export const useStore = create<State>((set, get) => ({
   openPickerRequest: 0,
   requestModelPicker() {
     set((s) => ({ openPickerRequest: s.openPickerRequest + 1 }));
+  },
+
+  issuePickerRequest: 0,
+  requestIssuePicker() {
+    set((s) => ({ issuePickerRequest: s.issuePickerRequest + 1 }));
+  },
+
+  async runIssueCommand(skill, args) {
+    const s = get();
+    const id = s.selectedThreadId;
+    if (id && s.running[id]) {
+      s.showNotice(`Wait for this turn to finish, then run /${skill}.`);
+      return;
+    }
+    let text = args.trim();
+    if (skill === "issue-setup") {
+      // The app asks the setup questions in its own card, so every agent gets the same choices; the skill acts on the answers.
+      const projectId = s.selectedProjectId;
+      if (!projectId) return;
+      const remote = await api().issueRemote(projectId).catch(() => null);
+      const threadId = id ?? (await get().newThread());
+      if (!threadId) return;
+      const answer = await askInApp(threadId, setupQuestions(remote));
+      const message = setupMessage(answer, remote);
+      if (message === null) return;
+      await get().send([message, text].filter(Boolean).join("\n\n"), [skill], threadId);
+      return;
+    }
+    // A description is a new issue, said outright: the thread's own issue note mustn't turn it into "open #n".
+    if (skill === "issue" && text && !/^(#?\d+|https?:\/\/\S+)$/.test(text)) text = `New issue: ${text}`;
+    if (skill === "pr" && !text) {
+      const issue = id ? findThread(s.threads, id)?.issue : s.draft.issue?.projectId === s.selectedProjectId ? s.draft.issue.issue : undefined;
+      if (issue) text = String(issue.number);
+    }
+    if (id) await get().send(text, [skill]);
+    else await get().startThread(text, [skill]);
+  },
+
+  async setIssue(issue) {
+    const { selectedThreadId: id, selectedProjectId: projectId } = get();
+    if (!id) {
+      if (!issue) {
+        const { issue: _old, ...rest } = get().draft;
+        set({ draft: rest });
+      } else if (projectId) set((s) => ({ draft: { ...s.draft, issue: { projectId, issue } } }));
+      return;
+    }
+    try {
+      get().apply({ type: "thread", thread: await api().setThreadIssue(id, issue) });
+    } catch (err) {
+      get().showNotice(ipcErrorText(err));
+    }
   },
 
   async init() {
@@ -1064,6 +1207,11 @@ export const useStore = create<State>((set, get) => ({
       thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, createOpts(get().threadKind, draft, opts));
       const patch = draftPatch(draft, thread);
       if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
+      // The issue is a nicety: a tracker that went away since the pick doesn't stop the thread.
+      if (draft.issue?.projectId === projectId) {
+        const created = thread;
+        thread = await api().setThreadIssue(created.id, draft.issue.issue).catch(() => created);
+      }
     } catch (err) {
       get().showNotice(ipcErrorText(err));
       return null;
@@ -1083,6 +1231,11 @@ export const useStore = create<State>((set, get) => ({
   async buildDesignInCode(designThreadId) {
     const design = findThread(get().threads, designThreadId);
     if (!design || design.kind !== "design") return;
+    // Chats has no codebase: a build thread there starts in its own empty folder and can't find the design.
+    if (get().projects.find((p) => p.id === design.projectId)?.builtin) {
+      get().showNotice("Building in a codebase needs a project folder. Chats has none.");
+      return;
+    }
     let thread: Thread;
     try {
       thread = await api().createThread(design.projectId, design.agent, { kind: "chat" });
@@ -1111,6 +1264,11 @@ export const useStore = create<State>((set, get) => ({
       thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, createOpts(get().threadKind, draft, opts ?? (get().settings?.background?.worktree ? { worktree: true } : undefined)));
       const patch = draftPatch(draft, thread);
       if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
+      // The issue is a nicety: a tracker that went away since the pick doesn't stop the thread.
+      if (draft.issue?.projectId === projectId) {
+        const created = thread;
+        thread = await api().setThreadIssue(created.id, draft.issue.issue).catch(() => created);
+      }
     } catch (err) {
       get().showNotice(ipcErrorText(err));
       return;
@@ -1297,6 +1455,14 @@ export const useStore = create<State>((set, get) => ({
     }
   },
   async respondQuestion(requestId, answer) {
+    // A card the app raised itself (askInApp) is answered here; it never went to an agent.
+    const local = appAnswers.get(requestId);
+    if (local) {
+      appAnswers.delete(requestId);
+      set((s) => ({ questions: s.questions.filter((q) => q.requestId !== requestId) }));
+      local(answer);
+      return;
+    }
     const removed = get().questions.find((q) => q.requestId === requestId);
     set((s) => ({ questions: s.questions.filter((q) => q.requestId !== requestId) }));
     try {
@@ -1393,9 +1559,16 @@ export const useStore = create<State>((set, get) => ({
         return;
       case "design-changed":
         set((s) => ({
-          designReload: { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 },
+          // The editor's own save: the frame already shows it, so nothing reloads.
+          designReload: update.own ? s.designReload : { ...s.designReload, [update.threadId]: (s.designReload[update.threadId] ?? 0) + 1 },
           designChange: { ...s.designChange, [update.threadId]: { n: (s.designChange[update.threadId]?.n ?? 0) + 1, paths: update.paths ?? null } },
         }));
+        return;
+      case "design-document":
+        set((s) => {
+          const prior = s.designDocuments[update.status.documentId];
+          return { designDocuments: { ...s.designDocuments, [update.status.documentId]: { status: update.status, conflicts: (prior?.conflicts ?? 0) + (update.conflicts ? 1 : 0) } } };
+        });
         return;
       case "event":
         // A plan proposal is also a new version of the thread's plan artifact: refresh its file list.

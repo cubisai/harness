@@ -118,7 +118,9 @@ export function harnessToolOptions(tools: HarnessTool[], ctx?: ToolContext): Pic
         // unless told to. Its schema is fixed per thread, so the cached prefix doesn't move.
         // The shell tools too: deferred, Claude backgrounds with `&` or nohup instead (2026-10-21 live test).
         // The todo list too: headless Claude Code has none of its own, and one behind tool search goes unused.
-        ...(t.name === CODE_TOOL || t.name === TODO_TOOL || (SHELL_TOOL_NAMES as readonly string[]).includes(t.name) ? { alwaysLoad: true } : {}),
+        // A design thread's own tools too: deferred, Sonnet searched `design_tokens_apply` without the MCP prefix,
+        // found nothing and stopped (2026-11-09 live test). Only design threads have them, so other threads pay nothing.
+        ...(t.name === CODE_TOOL || t.name === TODO_TOOL || (SHELL_TOOL_NAMES as readonly string[]).includes(t.name) || t.name.startsWith("design_") ? { alwaysLoad: true } : {}),
       }),
     ),
   });
@@ -537,7 +539,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           what = command;
         } else {
           const targets = claudeWriteTargets(hookInput.tool_name, toolInput);
-          reason = fenceWrite(input.cwd, input.design, targets);
+          reason = fenceWrite(input.cwd, input.design, targets, input.designGuard);
           what = targets.join(", ");
         }
         if (!reason) return {};

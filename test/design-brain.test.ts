@@ -14,8 +14,8 @@ import { EXPERTS } from "../src/shared/experts";
 import { catalog, closeAfter, tempDir } from "./helpers";
 
 const RESOURCES = join(__dirname, "..", "resources");
-const DESIGN_SKILLS = ["design-critique", "design-handoff", "design-mobile", "design-prototype", "design-slides", "design-system-extract"];
-// Skills the canvas sends by name (the element bar's Go): design-only, but not listed in the guide.
+const DESIGN_SKILLS = ["design-build", "design-kit", "design-review"];
+// Skills CubiQ names itself (the canvas's variants): design-only, named in the guide only as the canvas's.
 const CANVAS_SKILLS = ["design-variants"];
 const ALL_DESIGN_SKILLS = [...DESIGN_SKILLS, ...CANVAS_SKILLS].sort();
 describe("Design mode guide (DESIGN-MODE.md)", () => {
@@ -65,25 +65,32 @@ describe("bundled design skills", () => {
     const chat = forAgent(cat, { mode: "plugin" }).map((s) => s.name);
     const design = forAgent(cat, { mode: "plugin" }, new Set(), { design: true }).map((s) => s.name);
     expect(chat.some((n) => n.startsWith("design-"))).toBe(false);
-    // The chat set is exactly the non-design bundled skills, as before D3.
-    expect(chat.sort()).toEqual(bundled.filter((s) => s.mode !== "design").map((s) => s.name).sort());
+    // The chat set is exactly the non-design model skills, as before D3; user-invoked ones ($issue, $pr…) ride only when picked.
+    expect(chat.sort()).toEqual(bundled.filter((s) => s.mode !== "design" && s.invocation === "model").map((s) => s.name).sort());
+    expect(bundled.filter((s) => ["issue", "issue-setup", "triage", "pr"].includes(s.name)).map((s) => s.invocation)).toEqual(["user", "user", "user", "user"]);
     expect(design.filter((n) => n.startsWith("design-")).sort()).toEqual(ALL_DESIGN_SKILLS);
   });
 
   it("references only files that exist in their folders", () => {
     const refs: Record<string, string[]> = {
-      "design-prototype": ["assets/index.html"],
-      "design-mobile": ["assets/index.html"],
-      "design-slides": ["assets/index.html", "assets/deck.css", "assets/deck.js"],
-      "design-critique": ["references/rubric.md"],
-      "design-handoff": ["assets/handoff-template.md"],
+      "design-build": ["assets/page.html", "assets/mobile.html", "assets/deck.html", "assets/deck.css", "assets/deck.js"],
+      "design-review": ["references/rubric.md", "assets/handoff-template.md"],
     };
     for (const [skill, files] of Object.entries(refs)) {
       const body = readFileSync(join(RESOURCES, "skills", skill, "SKILL.md"), "utf8");
       for (const f of files) {
-        expect(body).toContain(f);
+        expect(body).toContain(f.split("/").pop()!);
         expect(existsSync(join(RESOURCES, "skills", skill, f))).toBe(true);
       }
+    }
+  });
+
+  it("links the kit's ui.css after the theme's tokens in every build scaffold", () => {
+    for (const f of ["page.html", "mobile.html", "deck.html"]) {
+      const html = readFileSync(join(RESOURCES, "skills", "design-build", "assets", f), "utf8");
+      expect(html.indexOf('href="system/tokens.css"'), f).toBeGreaterThan(0);
+      expect(html.indexOf('href="system/ui.css"'), f).toBeGreaterThan(html.indexOf('href="system/tokens.css"'));
+      expect(html, f).toContain('src="system/ui.js"');
     }
   });
 });
@@ -110,7 +117,7 @@ describe("Service design systems", () => {
       },
     };
     const service = new Service(store, () => catalog(), [driver], () => {});
-    service.setDesignStylesDir(join(RESOURCES, "design-styles"), join(RESOURCES, "design-fonts"));
+    service.setDesignFontsDir(join(RESOURCES, "design-fonts"));
     const projectDir = tempDir();
     const project = store.addProject(projectDir);
     return { store, service, project, projectDir, prompts, inputs };
@@ -118,19 +125,26 @@ describe("Service design systems", () => {
 
   it("copies the thread's system into its design folder before the turn, and says a switch once", async () => {
     const { service, project, projectDir, prompts } = setup();
-    const thread = service.createThread(project.id, undefined, "design", "style:swiss-grid");
-    expect(thread.designSystem).toBe("style:swiss-grid");
+    for (const [folder, name] of [["swiss", "Swiss"], ["terminal", "Terminal"]] as const) {
+      const own = join(projectDir, ".agents", "design-systems", folder);
+      mkdirSync(own, { recursive: true });
+      writeFileSync(join(own, "index.md"), `---\ntype: design-system\nname: ${name}\n---\n`);
+      writeFileSync(join(own, "DESIGN.md"), `# ${name}`);
+      writeFileSync(join(own, "tokens.css"), `:root { --color-bg: ${folder === "swiss" ? "#fff" : "#000"}; }\n`);
+    }
+    const thread = service.createThread(project.id, undefined, "design", "project:swiss");
+    expect(thread.designSystem).toBe("project:swiss");
     await service.send({ threadId: thread.id, text: "a landing page" });
     const dir = join(projectDir, "designs", thread.id.slice(0, 8), "system");
-    expect(readFileSync(join(dir, ".system"), "utf8")).toBe("style:swiss-grid");
-    expect(readFileSync(join(dir, "tokens.css"), "utf8")).toBe(readFileSync(join(RESOURCES, "design-styles", "swiss-grid", "tokens.css"), "utf8"));
+    expect(readFileSync(join(dir, ".system"), "utf8")).toBe("project:swiss");
+    expect(readFileSync(join(dir, "tokens.css"), "utf8")).toBe(":root { --color-bg: #fff; }\n");
     // The first turn also says the prototype tier (once); the system is never named until it changes.
     expect(prompts[0]!.startsWith("a landing page\n\n(CubiQ: Prototype tier: Working.")).toBe(true);
     expect(prompts[0]).not.toContain("design system is now");
 
-    service.setDesignSystem(thread.id, "style:terminal");
+    service.setDesignSystem(thread.id, "project:terminal");
     await service.send({ threadId: thread.id, text: "again" });
-    expect(readFileSync(join(dir, ".system"), "utf8")).toBe("style:terminal");
+    expect(readFileSync(join(dir, ".system"), "utf8")).toBe("project:terminal");
     expect(prompts[1]).toContain("the design system is now Terminal");
     await service.send({ threadId: thread.id, text: "third" });
     expect(prompts[2]).toBe("third");
@@ -151,14 +165,12 @@ describe("Service design systems", () => {
     writeFileSync(join(projectDir, "DESIGN.md"), "# Ours");
     const b = service.createThread(project.id, undefined, "design");
     await service.send({ threadId: b.id, text: "x" });
-    expect(prompts[1]).toContain('follows the project\'s own DESIGN.md. Before you build, call design_set_direction once with the surface, mode and tier; use style "project".');
+    expect(prompts[1]).toContain('follows the project\'s own DESIGN.md. Before you build, call design_set_direction once with the surface, mode and tier; use theme "project".');
     const dir = join(projectDir, "designs", b.id.slice(0, 8), "system");
     expect(readFileSync(join(dir, "DESIGN.md"), "utf8")).toBe("# Ours");
     expect(existsSync(join(dir, "tokens.css"))).toBe(false);
-    const ids = service.designSystems(project.id).map((s) => s.id);
-    expect(ids[0]).toBe("project");
-    expect(ids.length).toBeGreaterThan(20);
-    expect(ids.slice(1).every((id) => id.startsWith("style:"))).toBe(true);
+    // The retired style library adds nothing after it.
+    expect(service.designSystems(project.id).map((s) => s.id)).toEqual(["project"]);
   });
 
   it("does nothing for a chat thread, and refuses a system on one", async () => {
@@ -171,15 +183,13 @@ describe("Service design systems", () => {
     expect(() => service.setDesignSystem(chat.id, "mono")).toThrow();
   });
 
-  it("lists a project's own .agents/design-systems before the style library", () => {
+  it("lists a project's own .agents/design-systems, and no retired library styles", () => {
     const { service, project, projectDir } = setup();
     const own = join(projectDir, ".agents", "design-systems", "brand");
     mkdirSync(own, { recursive: true });
     writeFileSync(join(own, "index.md"), "---\ntype: design-system\nname: Brand\ndescription: Ours\nswatches: #fff, #000\n---\n");
     writeFileSync(join(own, "DESIGN.md"), "# Brand");
-    const ids = service.designSystems(project.id).map((s) => s.id);
-    expect(ids[0]).toBe("project:brand");
-    expect(ids.slice(1).every((id) => id.startsWith("style:"))).toBe(true);
+    expect(service.designSystems(project.id).map((s) => s.id)).toEqual(["project:brand"]);
     expect(readdirSync(projectDir)).not.toContain("designs");
   });
 });

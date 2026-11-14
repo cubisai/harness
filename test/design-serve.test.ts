@@ -1,3 +1,4 @@
+import { textHash } from "../src/shared/text-hash";
 import { mkdirSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -112,6 +113,15 @@ describe("entryFile", () => {
     expect(entryFile(dir)).toBe("new.htm");
   });
 
+  it("never opens the app's own dot files (a kit preview), which the page list and design:history don't know", () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, ".preview-part.html"), "preview");
+    expect(entryFile(dir)).toBeNull();
+    writeFileSync(join(dir, "login.html"), "page");
+    utimesSync(join(dir, "login.html"), new Date(1000), new Date(1000));
+    expect(entryFile(dir)).toBe("login.html");
+  });
+
   it("is null for an empty or missing folder", () => {
     expect(entryFile(tempDir())).toBeNull();
     expect(entryFile(join(tempDir(), "missing"))).toBeNull();
@@ -140,13 +150,14 @@ describe("serveDesign", () => {
     const { deps } = setup();
     const res = serveDesign(designUrl("t", "index.html"), deps({ bridge: "window.__b=1;" }));
     const text = await res.text();
-    expect(text.startsWith("<html><head><script>window.__b=1;</script><title>x</title>")).toBe(true);
+    // Tagged with the page text's fingerprint, so the canvas can patch it in place later.
+    expect(text).toMatch(/^<html><head><script data-source="[a-z0-9]+-[a-z0-9]+">window\.__b=1;<\/script><title>x<\/title>/);
   });
 
   it("injects the bridge at the very start when there is no head or html", async () => {
     const { deps } = setup();
     const res = serveDesign(designUrl("t", "bare.html"), deps({ bridge: "X" }));
-    expect(await res.text()).toBe("<script>X</script><p>bare</p>");
+    expect(await res.text()).toBe(`<script data-source="${textHash("<p>bare</p>")}">X</script><p>bare</p>`);
   });
 
   it("404s a file that does not exist", () => {
@@ -181,7 +192,7 @@ describe("serveDesign", () => {
     expect(res.status).toBe(200);
     expect(readVersion).toHaveBeenCalledWith("t", "index.html", 2);
     const text = await res.text();
-    expect(text.startsWith("<html><head><script>")).toBe(true);
+    expect(text.startsWith("<html><head><script data-source=")).toBe(true);
     expect(text).toContain("v2");
   });
 

@@ -101,3 +101,32 @@ export function bool(args: Record<string, unknown>, key: string): boolean {
   const v = args[key];
   return v === true || v === "true";
 }
+
+/** The first key holding a value, for model-native spellings of one argument (path / file_path / filePath…). */
+function firstKey(args: Record<string, unknown>, keys: string[]): string | undefined {
+  return keys.find((k) => args[k] !== undefined && args[k] !== null);
+}
+
+/** Read a string argument under any of its spellings. */
+export function strAny(args: Record<string, unknown>, keys: string[], required?: false): string | undefined;
+export function strAny(args: Record<string, unknown>, keys: string[], required: true): string;
+export function strAny(args: Record<string, unknown>, keys: string[], required = false): string | undefined {
+  const key = firstKey(args, keys);
+  if (key === undefined) {
+    if (required) throw new ToolError(`Missing required argument "${keys[0]}".`);
+    return undefined;
+  }
+  return str(args, key);
+}
+
+/** Read a number argument under any of its spellings. */
+export function intAny(args: Record<string, unknown>, keys: string[]): number | undefined {
+  const key = firstKey(args, keys);
+  return key === undefined ? undefined : int(args, key);
+}
+
+/** Read a boolean argument under any of its spellings. */
+export function boolAny(args: Record<string, unknown>, keys: string[]): boolean {
+  const key = firstKey(args, keys);
+  return key === undefined ? false : bool(args, key);
+}

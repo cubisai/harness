@@ -1,4 +1,4 @@
-// Bench storage. Committed: results/history.csv (one flat row per run, the
+// Local bench storage: results/history.csv (one flat row per run, the
 // history every day compares against), results/<date>.md and results/README.md.
 // Local only: .state/runs/<date>/*.json, the full record of each run.
 

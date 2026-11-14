@@ -24,8 +24,8 @@ const groupIds = SETTINGS_GROUPS.map((g) => g.id);
 const html = Object.fromEntries(groupIds.map((id) => [id, renderToStaticMarkup(<SettingsGroupContent group={id} settings={settings} />)]));
 
 describe("Settings IA", () => {
-  it("has the seven groups in order", () => {
-    expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual(["Appearance", "Threads", "Agents & Providers", "Skills & MCP", "Data & Security", "Updates", "Experiments"]);
+  it("has the eight groups in order", () => {
+    expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual(["Appearance", "Threads", "Agents & Providers", "Skills & MCP", "Design", "Data & Security", "Updates", "Experiments"]);
   });
 
   it("maps every former section heading to exactly one group", () => {
@@ -48,6 +48,14 @@ describe("Settings IA", () => {
       expect(where, label).toHaveLength(1);
     }
     expect(html.skills).toContain("Open MCP Servers");
+  });
+
+  it("has an Issues section in Threads whose File issue? cards switch reads On when unset", () => {
+    expect(SETTINGS_GROUPS.find((g) => g.id === "threads")?.sections).toContain("Issues");
+    expect(html.threads).toContain("File issue? cards");
+    const off = renderToStaticMarkup(<SettingsGroupContent group="threads" settings={{ ...settings, issueOffers: false }} />);
+    expect(html.threads).toMatch(/<button class="on">On<\/button><button class="">Off<\/button>/);
+    expect(off).toMatch(/<button class="">On<\/button><button class="on">Off<\/button>/);
   });
 
   it("keeps Code mode in Experiments, with Read-only + MCP marked Recommended", () => {

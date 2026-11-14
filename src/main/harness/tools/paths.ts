@@ -22,7 +22,11 @@ export function resolvePath(cwd: string, p: string): ResolvedPath {
 }
 
 /** Remember a file's state after reading or writing it. */
-export function noteRead(ctx: ToolContext, abs: string): void {
+export function noteRead(ctx: ToolContext, abs: string, mtimeMs?: number): void {
+  if (mtimeMs !== undefined) {
+    ctx.reads.set(abs, mtimeMs);
+    return;
+  }
   try {
     ctx.reads.set(abs, statSync(abs).mtimeMs);
   } catch {

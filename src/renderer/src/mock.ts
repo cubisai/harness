@@ -318,6 +318,26 @@ export function installMock(): void {
       }
       throw new Error("no thread");
     },
+    listIssues: async () => ({
+      ok: true,
+      tracker: "github",
+      value: [
+        { number: 3, title: "Add controls for running agents in parallel worktrees", labels: ["enhancement", "ready-for-agent"], commentCount: 2, type: "enhancement", state: "ready-for-agent" },
+        { number: 5, title: "Thread list doesn't refresh after a merge", labels: ["bug", "needs-triage"], commentCount: 0, type: "bug", state: "needs-triage" },
+        { number: 8, title: "Document the release workflow", labels: ["documentation", "ready-for-human"], commentCount: 1, type: "documentation", state: "ready-for-human" },
+      ],
+    }),
+    issueRemote: async () => "https://github.com/cubisai/harness.git",
+    setThreadIssue: async (id, issue) => {
+      for (const list of Object.values(threads)) {
+        const i = list.findIndex((x) => x.id === id);
+        if (i >= 0) {
+          const { issue: _old, ...rest } = list[i]!;
+          return (list[i] = issue ? { ...rest, issue: { number: issue.number, title: issue.title, labels: issue.labels, source: "github" } } : rest);
+        }
+      }
+      throw new Error("no thread");
+    },
     setDesignSystem: async (id, system) => {
       for (const list of Object.values(threads)) {
         const i = list.findIndex((x) => x.id === id);
@@ -774,8 +794,38 @@ export function installMock(): void {
     designActionNote: async () => "",
     designDetect: async () => ({ pins: [], page: [], total: 0 }),
     designSaveRef: async () => "designs/mock/refs/ref-1.png",
-    designEditText: async () => {},
-    designEditStyle: async () => {},
+    designMutate: async (_threadId, _rel, mutation) => ({ ok: false, operationId: mutation.operationId, reason: "read-only", currentRevision: 1 }),
+    designHistory: async (_threadId, _rel) => ({
+      status: { documentId: "mock", revision: 1, save: "saved", canUndo: false, canRedo: false, atExternalBoundary: false, readOnly: true },
+      html: "",
+      conflicts: [],
+    }),
+    designKitCatalog: async () => [{ id: "foundation", name: "Foundation", version: "1.0.0", bundled: true, installed: true }],
+    designKitEnsure: async () => ({ ok: true }),
+    designReferences: async () => ({ state: "none" }),
+    designReferencesDownload: async () => ({ ok: false, code: "offline", message: "Not in the preview." }),
+    designReferencesCancel: async () => {},
+    designReferencesRemove: async () => ({ state: "none" }),
+    designReferenceCards: async () => [],
+    designReferenceNote: async () => null,
+    onDesignReferenceProgress: () => () => {},
+    designKitGroups: async () => [],
+    designApplyTheme: async (threadId) => ({ thread: Object.values(threads).flat().find((t) => t.id === threadId)!, previous: null }),
+    designMigratePreview: async (_t, _r, id) => ({ targetId: id, targetName: id, previewRel: "index.html", same: 0, renamed: [], unsupported: [], droppedProps: [], review: [], pages: 1 }),
+    designMigrateCommit: async (threadId) => ({ thread: Object.values(threads).flat().find((t) => t.id === threadId)! }),
+    designMigrateCancel: async () => {},
+    designSaveTheme: async (threadId) => ({ thread: Object.values(threads).flat().find((t) => t.id === threadId)!, id: "project:mock", applied: [] }),
+    designKitDoc: async () => ({ kit: null, copyOnWrite: false, editable: false, parts: [], blocks: [], draft: null }),
+    designKitSample: async () => "index.html",
+    designKitGallery: async () => "index.html",
+    designPropAll: async () => ({ count: 0, pages: 0 }),
+    designKitEdit: async (threadId) => ({ doc: { kit: null, copyOnWrite: false, editable: false, parts: [], blocks: [], draft: null }, thread: Object.values(threads).flat().find((t) => t.id === threadId)! }),
+    designKitDraftSave: async (threadId) => ({ doc: { kit: null, copyOnWrite: false, editable: false, parts: [], blocks: [], draft: null }, thread: Object.values(threads).flat().find((t) => t.id === threadId)! }),
+    designKitDraftDiscard: async () => ({ kit: null, copyOnWrite: false, editable: false, parts: [], blocks: [], draft: null }),
+    designReach: async () => ({ tokens: 0, instances: 0, files: 0 }),
+    designSystemHistory: async () => null,
+    designSaveComposition: async (threadId) => ({ warnings: [], saved: null, thread: Object.values(threads).flat().find((t) => t.id === threadId)! }),
+    designSetIntent: async () => {},
     designCapture: async () => ({ path: "designs/mock/refs/ref-2.png", thumb: "" }),
     designThumb: async () => "",
     designRestoreVersion: async () => {},

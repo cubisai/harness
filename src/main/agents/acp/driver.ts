@@ -1,5 +1,5 @@
 import type { AgentCapabilities, CodeMode, McpServerEntry, ModelOption, PermissionDecision, PermissionMode, PlanEntry } from "../../../shared/types";
-import { CODE_HINT } from "../../code-hint";
+import { CODE_HINT, OWN_CODE_MODE_HINT } from "../../code-hint";
 import type { TeamAgent } from "../../../shared/experts";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
@@ -146,7 +146,24 @@ export function hasOwnCodeMode(init: Pick<InitializeResult, "agentInfo">): boole
   return /opencode/i.test(info?.name ?? "") && Number.isFinite(major) && major >= 2;
 }
 
+/**
+ * Code mode's line for an ACP agent: OpenCode v2 hides run_code in its own Code Mode catalog, so its line says where
+ * to find it — unless the guard plugin already exposed run_code top-level (CUBIQ_CODE_MODE=1), which matches CODE_HINT.
+ */
+export function acpCodeHint(init: Pick<InitializeResult, "agentInfo">, on: boolean, runCodeTopLevel = false): string {
+  return on ? (hasOwnCodeMode(init) && !runCodeTopLevel ? OWN_CODE_MODE_HINT : CODE_HINT) : "";
+}
+
 export const DEFAULT_MODEL = "default";
+
+/**
+ * OpenCode Zen's free models (`opencode/<id>-free`) answer only requests with OpenCode's own built-in tools: hiding
+ * read/glob/grep or adding a top-level tool gets "Free usage limit reached" (provider.free-limit) at once, while MCP
+ * tools are fine. So Code Mode's tool rewrite stays off on them, and run_code is reached through CubiQ's MCP server.
+ */
+export function stockToolsOnly(model: string | null | undefined): boolean {
+  return /^opencode\/[^/]+-free$/.test(model ?? "");
+}
 
 /** Tool kinds that only read, or edit files: allowed without asking in Auto-edit. */
 const AUTO_EDIT_KINDS = new Set<ToolKind>(["read", "search", "think", "fetch", "edit", "move"]);
@@ -268,6 +285,8 @@ interface Live {
   droppedNotified: Set<string>;
   /** A freshly created session still owes its first prompt the harness guide. */
   guidePending: boolean;
+  /** The code-mode hint already went out in this session (with the guide, or on its own for a session that started without it). */
+  codeHintSent: boolean;
   /** A freshly created session still owes its first prompt the seed's history prefix. */
   historyPending: string | null;
   /** The turn currently receiving this connection's updates. */
@@ -451,7 +470,7 @@ export function createAcpDriver(
     // A design thread's fence: edits outside its folder and destructive commands are denied.
     if (t.input.design && t.input.cwd) {
       const paths = ask.kind === "edit" ? ask.summary.split(", ").filter(Boolean) : [];
-      const reason = ask.kind === "execute" ? fenceCommand(t.input.cwd, t.input.design, ask.summary) : ask.kind === "edit" ? fenceWrite(t.input.cwd, t.input.design, paths) : null;
+      const reason = ask.kind === "execute" ? fenceCommand(t.input.cwd, t.input.design, ask.summary) : ask.kind === "edit" ? fenceWrite(t.input.cwd, t.input.design, paths, t.input.designGuard) : null;
       if (reason) {
         t.input.onEvent({ kind: "notice", text: `Blocked in this design thread: ${ask.kind === "edit" ? paths.join(", ") : ask.summary}` });
         return { decision: "deny", reason };
@@ -803,13 +822,19 @@ export function createAcpDriver(
     }
   };
 
+  // Tells the guard plugin (OpenCode v2) to hide read/glob/grep and expose run_code directly, only when run_code will
+  // actually attach and the model takes a changed tool surface. It's fixed at start, so a switch across it restarts.
+  const wantsCodeModeEnv = (input: TurnInput): boolean =>
+    pluginAsks && (cliMajor ?? 1) >= 2 && (deps.codeMode?.(input.threadId) ?? "off") !== "off" && input.tools.length > 0 && Boolean(deps.toolServer) && !stockToolsOnly(input.model);
+
   const connect = async (threadKey: string, input: TurnInput): Promise<Live> => {
     await ensureVariants();
     const existing = live.get(threadKey);
     // A live process has a pick already; a new one resolves from the turn's model.
     const wanted = wantedVariant(threadKey, input, existing);
     const wantedKey = variantKeyOf(wanted);
-    if (existing?.conn.alive && wantedKey === existing.variantKey) return existing;
+    const codeEnv = wantsCodeModeEnv(input);
+    if (existing?.conn.alive && wantedKey === existing.variantKey && (existing.env.CUBIQ_CODE_MODE === "1") === codeEnv) return existing;
     if (existing?.conn.alive) {
       // The variant is fixed when OpenCode starts, so a changed pick (or a
       // reset to default) needs a new process, resumed with the same session.
@@ -832,6 +857,7 @@ export function createAcpDriver(
       input.onEvent({ kind: "notice", text: plan.warning });
     }
     const env: NodeJS.ProcessEnv = { ...(plan?.env ?? process.env), ...config.env };
+    if (codeEnv) env.CUBIQ_CODE_MODE = "1";
     if (config.skillsDirEnv && deps.skillsDir) {
       const dir = deps.skillsDir();
       if (dir) env[config.skillsDirEnv] = dir;
@@ -881,7 +907,7 @@ export function createAcpDriver(
             const editPaths = acpEditTargets(p.toolCall);
             const reason =
               p.toolCall.kind === "edit"
-                ? fenceWrite(t.input.cwd, t.input.design, editPaths)
+                ? fenceWrite(t.input.cwd, t.input.design, editPaths, t.input.designGuard)
                 : p.toolCall.kind === "execute"
                   ? fenceCommand(t.input.cwd, t.input.design, command)
                   : null;
@@ -949,7 +975,7 @@ export function createAcpDriver(
       clientInfo: { name: "cubiq", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, threadKey, command, env, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null, approvedCalls: new Set() };
+    l = { conn, init, threadKey, command, env, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, codeHintSent: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null, approvedCalls: new Set() };
     // No proactive authenticate: the server infers the method from its own
     // settings and refreshes the token itself, so calling it here only ever
     // launched a browser (including during the startup model probe). A signed-out
@@ -977,7 +1003,7 @@ export function createAcpDriver(
         // In tool mode the skill tool rides on /mcp-skills, alongside the browser tools.
         const skillsTarget = capabilities.skillsDelivery.mode === "tool" ? (skillsUrl ?? url) : url;
         const target = routed ? (routedUrl ?? skillsUrl ?? url) : skillsTarget;
-        const code = (deps.codeMode?.(input.threadId) ?? "off") !== "off" && !hasOwnCodeMode(l.init);
+        const code = (deps.codeMode?.(input.threadId) ?? "off") !== "off";
         const shells = input.tools.some((t) => (SHELL_TOOL_NAMES as readonly string[]).includes(t.name)) ? input.threadId : undefined;
         const toolUrl = withBrowserOnDemandFlag(withShells(withCode(withThread(withProject(target, input.projectId), input.threadId), code ? input.threadId : undefined), shells), input.tools.some((t) => t.name === BROWSER_CALL));
         servers.push({ type: "http", name: TOOL_SERVER_NAME, url: toolUrl, headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
@@ -1127,6 +1153,7 @@ export function createAcpDriver(
     rememberConfig(l.configOptions, l.threadKey);
     rememberModes(l, res.modes);
     l.guidePending = true;
+    l.codeHintSent = false;
     l.historyPending = seed && "promptPrefix" in seed ? seed.promptPrefix : null;
   };
 
@@ -1333,8 +1360,13 @@ export function createAcpDriver(
       const e = l.guidePending ? input.expert ?? "" : "";
       const m = l.guidePending && input.projectId ? deps.memory?.(input.projectId, input.threadId, null) ?? "" : "";
       const fresh = l.guidePending;
-      // Code mode (when run_code is attached, and the agent has no Code Mode of its own): one fixed line inside the guide.
-      const hint = g && (deps.codeMode?.(input.threadId) ?? "off") !== "off" && !hasOwnCodeMode(l.init) && Boolean(l.init.agentCapabilities?.mcpCapabilities?.http) && input.tools.length > 0 && !!deps.toolServer ? CODE_HINT : "";
+      // Code mode (run_code attached): one fixed line inside the guide; OpenCode v2's points at run_code in its own Code Mode catalog.
+      const codeOn = (deps.codeMode?.(input.threadId) ?? "off") !== "off" && Boolean(l.init.agentCapabilities?.mcpCapabilities?.http) && input.tools.length > 0 && !!deps.toolServer;
+      const codeHint = acpCodeHint(l.init, codeOn, l.env.CUBIQ_CODE_MODE === "1");
+      const hint = g ? codeHint : "";
+      // A continued session that never got the hint (it began with code mode off, or before the hint existed) gets it once on its own.
+      const lateHint = !g && codeHint && !l.codeHintSent ? codeHint : "";
+      if (hint || lateHint) l.codeHintSent = true;
       // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.
       if (fresh) deps.extensions?.(input.cwd, input.projectId ?? null);
       if (g || e || m) l.guidePending = false;
@@ -1342,6 +1374,7 @@ export function createAcpDriver(
       l.historyPending = null;
       const lead = [
         ...(g ? [{ type: "text", text: `<harness-guide>\n${g}${hint ? `\n\n${hint}` : ""}\n</harness-guide>` }] : []),
+        ...(lateHint ? [{ type: "text", text: `<harness-guide>\n${lateHint}\n</harness-guide>` }] : []),
         ...(e ? [{ type: "text", text: e }] : []),
         ...(m ? [{ type: "text", text: m }] : []),
         ...(h ? [{ type: "text", text: `${h}\n---` }] : []),
@@ -1589,11 +1622,12 @@ export function scriptStepSummary(input: unknown): string {
 }
 
 export function harnessTool(u: Pick<ToolCallFields, "title" | "kind" | "rawInput">): { name: string; summary: string } | null {
-  const m = /^(?:mcp__)?(?:cubiq|unskilled)(?:__|[_:.])([a-z][a-z0-9_]*)$/i.exec(u.title ?? "");
-  if (!m || (u.kind && u.kind !== "other")) return null;
+  const m = /^(?:(?:mcp__)?(?:cubiq(?:\.guard)?|unskilled)(?:__|[_:.])([a-z][a-z0-9_]*)|(run_code))$/i.exec(u.title ?? "");
+  const name = m?.[1] ?? m?.[2];
+  if (!name || (u.kind && u.kind !== "other")) return null;
   const raw = (u.rawInput ?? {}) as Record<string, unknown>;
   const arg = ["url", "ref", "text", "expression", "name", "code"].map((k) => raw[k]).find((v): v is string => typeof v === "string");
-  return { name: m[1]!, summary: arg ? clipSummary(arg) : "" };
+  return { name, summary: arg ? clipSummary(arg) : "" };
 }
 
 export function kindLabel(kind: ToolKind | null | undefined): string {

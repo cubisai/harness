@@ -12,6 +12,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { CODE_MODE_DESCRIPTION } from "../code-mode";
 import type { InjectionPlan } from ".";
 
 /** The plugin module written to disk. Plain ESM; its only import is a Node builtin. */
@@ -171,6 +172,68 @@ export const OPENCODE_GUARD_V2_SOURCE = `${OPENCODE_GUARD_SOURCE.slice(0, OPENCO
       guard(input, output);
       await ask(input, output);
     });
+    // Code mode (CUBIQ_CODE_MODE=1): CubiQ's run_code chains read/glob/grep in one script, so the built-ins come off
+    // the agent's tool surface and run_code is registered as a direct top-level tool (codemode: false), forwarding to
+    // the session's cubiq HTTP MCP server instead of hiding inside OpenCode's own \`execute\` catalog.
+    if (process.env.CUBIQ_CODE_MODE === "1" && ctx.tool && typeof ctx.tool.transform === "function") {
+      try {
+        let cubiqMcp = null;
+        if (ctx.mcp && typeof ctx.mcp.transform === "function") {
+          await ctx.mcp.transform((mcpEd) => {
+            const entry = mcpEd && typeof mcpEd.get === "function" ? mcpEd.get("cubiq") : null;
+            if (entry && typeof entry.url === "string") cubiqMcp = entry;
+          });
+        }
+        const runCodeDesc = ${JSON.stringify(CODE_MODE_DESCRIPTION)};
+        await ctx.tool.transform((editor) => {
+          for (const id of ["read", "glob", "grep"]) editor.remove(id);
+          if (typeof editor.get === "function" && typeof editor.add === "function" && !editor.get("run_code")) {
+            const ref = editor.get("websearch") || editor.get("write") || editor.get("shell");
+            const fields = ref && ref.input && ref.input.fields;
+            const strSchema = fields && (fields.query || fields.path || fields.command);
+            if (ref && ref.input && typeof ref.input.mapFields === "function" && strSchema) {
+              const codeField = typeof strSchema.annotate === "function" ? strSchema.annotate({ description: "The JavaScript to run, as the body of an async function." }) : strSchema;
+              const outSchema = typeof strSchema.annotate === "function" ? strSchema.annotate({ description: undefined }) : strSchema;
+              editor.add({
+                id: "run_code",
+                name: "run_code",
+                description: runCodeDesc,
+                input: ref.input.mapFields(() => ({ code: codeField })),
+                output: outSchema,
+                options: { codemode: false },
+                async execute(args, toolCtx) {
+                  let srv = cubiqMcp;
+                  if (!srv && ctx.mcp && typeof ctx.mcp.list === "function") {
+                    const list = await ctx.mcp.list();
+                    const hit = Array.isArray(list) ? list.find((e) => Array.isArray(e) && e[0] === "cubiq") : null;
+                    if (hit && hit[1]) srv = hit[1];
+                  }
+                  if (!srv || typeof srv.url !== "string") throw new Error("CubiQ's tool server is not attached to this session.");
+                  const res = await fetch(srv.url, {
+                    method: "POST",
+                    headers: { ...(srv.headers || {}), "content-type": "application/json", accept: "application/json, text/event-stream" },
+                    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "run_code", arguments: { code: String((args && args.code) || "") } } }),
+                    signal: toolCtx && toolCtx.signal,
+                    timeout: false,
+                  });
+                  if (!res.ok) throw new Error("run_code HTTP " + res.status);
+                  const body = await res.json();
+                  if (body && body.error) throw new Error(body.error.message || "run_code failed");
+                  const result = body && body.result;
+                  const text = Array.isArray(result && result.content)
+                    ? result.content.map((c) => (c && typeof c.text === "string" ? c.text : "")).join("\\n")
+                    : "";
+                  if (result && result.isError) throw new Error(text || "run_code failed");
+                  return { output: text };
+                },
+              });
+            }
+          }
+        });
+      } catch {
+        // An OpenCode without tool transforms: run_code stays reachable through \`execute\`; the guide says how.
+      }
+    }
   },
 };
 `;

@@ -221,6 +221,40 @@ describe("Service.send", () => {
     expect(user?.text).toBe("Say hi");
   });
 
+  it("gives the agent the thread's issue in full once, then one line, leaving the stored user event alone", async () => {
+    const { store, service, driver, thread } = setup(async (input) => input.onSession("session-1"));
+    const dir = store.getProject(thread.projectId).path;
+    const pick = { number: 3, title: "Add controls", labels: ["enhancement"], commentCount: 1 };
+    expect(() => service.setThreadIssue(thread.id, pick)).toThrow(/\/issue-setup/);
+    mkdirSync(join(dir, ".cubiq"));
+    writeFileSync(join(dir, ".cubiq", "issues.json"), JSON.stringify({ tracker: "local" }));
+    mkdirSync(join(dir, "docs", "issues"), { recursive: true });
+    writeFileSync(join(dir, "docs", "issues", "0003-add-controls.md"), "---\nid: 3\ntitle: Add controls\ntype: enhancement\n---\nRun agents side by side.\n");
+    expect(service.setThreadIssue(thread.id, pick).issue).toEqual({ number: 3, title: "Add controls", labels: ["enhancement"], source: "local" });
+    await service.send({ threadId: thread.id, text: "Go" });
+    expect(driver.prompts[0]).toContain("<issue>\nWorking on issue #3: Add controls");
+    expect(driver.prompts[0]).toContain("Run agents side by side.");
+    expect(store.getThread(thread.id).issue?.briefed).toBe(true);
+    await service.send({ threadId: thread.id, text: "And tests" });
+    expect(driver.prompts[1]).toContain("(CubiQ: Working on #3: Add controls)");
+    expect(driver.prompts[1]).not.toContain("<issue>");
+    const texts = store.listEvents(thread.id).flatMap((e) => (e.event.kind === "user" ? [e.event.text] : []));
+    expect(texts).toEqual(["Go", "And tests"]);
+    // Picking it again keeps what the agent was told; clearing it ends the notes.
+    expect(service.setThreadIssue(thread.id, pick).issue?.briefed).toBe(true);
+    service.setThreadIssue(thread.id, null);
+    await service.send({ threadId: thread.id, text: "Done?" });
+    expect(driver.prompts[2]).not.toContain("Working on");
+  });
+
+  it("falls back to the issue's line when the tracker can't be read", async () => {
+    const { store, service, driver, thread } = setup(async () => {});
+    store.setIssue(thread.id, { number: 9, title: "Gone", labels: [], source: "local" });
+    await service.send({ threadId: thread.id, text: "Go" });
+    expect(driver.prompts[0]).toContain("(CubiQ: Working on #9: Gone)");
+    expect(store.getThread(thread.id).issue?.briefed).toBeUndefined();
+  });
+
   it("leaves a new session's prompt unchanged, since it gets a fresh memory block anyway", async () => {
     const { service, driver, thread } = setup(async () => {});
     service.setMemoryUpdates(() => "<memory-update>X</memory-update>");
@@ -505,6 +539,36 @@ describe("Service.send", () => {
     expect(notes[6]).toContain("- index.html [slop] p.kicker: gradient text");
   });
 
+  it("sends one build round after a turn that saved a kit and left no page, and none once a page exists", async () => {
+    const prompts: string[] = [];
+    const turnEnd = { kind: "turn-end" as const, costUsd: null, inputTokens: 10, outputTokens: 0, durationMs: 5 };
+    let page = false;
+    const { service, store } = setup(async (input) => {
+      prompts.push(input.prompt);
+      if (page) writeFileSync(join(service.designRoot(design.id)!, "index.html"), "<p>x</p>");
+      input.onEvent(turnEnd);
+    });
+    const project = store.addProject(tempDir());
+    const design = service.createThread(project.id, undefined, "design");
+    mkdirSync(service.designRoot(design.id)!, { recursive: true });
+    // The agent's design_kit_save marks the thread; the turn end reads it once.
+    const saved = vi.spyOn(service.kits, "takeSaved").mockReturnValueOnce(true).mockReturnValueOnce(true);
+    await service.send({ threadId: design.id, text: "start a kit" });
+    await vi.waitFor(() => expect(prompts).toHaveLength(2), { timeout: 10_000 });
+    await vi.waitFor(() => expect(service.isRunning(design.id)).toBe(false), { timeout: 10_000 });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(prompts[1]!).toMatch(/^CubiQ saved your kit, but this design still has no page/);
+    // The build round is the last: it saved again and still wrote no page, and CubiQ doesn't ask twice.
+    expect(prompts).toHaveLength(2);
+    expect(store.getThread(design.id).title).not.toContain("CubiQ saved");
+    saved.mockReturnValueOnce(true);
+    page = true;
+    await service.send({ threadId: design.id, text: "again" });
+    await vi.waitFor(() => expect(service.isRunning(design.id)).toBe(false), { timeout: 10_000 });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(prompts).toHaveLength(3);
+  });
+
   it("sends one fix round when a design turn ends with new contrast findings, and none after a failed turn", async () => {
     const prompts: string[] = [];
     const turnEnd = { kind: "turn-end" as const, costUsd: null, inputTokens: 10, outputTokens: 0, durationMs: 5 };
@@ -589,42 +653,6 @@ describe("Service.send", () => {
     expect(store.listEvents(solo.id).some((e) => e.event.kind === "notice")).toBe(false);
   });
 
-  it("writes an in-place text edit into a design page with versions, and refuses when it isn't safe", () => {
-    const { service, store, updates } = setup(async () => {});
-    service.setArtifacts({
-      addVersion: (threadId, path, sha, bytes, turnSeq) => store.addArtifactVersion(threadId, path, sha, bytes, turnSeq),
-      listVersions: (threadId) => store.listArtifactVersions(threadId),
-      writeBlob: (sha, content) => store.writeBlobBytes(sha, content),
-      readBlob: (sha) => store.readBlobBytes(sha),
-      gitHead: async () => null,
-      preview: async () => ({ ok: false, error: "none" }),
-      fileUrl: () => "",
-    });
-    const project = store.addProject(tempDir());
-    const chat = service.createThread(project.id);
-    const design = service.createThread(project.id, undefined, "design");
-    expect(() => service.editDesignText(chat.id, "index.html", { id: "x", before: "a", after: "b" })).toThrow(/design thread/);
-    const root = service.designRoot(design.id)!;
-    mkdirSync(root, { recursive: true });
-    writeFileSync(join(root, "index.html"), `<main><button data-agent-id="cta-buy">Buy now</button><p>keep</p></main>`);
-    service.editDesignText(design.id, "index.html", { id: "cta-buy", before: "Buy now", after: "Start free trial" });
-    expect(readFileSync(join(root, "index.html"), "utf8")).toBe(`<main><button data-agent-id="cta-buy">Start free trial</button><p>keep</p></main>`);
-    const path = `designs/${design.id.slice(0, 8)}/index.html`;
-    expect(store.listArtifactVersions(design.id).find((v) => v.path === path)!.versions).toHaveLength(2);
-    expect(updates.filter((u) => u.type === "artifact-ready")).toHaveLength(1);
-    // The page moved on (stale before): refused, file untouched.
-    expect(() => service.editDesignText(design.id, "index.html", { id: "cta-buy", before: "Buy now", after: "x" })).toThrow(/changed since/);
-    expect(() => service.editDesignText(design.id, "missing.html", { id: "cta-buy", before: "a", after: "b" })).toThrow("No such page.");
-
-    // Style edits: written with versions on Working, refused on Quick (that tier sends the change to the agent).
-    service.editDesignStyle(design.id, "index.html", { id: "cta-buy", changes: [{ prop: "fontSize", value: "20px" }] });
-    expect(readFileSync(join(root, "index.html"), "utf8")).toContain(`<button data-agent-id="cta-buy" style="font-size: 20px">`);
-    expect(store.listArtifactVersions(design.id).find((v) => v.path === path)!.versions).toHaveLength(3);
-    service.setPrototypeTier(design.id, "quick");
-    expect(() => service.editDesignStyle(design.id, "index.html", { id: "cta-buy", changes: [{ prop: "color", value: "red" }] })).toThrow(/Quick tier/);
-    expect(() => service.editDesignStyle(chat.id, "index.html", { id: "cta-buy", changes: [] })).toThrow(/design thread/);
-  });
-
   it("restores a design page version as the newest, keeping the current page as a version", () => {
     const { service, store } = setup(async () => {});
     service.setArtifacts({
@@ -642,7 +670,9 @@ describe("Service.send", () => {
     const root = service.designRoot(design.id)!;
     mkdirSync(root, { recursive: true });
     writeFileSync(join(root, "index.html"), `<main><button data-agent-id="cta-buy">Buy now</button></main>`);
-    service.editDesignText(design.id, "index.html", { id: "cta-buy", before: "Buy now", after: "Start" });
+    service.recordDesignPageVersion(design.id, "index.html");
+    writeFileSync(join(root, "index.html"), `<main><button data-agent-id="cta-buy">Start</button></main>`);
+    service.recordDesignPageVersion(design.id, "index.html");
     const path = `designs/${design.id.slice(0, 8)}/index.html`;
     const versions = () => store.listArtifactVersions(design.id).find((v) => v.path === path)!.versions;
     expect(versions()).toHaveLength(2);
@@ -1272,6 +1302,28 @@ describe("Service questions", () => {
     release();
     await sending;
   });
+
+  it("doesn't count a harness tool's open question as the agent going silent", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    try {
+      const silent = async (ask: boolean) => {
+        let release!: () => void;
+        const { service, thread, updates } = setup(() => new Promise<void>((r) => (release = r)));
+        const sending = service.send({ threadId: thread.id, text: "go" });
+        await new Promise((r) => setTimeout(r, 10));
+        if (ask) void service.askFromTool(thread.id, questions);
+        vi.advanceTimersByTime(11 * 60_000);
+        const stalls = updates.filter((u) => u.type === "event" && /no activity/i.test(JSON.stringify(u.stored))).length;
+        release();
+        await sending;
+        return stalls;
+      };
+      expect(await silent(false)).toBeGreaterThan(0);
+      expect(await silent(true)).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("Service async questions", () => {
@@ -1411,3 +1463,66 @@ describe("Chats (no project)", () => {
     expect(service.createThread(other.id).worktreePath ?? null).toBeNull();
   });
 });
+
+describe("issue offer after a turn", () => {
+  const BUG = { type: "bug" as const, title: "isEven returns false for even numbers", summary: "util.js:2" };
+  const settle = () => new Promise((r) => setTimeout(r, 20));
+
+  it("puts the offer after a finished turn whose reply names a problem, and passes request and reply", async () => {
+    const { store, service, thread } = setup(async (input) => {
+      input.onEvent({ kind: "assistant-text", text: "sum works, but node test.js fails on a pre-existing bug in util.js." });
+      input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 1, outputTokens: 1, durationMs: 1 });
+    });
+    const calls: { request: string; answer: string }[] = [];
+    service.setIssueOffer(async (o) => (calls.push({ request: o.request, answer: o.answer }), BUG));
+    await service.send({ threadId: thread.id, text: "Add sum" });
+    await settle();
+    expect(calls).toEqual([{ request: "Add sum", answer: "sum works, but node test.js fails on a pre-existing bug in util.js." }]);
+    expect(store.listEvents(thread.id).at(-1)?.event).toEqual({ kind: "issue-offer", ...BUG });
+  });
+
+  it("skips replies with no problem words, turns that filed, and offers the user has moved past", async () => {
+    let reply = "All done, tests pass.";
+    let tools: string[] = [];
+    const { store, service, thread } = setup(async (input) => {
+      for (const name of tools) input.onEvent({ kind: "tool-use", toolUseId: name, name, summary: "" });
+      input.onEvent({ kind: "assistant-text", text: reply });
+      input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 1, outputTokens: 1, durationMs: 1 });
+    });
+    let release: (v: typeof BUG) => void = () => {};
+    const check = vi.fn(() => new Promise<typeof BUG>((r) => (release = r)));
+    service.setIssueOffer(check);
+    await service.send({ threadId: thread.id, text: "one" });
+    expect(check).not.toHaveBeenCalled();
+    reply = "Filed #3 for the failing test.";
+    tools = ["mcp__cubiq__issue_create"];
+    await service.send({ threadId: thread.id, text: "two" });
+    expect(check).not.toHaveBeenCalled();
+    tools = [];
+    reply = "It fails on an unrelated bug.";
+    await service.send({ threadId: thread.id, text: "three" });
+    expect(check).toHaveBeenCalledTimes(1);
+    // The user sends again before the check answers: the late offer is dropped.
+    reply = "Fine now.";
+    await service.send({ threadId: thread.id, text: "four" });
+    release(BUG);
+    await settle();
+    expect(store.listEvents(thread.id).some((e) => e.event.kind === "issue-offer")).toBe(false);
+  });
+
+  it("checks nothing after a stopped turn", async () => {
+    const { service, thread } = setup(async (input) => {
+      await new Promise((r) => setTimeout(r, 30));
+      input.onEvent({ kind: "assistant-text", text: "It fails." });
+      input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 1, outputTokens: 1, durationMs: 1 });
+    });
+    const check = vi.fn(async () => BUG);
+    service.setIssueOffer(check);
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await new Promise((r) => setTimeout(r, 10));
+    service.interrupt(thread.id);
+    await sending;
+    expect(check).not.toHaveBeenCalled();
+  });
+});
+

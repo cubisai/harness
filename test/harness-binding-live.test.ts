@@ -1,9 +1,8 @@
 // Live check that the native agent never replays signed thinking after it
 // rewrote history: a small context window forces an auto-compaction mid-turn,
 // then a memory change between turns changes the system prompt. Both must go
-// through without a 400. Skipped unless the provider's key is in the
-// environment (load it from .env: `bun --env-file=.env x vitest run test/harness-binding-live.test.ts`).
-// TH_BINDING_MODEL / PGS_BINDING_MODEL override the models.
+// through without a 400. Requires CUBIQ_LIVE_TESTS=1 and the LIVE_* settings
+// documented in .env.example. Run with a disposable provider account.
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +13,7 @@ import type { TurnInput } from "../src/main/agents/types";
 import { BUILT_IN_GUARD } from "../src/main/guard";
 import { createProviderDriver } from "../src/main/harness/driver";
 import { SessionStore } from "../src/main/harness/session";
-import type { HarnessProtocol } from "../src/main/harness/llm/types";
+import { liveProvider } from "./live-provider";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -26,23 +25,11 @@ afterAll(() => {
   while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
 
-interface Case {
-  label: string;
-  envVar: string;
-  baseURL: string;
-  protocol: HarnessProtocol;
-  model: string;
-}
-
-const cases: Case[] = [
-  { label: "TokenHarbor Claude (Messages)", envVar: "TOKENHARBOR_API_KEY", baseURL: "https://tokenharbor.ai/v1", protocol: "anthropic-messages", model: process.env.TH_BINDING_MODEL ?? "claude-haiku-5.5" },
-  { label: "PGS Grove DeepSeek (Messages)", envVar: "PGS_API_KEY", baseURL: "https://api.pgsgrove.com/v1", protocol: "anthropic-messages", model: process.env.PGS_BINDING_MODEL ?? "deepseek-v4.1-flash" },
-  { label: "PGS Grove DeepSeek (chat)", envVar: "PGS_API_KEY", baseURL: "https://api.pgsgrove.com/v1", protocol: "openai-chat", model: process.env.PGS_BINDING_MODEL ?? "deepseek-v4.1-flash" },
-];
+const cases = [liveProvider()];
 
 for (const c of cases) {
   const key = process.env[c.envVar] ?? "";
-  describe.skipIf(!key)(`native agent history rewrites, live on ${c.label}`, () => {
+  describe.skipIf(!c.enabled)(`native agent history rewrites, live on ${c.label}`, () => {
     it("compacts mid-turn and survives a prefix change between turns", { timeout: 600_000 }, async () => {
       const cwd = tmp();
       // Four files of ~6k tokens each: reading them overflows a 24k window, so the turn auto-compacts.
