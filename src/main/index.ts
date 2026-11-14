@@ -1156,7 +1156,9 @@ async function main(): Promise<void> {
     const root = service.designRoot(threadId);
     if (!root) return null;
     const pages = listDesignPages(root);
-    const rel = typeof want === "string" && pages.includes(want) ? want : entryFile(root);
+    // Only a listed page: the canvas edits it through design:history, which refuses anything else ("No such page").
+    const first = entryFile(root);
+    const rel = typeof want === "string" && pages.includes(want) ? want : first && pages.includes(first) ? first : (pages[0] ?? null);
     if (!rel) return null;
     const inPages = new Set(pages);
     const links: { from: string; to: string }[] = [];

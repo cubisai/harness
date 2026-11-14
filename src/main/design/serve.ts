@@ -124,7 +124,8 @@ export function entryFile(root: string): string | null {
   }
   let best: { name: string; mtime: number } | null = null;
   for (const entry of entries) {
-    if (!entry.isFile()) continue;
+    // Dot files (a kit preview, `.preview-part.html`) are the app's own, never a page: the page list skips them too.
+    if (!entry.isFile() || entry.name.startsWith(".")) continue;
     const name = entry.name.toLowerCase();
     if (!name.endsWith(".html") && !name.endsWith(".htm")) continue;
     try {

@@ -113,6 +113,15 @@ describe("entryFile", () => {
     expect(entryFile(dir)).toBe("new.htm");
   });
 
+  it("never opens the app's own dot files (a kit preview), which the page list and design:history don't know", () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, ".preview-part.html"), "preview");
+    expect(entryFile(dir)).toBeNull();
+    writeFileSync(join(dir, "login.html"), "page");
+    utimesSync(join(dir, "login.html"), new Date(1000), new Date(1000));
+    expect(entryFile(dir)).toBe("login.html");
+  });
+
   it("is null for an empty or missing folder", () => {
     expect(entryFile(tempDir())).toBeNull();
     expect(entryFile(join(tempDir(), "missing"))).toBeNull();
