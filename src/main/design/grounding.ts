@@ -68,11 +68,17 @@ function splitSelectors(list: string): string[] {
 /** A literal colour in a declaration's value, outside a `var()` fallback. */
 const LITERAL_COLOR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\(/i;
 
+/** The custom property names a stylesheet declares (`system/tokens.css`: the theme's tokens). */
+export function tokenNamesIn(css: string): Set<string> {
+  return new Set([...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/(--[a-z0-9_-]+)\s*:/gi)].map((m) => m[1]!.toLowerCase()));
+}
+
 /**
  * Check a page's markup against its kit's manifest. `pageCss` is the page's own linked stylesheets (not `system/`),
- * checked with its inline `<style>`.
+ * checked with its inline `<style>`. `themeTokens` (the names in `system/tokens.css`) turns on the page-token check:
+ * a page may re-set a theme token on `:root`, but a new name with a literal colour is a colour outside the theme.
  */
-export function groundPage(html: string, manifest: KitManifest, pageCss = ""): Grounding {
+export function groundPage(html: string, manifest: KitManifest, pageCss = "", themeTokens?: ReadonlySet<string>): Grounding {
   const els = walk(parse(html));
   const byUi = new Map(manifest.components.map((c) => [c.ui, c]));
   const unknown = new Map<string, number>();
@@ -131,11 +137,28 @@ export function groundPage(html: string, manifest: KitManifest, pageCss = ""): G
   }
 
   const plain = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const hasLiteral = (d: string): boolean => d.includes(":") && LITERAL_COLOR.test(d.slice(d.indexOf(":") + 1).replace(/var\([^()]*(\([^()]*\))?[^()]*\)/g, ""));
   let literals = 0;
+  let pageTokens = 0;
   for (const m of plain.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const selector = m[1]!.trim();
-    if (selector.startsWith("@") || /^:root\b/.test(selector)) continue;
-    const decl = m[2]!.split(";").find((d) => d.includes(":") && LITERAL_COLOR.test(d.slice(d.indexOf(":") + 1).replace(/var\([^()]*(\([^()]*\))?[^()]*\)/g, "")));
+    if (selector.startsWith("@")) continue;
+    const root = /^(?::root|html)\b/i.test(selector);
+    if (root && themeTokens?.size) {
+      for (const d of m[2]!.split(";")) {
+        const name = /^\s*(--[a-z0-9_-]+)\s*:/i.exec(d)?.[1]?.toLowerCase();
+        if (!name || themeTokens.has(name) || !hasLiteral(d)) continue;
+        if (pageTokens++ >= MAX_EACH) break;
+        findings.push({
+          rule: "kit",
+          id: "page-token",
+          selector: selector.slice(0, 120),
+          detail: `page CSS makes a new colour token (${d.trim().slice(0, 60)}), a colour outside the theme. Point it at the theme (${name}: var(--color-text), or color-mix() of tokens), or re-set one of the theme's own tokens (--color-accent) for this page.`,
+        });
+      }
+    }
+    // Custom properties on :root are tokens (checked above); elsewhere a literal is a literal.
+    const decl = m[2]!.split(";").find((d) => hasLiteral(d) && !(root && /^\s*--/.test(d)));
     if (!decl) continue;
     if (literals++ >= MAX_EACH) break;
     findings.push({
@@ -157,6 +180,18 @@ export function groundPage(html: string, manifest: KitManifest, pageCss = ""): G
       id: "element-recolor",
       selector: selector.slice(0, 120),
       detail: `this element rule also hits the kit's parts and wins over them (page CSS beats @layer cubiq-ui), e.g. button text the same colour as its background. Leave parts out: ${bare.find((t) => PART_ELEMENTS.has(t.toLowerCase()))}:not([data-ui], [data-ui] *), or a class.`,
+    });
+  }
+
+  // A deck page (slides in a full document) needs the scaffold's runtime, or it shows every slide at once with no keys.
+  const slides = els.filter((el) => el.tagName === "section" && /(^|\s)slide(\s|$)/.test(el.attrs.find((a) => a.name === "class")?.value ?? "")).length;
+  const runtime = els.some((el) => el.tagName === "script" && /(^|\/)deck\.js$/i.test((el.attrs.find((a) => a.name === "src")?.value ?? "").split(/[?#]/)[0]!));
+  if (slides && !runtime && /<html[\s>]/i.test(html)) {
+    findings.push({
+      rule: "kit",
+      id: "deck-runtime",
+      selector: "section.slide",
+      detail: `this deck (${slides} slide${slides === 1 ? "" : "s"}) doesn't load deck.js, so slides don't scale or step. Copy deck.js and deck.css from design-build's assets next to the page, unchanged, and add <script src="deck.js"></script> before </body>.`,
     });
   }
 

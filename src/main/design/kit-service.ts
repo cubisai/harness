@@ -6,7 +6,7 @@ import type { DesignKitOption, DesignMutation } from "../../shared/design-mutati
 import type { DesignIntent, DesignKitDoc, DesignKitEdit, DesignKitGroup, DesignKitPart, DesignKitSampleRequest, DesignMigrationPreview, DesignReach, DesignThemeCard, LiveUpdate, Thread } from "../../shared/types";
 import { addComposition, applyKitEdit, isStatefulPart, kitGallery, type GalleryEntry, compositionWarnings, diffManifests, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, projectKitFolders, projectSystemsDir, saveKitDraft, saveSystemCopy, seedKitDraft, forkKitSystem } from "./kit-library";
 import { migratePage, parseMigrations, setPropEverywhere, type MigrationPlan } from "./kit-migrate";
-import { groundPage, groundingSummary } from "./grounding";
+import { groundPage, groundingSummary, tokenNamesIn } from "./grounding";
 import { validateKitDir, type KitManifest } from "./kit-schema";
 import type { LintFinding } from "./lint";
 import { listDesignPages } from "./pages";
@@ -721,7 +721,8 @@ export class DesignKitService {
     const manifest = this.pageManifest(thread);
     const html = root ? read(join(root, rel)) : null;
     if (!manifest || html === null || !root) return null;
-    const g = groundPage(html, manifest, pageCssOf(root, rel, html));
+    const tokens = read(join(root, "system", "tokens.css"));
+    const g = groundPage(html, manifest, pageCssOf(root, rel, html), tokens === null ? undefined : tokenNamesIn(tokens));
     return { findings: g.findings, summary: groundingSummary(g, manifest.name) };
   }
 

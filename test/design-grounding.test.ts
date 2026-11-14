@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { groundPage, groundingSummary } from "../src/main/design/grounding";
+import { groundPage, groundingSummary, tokenNamesIn } from "../src/main/design/grounding";
 import { parseKitManifest, type KitManifest } from "../src/main/design/kit-schema";
 
 const FOUNDATION = join(process.cwd(), "resources", "design-kits", "foundation");
@@ -67,6 +67,26 @@ describe("page CSS in grounding", () => {
     expect(ids(groundPage(page(":root { --brand: #123456; } .hero { color: var(--brand, #fff); }"), foundation()))).not.toContain("literal-color");
   });
 
+  it("flags a new colour token on :root, not a re-set theme token or an alias of one", () => {
+    const theme = tokenNamesIn(readFileSync(join(FOUNDATION, "tokens.css"), "utf8"));
+    expect(theme.has("--color-accent")).toBe(true);
+    const at = (style: string, css = "") => ids(groundPage(page(style), foundation(), css, theme));
+    expect(at(":root { --color-carbon: #1d1d1b; }")).toEqual(["page-token"]);
+    expect(at("", "@layer page { :root { --ink: rgb(1 2 3); } }")).toEqual(["page-token"]);
+    expect(at(":root { --color-accent: #123456; --ink: var(--color-text); --wash: color-mix(in oklab, var(--color-accent) 20%, transparent); }")).toEqual([]);
+    expect(at(":root { --space-hero: 96px; }")).toEqual([]);
+    expect(at(":root { color: #333; }")).toEqual(["literal-color"]);
+    // Without the theme's names (a flat style), :root stays unchecked as before.
+    expect(ids(groundPage(page(":root { --color-carbon: #1d1d1b; }"), foundation()))).toEqual([]);
+  });
+
+  it("flags a deck page that doesn't load deck.js", () => {
+    const deck = (scripts: string) => `<html><body><main class="deck"><section class="slide"><h1>A</h1></section><section class="slide"><h1>B</h1></section></main>${scripts}</body></html>`;
+    expect(ids(groundPage(deck('<script src="system/ui.js"></script>'), foundation()))).toEqual(["deck-runtime"]);
+    expect(ids(groundPage(deck('<script src="deck.js?v=2"></script>'), foundation()))).toEqual([]);
+    expect(ids(groundPage('<section class="slide"><h1>A</h1></section>', foundation()))).toEqual([]);
+  });
+
   it("flags element rules that recolour kit parts, not ones that leave parts out", () => {
     expect(ids(groundPage(page("button, input { font: inherit; color: inherit; }"), foundation()))).toContain("element-recolor");
     expect(ids(groundPage(page("@layer page { a:hover { color: var(--color-accent); } }"), foundation()))).toContain("element-recolor");
@@ -77,7 +97,7 @@ describe("page CSS in grounding", () => {
   it("keeps the design-build scaffolds clean", () => {
     const dir = join(process.cwd(), "resources", "skills", "design-build", "assets");
     for (const f of readdirSync(dir).filter((x) => x.endsWith(".html"))) {
-      expect(groundPage(readFileSync(join(dir, f), "utf8"), foundation()).findings.filter((x) => x.id === "element-recolor" || x.id === "literal-color"), f).toEqual([]);
+      expect(groundPage(readFileSync(join(dir, f), "utf8"), foundation(), readFileSync(join(dir, "deck.css"), "utf8"), tokenNamesIn(readFileSync(join(FOUNDATION, "tokens.css"), "utf8"))).findings, f).toEqual([]);
     }
   });
 });

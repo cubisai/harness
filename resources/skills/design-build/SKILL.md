@@ -23,7 +23,7 @@ The user watches the page appear in CubiQ's canvas. It must look finished, and i
 - **Order**: big asks go layout and navigation first (`navbar`, `section`, `stack`, `grid`), then one section at a time, so the user sees it grow.
 - **Blocks first**: start a section from a file in `system/blocks/` when one fits; copy it and change its content.
 - **Parts**: a part is `data-ui` on plain HTML; props are `data-<prop>` attributes, and the default needs no attribute. A variant or prop beats new CSS.
-- **Page CSS** only for what the kit lacks: page layout, a signature moment, a part the kit has no version of. Tokens only (`var(--color-*)`, `--space-*`, `--text-*`, `--radius-*`, `--shadow-*`), no literal colours or sizes. Never restyle a part through `[data-ui="…"]`; `design_lint` flags it.
+- **Page CSS** only for what the kit lacks: page layout, a signature moment, a part the kit has no version of. Tokens only (`var(--color-*)`, `--space-*`, `--text-*`, `--radius-*`, `--shadow-*`), no literal colours or sizes, not even in a variable of your own: `--ink: var(--color-text)`, never `--ink: #1d1d1b`. To shift the theme on this page, re-set its own token on `:root` (`--color-accent`). Never restyle a part through `[data-ui="…"]`; `design_lint` flags it.
 - **Stable ids**: a short kebab `data-agent-id` on every section root, component root and interactive element; keep them when you rewrite, so the user's selection still finds them.
 - **Content**: real, specific copy and data; names, prices and dates that agree. **Icons**: symbols from `system/icons.svg`, `stroke="currentColor"`, never emoji. **Images**: inline SVG or `data:` URIs; photos the user gives go in `img/`. No network.
 - **Interaction**: `system/ui.js` runs tabs, accordion and dialog; anything else is a small vanilla inline `<script>`.
@@ -55,7 +55,7 @@ What a senior designer checks before calling a screen done. `design_lint` flags 
 
 **Mobile** (`mobile.html`): one `<section class="phone" aria-label="…">` per screen with `.status-bar`, a scrolling `.screen`, optional `.tab-bar`, `.home-indicator`. iOS unless asked: large title 32/40, tab bar 49 with 4–5 items; Android: 64 top bar, 80 bottom navigation. Targets 44 (iOS) / 48 (Android); 16 side margins; full-width primary `button` 48–56 tall; status bar time 9:41. A flow of four or more screens: one page each, `mobile-flow--01-<name>.html`, with `<meta name="cubiq-device" content="mobile">` and no frame (the canvas draws the device); only `.screen` scrolls.
 
-**Deck** (`deck.html`): one `<section class="slide">` per slide at 1920×1080. Plan the titles first, one idea per slide, the title stating the takeaway ("Churn fell 18% after onboarding v2"). Mix title, divider (full `--color-primary` ground), statement, big number, chart, quote, comparison and closing slides. At most ~30 words of body. Charts in inline SVG with direct labels. Don't rewrite `deck.js` or `deck.css`. Speaker notes: `<aside class="notes" hidden>`.
+**Deck** (`deck.html`): one `<section class="slide">` per slide at 1920×1080. Plan the titles first, one idea per slide, the title stating the takeaway ("Churn fell 18% after onboarding v2"). Mix title, divider (full `--color-primary` ground), statement, big number, chart, quote, comparison and closing slides. At most ~30 words of body. Charts in inline SVG with direct labels. Keep `<script src="deck.js">` (it scales and steps the slides) and don't rewrite `deck.js` or `deck.css`. Speaker notes: `<aside class="notes" hidden>`.
 
 ## 4. States and tweaks
 
