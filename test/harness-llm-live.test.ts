@@ -1,38 +1,21 @@
-// Live check of the harness LLM client against TokenHarbor, one tool loop per
-// protocol. Skipped unless TOKENHARBOR_API_KEY is set in the environment (the
-// key is never stored); TH_CHAT_MODEL / TH_RESPONSES_MODEL / TH_MESSAGES_MODEL
-// override the models picked from the listing.
+// Live tool-loop check against an explicitly configured endpoint and model.
+// Requires CUBIQ_LIVE_TESTS=1 and the LIVE_* settings in .env.example.
 
 import { describe, expect, it } from "vitest";
 import type { Provider } from "../src/shared/types";
-import { generate, routeFor, type HarnessProtocol, type LlmMessage, type LlmRequest } from "../src/main/harness/llm";
+import { generate, routeFor, type LlmMessage, type LlmRequest } from "../src/main/harness/llm";
+import { liveProvider } from "./live-provider";
 
-const key = process.env.TOKENHARBOR_API_KEY ?? "";
-const BASE = "https://tokenharbor.ai/v1";
-const provider: Provider = { id: "tokenharbor", label: "TokenHarbor", wireProtocol: "openai-chat", baseURL: BASE, secret: { kind: "envRef", envVar: "TOKENHARBOR_API_KEY" }, models: [] };
-
-async function listModels(): Promise<string[]> {
-  const res = await fetch(`${BASE}/models`, { headers: { Authorization: `Bearer ${key}` } });
-  const json = (await res.json()) as { data?: { id: string }[] };
-  return (json.data ?? []).map((m) => m.id);
-}
-
-function pick(ids: string[], protocol: HarnessProtocol): string | undefined {
-  const env = { "openai-chat": process.env.TH_CHAT_MODEL, "openai-responses": process.env.TH_RESPONSES_MODEL, "anthropic-messages": process.env.TH_MESSAGES_MODEL }[protocol];
-  if (env) return env;
-  // Cheap models first: a plan may not include the bigger ones.
-  if (protocol === "anthropic-messages") return ids.find((id) => /claude-haiku/i.test(id)) ?? ids.find((id) => /claude/i.test(id));
-  if (protocol === "openai-responses") return ids.find((id) => /^(openai\/)?gpt-5/i.test(id)) ?? ids.find((id) => /gpt/i.test(id));
-  return ids.find((id) => /deepseek.*flash$/i.test(id)) ?? ids.find((id) => /deepseek|qwen|glm/i.test(id)) ?? ids[0];
-}
+const configured = liveProvider();
+const key = process.env[configured.envVar] ?? "";
+const provider: Provider = { id: "live", label: configured.label, wireProtocol: configured.protocol, baseURL: configured.baseURL, secret: { kind: "envRef", envVar: configured.envVar }, models: [] };
 
 const ADD = { name: "add", description: "Add two integers and return the sum.", parameters: { type: "object", properties: { a: { type: "integer" }, b: { type: "integer" } }, required: ["a", "b"] } };
 
-describe.skipIf(!key)("harness LLM client, live on TokenHarbor", () => {
-  for (const protocol of ["openai-chat", "openai-responses", "anthropic-messages"] as const) {
+describe.skipIf(!configured.enabled)("harness LLM client, live on a custom endpoint", () => {
+  for (const protocol of [configured.protocol]) {
     it(`runs a tool loop on ${protocol}`, { timeout: 180_000 }, async () => {
-      const model = pick(await listModels(), protocol);
-      expect(model, `no model for ${protocol}`).toBeTruthy();
+      const model = configured.model;
       const route = routeFor(provider, protocol, model!, key);
       const messages: LlmMessage[] = [{ role: "user", content: [{ type: "text", text: "Use the add tool to add 2 and 3, then tell me the result in one short sentence." }] }];
       const req = (): LlmRequest => ({ model: model!, system: ["You are a terse assistant. Always use tools for arithmetic."], messages, tools: [ADD], maxTokens: 4096, reasoning: true, effort: "low", cacheKey: "harness-live" });

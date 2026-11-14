@@ -1,7 +1,7 @@
-// Dataset splits (roadmap P8.1): train/validation/holdout assignment, the sealed
+// Dataset splits: train/validation/holdout assignment, the sealed
 // holdout and the leakage checks. A task's split is a stable hash of its family,
 // so variants of one scenario (route-skill-1, route-skill-2, …) never straddle
-// train and holdout. Plans: .ai/plans/eval-framework.md.
+// train and holdout.
 
 import { createHash } from "node:crypto";
 import type { Split, Task } from "./types";

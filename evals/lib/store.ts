@@ -1,5 +1,4 @@
-// Eval result store: cache keys, run files, reports and diffs. Plan:
-// .ai/plans/eval-framework.md.
+// Eval result store: cache keys, run files, reports and diffs.
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";

@@ -6,11 +6,9 @@ Router for anyone (human or agent) about to touch `src/renderer/**`. It points a
 
 1. [`DESIGN.md`](../../DESIGN.md): the contract. Principles, type, space, motion, per-surface rules, do and don't, the pre-ship checklist.
 2. [`tokens.md`](tokens.md): every design token with its light and dark value. Generated from `src/renderer/src/styles/app.css`; never edit it by hand.
-3. `components.md`: component inventory and state matrices (Phase 4, not written yet).
-4. `patterns.md`: overlays, forms and validation, loading, empty and error states (Phase 5, not written yet).
-5. [`quality-checklist.md`](quality-checklist.md): what `design:check` enforces, what stays judgment, and the review checklist.
+3. [`quality-checklist.md`](quality-checklist.md): what `design:check` enforces, what stays judgment, and the review checklist.
 
-Read 1 and 2 before any styling change. Read 5 before calling a UI change done.
+Read 1 and 2 before any styling change. Read 3 before calling a UI change done.
 
 ## Design Highlights
 
@@ -23,7 +21,7 @@ Read 1 and 2 before any styling change. Read 5 before calling a UI change done.
 
 ## Do
 
-- Use existing tokens and components before adding new ones (`tokens.md`, then `components.md`).
+- Use existing tokens and components before adding new ones. Check `tokens.md` and the components in `src/renderer/src/components/`.
 - Change a token value in `app.css` only, then run `bun run design:docs` and `bun run design:check`.
 - Give every async action a visible failure (`showNotice` or an inline error) and every list an empty state.
 - Check light, dark and system themes, a 900px window, reduced motion, and keyboard-only use (DESIGN.md §9).

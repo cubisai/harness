@@ -1,7 +1,7 @@
 // Eval CLI. Keys come from the environment, e.g.
-//   bun --env-file=.env evals/run.ts --tier smoke --provider pgs [--dry]
+//   bun --env-file=.env evals/run.ts --tier smoke --provider custom [--dry]
 // Flags: --agent native|claude|codex|opencode (default native), --tier smoke|full,
-// --provider th|pgs (native; opencode: pgs), --model <id>, --effort <level> (default low), --trials <n>,
+// --provider custom (EVAL_* environment configuration), --model <id>, --effort <level> (default low), --trials <n>,
 // --task <id>[,<id>…], --dry, --force, --keep, --save-baseline, --max-tokens <n>, --max-usd <n>,
 // --price <in>,<out> (USD per 1M tokens), --trials-all (repeat every task, not only regression ones), --trend [--last <n>],
 // --report [--tier t] [--model m] [--vs <run file>] (re-render the newest run's HTML report, zero tokens),
@@ -12,7 +12,7 @@
 // --guide <file> (a project guide for the agent; its hash joins every trial's cache key),
 // --out <file> (also write the run JSON there),
 // --splits (no model: the split summary and any leakage across splits; exit 1 when there is any)
-// (zero tokens: pass/token history per tier+model from .ai/evals). Plan: .ai/plans/eval-framework.md.
+// (zero tokens: pass/token history per tier+model from .ai/evals).
 
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";

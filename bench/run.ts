@@ -1,10 +1,9 @@
 // Daily harness bench: drives the real app (its own dev copy over CDP) through
 // a fixed task set per agent and model, then grades and measures each run.
 //   bun run bench [--suite core|full|behaviour|solve|memory|context] [--agents a,b] [--tasks x,y]
-//                 [--k 3] [--parallel 3] [--serial] [--port 9488] [--attach <port> --user-data-dir <dir>] [--dry] [--scratch]
-// Committed: bench/results/history.csv (a row per run), <YYYY-MM-DD>.md and README.md.
+//                 [--k 3] [--parallel 3] [--serial] [--background-agent <id>] [--port 9488] [--attach <port> --user-data-dir <dir>] [--dry] [--scratch]
+// Local reports: bench/results/history.csv (a row per run), <YYYY-MM-DD>.md and README.md.
 // Local: bench/.state/runs/<YYYY-MM-DD>/<agent>--<task>--t<n>.json (the full record).
-// Plans: .ai/plans/bench-daily.md, .ai/plans/bench-v2.md.
 
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -38,8 +37,6 @@ const SPACING_MS = 90_000;
 /** After a rate-limit error or a stall: wait, then retry the run once. */
 const RETRY_WAIT_MS = 180_000;
 const RATE_LIMIT = /rate.?limit|429|quota|allowance|exhausted/i;
-/** Self-improve's background model, when its provider is in the run (cheap and fast). */
-const LEARN_BACKGROUND = { agentId: "coralbricks-deepseek" };
 /** Lesson drafts start 30 s after a failed turn, and only while no turn runs: give the last one this long before checking. */
 const DRAFT_SETTLE_MS = 35_000;
 /** Longest wait for the learner's queue to drain after the last run. */
@@ -52,7 +49,7 @@ const flag = (name: string): string | undefined => {
 };
 const has = (name: string): boolean => argv.includes(`--${name}`);
 const list = (name: string): string[] | undefined => flag(name)?.split(",").map((s) => s.trim()).filter(Boolean);
-/** --scratch keeps a trial run's results out of the committed history. */
+/** --scratch keeps trial results separate from the local day-by-day history. */
 const RESULTS = has("scratch") ? join(STATE, "scratch-results") : join(BENCH, "results");
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -310,11 +307,12 @@ async function ensureProviders(cdp: Cdp, agents: BenchAgent[]): Promise<BenchAge
 
 /** Self-improve settings: a project-by-project switch, and the cheap background model its drafts and memory extraction run on. */
 async function learnSwitch(cdp: Cdp, agents: BenchAgent[]): Promise<Ctx["learnFor"]> {
-  const all = JSON.parse(readFileSync(join(BENCH, "agents.json"), "utf8")) as BenchAgent[];
-  const bg = all.find((a) => a.id === LEARN_BACKGROUND.agentId);
+  const backgroundId = flag("background-agent");
+  const bg = agents.find((a) => a.id === backgroundId);
+  if (backgroundId && !bg) throw new Error(`background agent ${backgroundId} must be included in the selected agents`);
   const settings = await cdp.call<{ learn?: { enabledProjects: string[]; background: { agent: string; model: string } | null } & Record<string, unknown> }>("getSettings");
   const learn = settings.learn ?? { enabledProjects: [], background: null };
-  if (bg?.provider && process.env[bg.provider.envVar] && agents.some((a) => a.id === bg.id)) {
+  if (bg) {
     await cdp.call("updateSettings", { learn: { ...learn, background: { agent: bg.agent, model: bg.model } } });
   }
   return async (projectId, on) => {

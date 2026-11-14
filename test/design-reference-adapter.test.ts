@@ -283,10 +283,10 @@ describe("adaptReference", () => {
   });
 });
 
-// Dev-only: the real corpus lives in the main checkout's git-ignored .ai/plans and is never committed.
-const CORPUS = process.env.GD_CORPUS ?? join(__dirname, "../.ai/plans/gradientdeck-corpus/styles");
+// Optional corpus coverage: supply your own reference directory explicitly.
+const CORPUS = process.env.GD_CORPUS ?? "";
 
-describe.skipIf(!existsSync(CORPUS))("adaptReference over the GradientDeck corpus", () => {
+describe.skipIf(!CORPUS || !existsSync(CORPUS))("adaptReference over the GradientDeck corpus", () => {
   it("adapts every reference, passes every pair and reads bg/text from the reference", () => {
     const slugs = readdirSync(CORPUS);
     const errors: string[] = [];

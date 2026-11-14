@@ -1,4 +1,4 @@
-// The committed reports: results/<date>.md (one day, deltas against the
+// The local reports: results/<date>.md (one day, deltas against the
 // previous day) and results/README.md (every day per agent). A change is
 // flagged only when a verdict flips or a value leaves the recent day-to-day
 // spread, since single runs are noisy. Pure, so it is unit-tested.

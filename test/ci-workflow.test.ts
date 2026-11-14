@@ -38,10 +38,10 @@ describe("CI workflow", () => {
 describe("release workflow", () => {
   const release = readFileSync(join(root, ".github", "workflows", "release-cubiq.yml"), "utf-8").replace(/\r\n/g, "\n");
 
-  it("reads only the signing secrets docs/releasing.md lists", () => {
+  it("reads only the signing secrets the README lists", () => {
     const secrets = new Set([...release.matchAll(/secrets\.([A-Z0-9_]+)/g)].map((m) => m[1]));
     expect([...secrets].sort()).toEqual(["APPLE_APP_SPECIFIC_PASSWORD", "APPLE_ID", "APPLE_TEAM_ID", "MAC_CSC_KEY_PASSWORD", "MAC_CSC_LINK", "WIN_CSC_KEY_PASSWORD", "WIN_CSC_LINK"]);
-    const readme = readFileSync(join(root, "docs", "releasing.md"), "utf-8");
+    const readme = readFileSync(join(root, "README.md"), "utf-8");
     for (const name of secrets) expect(readme, name).toContain(`\`${name}\``);
   });
 

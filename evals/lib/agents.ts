@@ -18,7 +18,6 @@ import { memoryPrompt } from "../../src/main/memory/index";
 import type { InjectionPlan } from "../../src/main/inject";
 import { createGuide } from "../../src/main/guide";
 import { createProviderDriver } from "../../src/main/harness/driver";
-import type { HarnessProtocol } from "../../src/main/harness/llm/types";
 import { SessionStore } from "../../src/main/harness/session";
 import { McpClientPool, routerTools } from "../../src/main/mcp/router";
 import { McpToolsCache } from "../../src/main/mcp/servers";
@@ -26,14 +25,10 @@ import { discoverSkills } from "../../src/main/skills/discover";
 import { skillTool } from "../../src/main/skills/tool";
 import type { Provider } from "../../src/shared/types";
 import type { Scenario } from "./types";
+import { evalProvider } from "./provider";
 
 export type AgentId = "native" | "claude" | "codex" | "opencode";
 export const AGENTS: AgentId[] = ["native", "claude", "codex", "opencode"];
-
-export const PRESETS: Record<string, { envVar: string; baseURL: string; protocol: HarnessProtocol; model: string }> = {
-  th: { envVar: "TOKENHARBOR_API_KEY", baseURL: "https://tokenharbor.ai/v1", protocol: "anthropic-messages", model: "claude-haiku-5.5" },
-  pgs: { envVar: "PGS_API_KEY", baseURL: "https://api.pgsgrove.com/v1", protocol: "openai-chat", model: "deepseek-v4.1-flash" },
-};
 
 export interface AgentSetup {
   driver(cwd: string, scenario?: Scenario): AgentDriver;
@@ -136,11 +131,10 @@ export function setupAgent(agent: AgentId, o: { root: string; scratch: string; p
   const forCwd = (cwd: string, design?: string) => guide.forCwd(cwd, design);
 
   if (agent === "native") {
-    const preset = PRESETS[o.provider ?? "pgs"];
-    if (!preset) throw new Error(`--provider must be one of ${Object.keys(PRESETS).join(", ")}`);
+    const preset = evalProvider(o.provider, o.model);
     const key = process.env[preset.envVar] ?? "";
     if (!key) throw new Error(`${preset.envVar} is not set (run with bun --env-file=.env)`);
-    const model = o.model ?? preset.model;
+    const model = preset.model;
     const provider: Provider = {
       id: "eval",
       label: "eval",
@@ -225,10 +219,10 @@ export function setupAgent(agent: AgentId, o: { root: string; scratch: string; p
   let model = o.model ?? "default";
   let extra: { model: string; provider: Record<string, unknown> } | undefined;
   if (o.provider) {
-    const preset = PRESETS[o.provider];
-    if (!preset || preset.protocol !== "openai-chat") throw new Error(`--agent opencode --provider must be one of ${Object.entries(PRESETS).filter(([, p]) => p.protocol === "openai-chat").map(([id]) => id).join(", ")}`);
+    const preset = evalProvider(o.provider, o.model);
+    if (preset.protocol !== "openai-chat") throw new Error("--agent opencode --provider custom requires EVAL_PROTOCOL=openai-chat");
     if (!process.env[preset.envVar]) throw new Error(`${preset.envVar} is not set (run with bun --env-file=.env)`);
-    const id = o.model ?? preset.model;
+    const id = preset.model;
     model = `eval/${id}`;
     extra = { model, provider: { eval: { npm: "@ai-sdk/openai-compatible", name: "eval", options: { baseURL: preset.baseURL, apiKey: `{env:${preset.envVar}}` }, models: { [id]: { name: id, tool_call: true } } } } };
   }

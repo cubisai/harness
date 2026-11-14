@@ -1,14 +1,13 @@
-// One plain model call for judges, through the same presets the native eval agent uses.
+// One plain model call for judges, through the same endpoint the native eval agent uses.
 
 import { generate, routeFor } from "../../src/main/harness/llm";
 import type { Provider } from "../../src/shared/types";
-import { PRESETS } from "./agents";
+import { evalProvider } from "./provider";
 
 /** A judge's `ask`: the preset's model (or `model`), no tools, a short answer. The key is read on first use. */
 export function askFor(o: { provider?: string; model?: string } = {}): { model: string; ask: (prompt: string) => Promise<string> } {
-  const preset = PRESETS[o.provider ?? "pgs"];
-  if (!preset) throw new Error(`--provider must be one of ${Object.keys(PRESETS).join(", ")}`);
-  const model = o.model ?? preset.model;
+  const preset = evalProvider(o.provider, o.model);
+  const model = preset.model;
   const provider: Provider = {
     id: "eval-judge",
     label: "eval judge",

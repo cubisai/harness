@@ -1,10 +1,8 @@
 name: CI
 
-# Minutes are billed (private repo; Windows 2x, macOS 10x), so ordinary pushes
-# run nothing. Windows check: `git push -f origin HEAD:windows` (Windows job
-# only). Anything else on demand: `gh workflow run ci.yml --ref <branch> -f
-# os=ubuntu|windows+ubuntu|macos|all [-f extras=true]` (extras = codex-e2e, the
-# packaged smoke and the installers). PRs to main run Windows + Ubuntu + extras.
+# Pull requests to main run Windows + Ubuntu checks and packaging smoke tests.
+# Manual runs select the platforms and optional extra jobs. The windows branch
+# provides a Windows-only check. Tagged releases use release-cubiq.yml.
 on:
   push:
     branches: [windows]

@@ -1,79 +1,183 @@
+<div align="center">
+
+<img src="build/icon.png" alt="CubiQ logo" width="88" />
+
 # CubiQ
 
-CubiQ is a desktop app for working with AI coding agents. Open a project folder, start a thread, and let Claude, Codex, OpenCode or another agent read, edit and run your code while you watch every change. It runs on macOS, Windows and Linux.
+**One desktop workspace for AI coding and visual design.**
 
-It also has a **Design mode**: describe a page, app screen, phone flow or slide deck, and the agent builds it as live HTML on a canvas you can click, edit and export.
+Work with your preferred agents, review every change, and turn ideas into live interfaces.
 
-## Install
+[![CI](https://github.com/cubisai/harness/actions/workflows/ci.yml/badge.svg)](https://github.com/cubisai/harness/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/cubisai/harness?label=release)](https://github.com/cubisai/harness/releases)
+![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-informational)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Download the installer for your system from the [Releases page](https://github.com/cubisai/harness/releases):
+[Download](https://github.com/cubisai/harness/releases) · [Demo](#demo) · [Features](#features) · [Get started](#get-started) · [Contribute](CONTRIBUTING.md)
 
-| System | File |
+</div>
+
+![CubiQ coding workspace with an agent conversation, task list, and side-by-side file changes](assets/readme/workspace-light.png)
+
+## Overview
+
+CubiQ is an open-source desktop app that brings AI agents, project files, a browser, and a terminal into one workspace. Use your existing agent sign-in or connect a model provider—without tying your workflow to a single engine.
+
+**Code mode** helps you explore, edit, test, and review a project. **Design mode** turns a prompt into live HTML you can inspect, refine, and export.
+
+> CubiQ is in early development. Features and agent integrations may change between releases.
+
+## Demo
+
+[![Animated walkthrough of CubiQ’s workspace, changes panel, terminal, and Library](assets/readme/cubiq-demo.gif)](assets/readme/cubiq-demo.mp4)
+
+**[Watch or download the MP4 walkthrough](assets/readme/cubiq-demo.mp4).** The tour is a sequence of captured UI views from the actual renderer’s sample-data preview, not a live agent run. No private projects or accounts are shown.
+
+<details>
+<summary>Dark-mode workspace and Library</summary>
+
+![CubiQ’s coding workspace in dark mode](assets/readme/workspace-dark.png)
+
+![CubiQ Library showing reusable skills and integrations](assets/readme/library.png)
+
+</details>
+
+## Features
+
+| Area | What you can do |
 | :--- | :--- |
-| macOS (Apple Silicon) | `.dmg` |
-| Windows | `CubiQ-Setup-<version>.exe` |
-| Linux | `.AppImage` |
+| **Agent choice** | Work with Claude, Codex, OpenCode, Cursor, custom ACP agents, or compatible model endpoints. |
+| **Project threads** | Keep conversations organized by project; choose an agent and model per thread and hand off context when switching agents. |
+| **Change review** | Inspect file diffs beside the conversation and open a file at the relevant line in your preferred editor. |
+| **Git & worktrees** | Isolate work in a thread’s worktree, then review, commit, merge, or push from the app. |
+| **Project checks** | Configure a check command and bounded fix rounds to verify agent changes. |
+| **Permissions** | Choose a permission mode and review tool requests. Available safeguards depend on the selected agent’s capabilities. |
+| **Browser & terminal** | Preview a local app, attach page elements to a message, and use a real shell without leaving the workspace. |
+| **Skills & MCP** | Manage reusable workflows and tool integrations in the Library, with global and project-level configuration. |
+| **Experts & artifacts** | Attach reusable expert roles to threads and preview generated documents and code with version history. |
+| **Memory & automations** | Keep reusable project notes and schedule recurring tasks with configurable budgets. |
+| **Usage & notifications** | See token usage, reported cost and rate limits, plus permission requests and completed turns in the Message Center. |
+| **Visual design** | Generate pages, app screens, mobile flows, and slide decks on a live canvas. |
+| **Design refinement** | Edit text and properties, compare variants, add comments and drawings, and preview responsive sizes. |
+| **Design systems & export** | Use component kits and design references; export HTML, PNG, or PDF, or hand a design to a coding thread in your project. |
+| **Desktop experience** | Light and dark themes, keyboard shortcuts, editor integrations, and release updates. |
 
-Installed copies update themselves: a new version downloads in the background and installs when you quit, or right away from **Update ready · Restart** in the sidebar.
+Agent features—including vision, MCP transport, sandboxing, and permission enforcement—vary by integration. Check the Library and Settings for the selected agent’s support.
 
-**First launch of an unsigned build.** On macOS, open System Settings → Privacy & Security and choose **Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/CubiQ.app`). On Windows, SmartScreen may warn you: choose More info → Run anyway.
+## Download
 
-No release yet? [Build it yourself](#build-from-source).
+Get the available installers from [GitHub Releases](https://github.com/cubisai/harness/releases).
 
-## Connect an agent
+| Platform | Release architecture | Installer |
+| :--- | :--- | :--- |
+| macOS | Apple Silicon (ARM64) | `.dmg` |
+| Windows | x64 | `CubiQ-Setup-<version>.exe` |
+| Linux | x64 | `.AppImage` |
 
-CubiQ drives the agents you already use, with their own sign-in. You need at least one:
+If an installer is not available, [build from source](#build-from-source). Automatic updates are supported by packaged releases; macOS updates require a signed build.
 
-- **Claude** is built in. Sign in once with `claude` in a terminal (Claude Code), or set `ANTHROPIC_API_KEY`.
-- **Codex** appears when the `codex` CLI is installed and signed in.
-- **OpenCode** appears when `opencode` is installed. **Cursor** appears when `cursor-agent` is installed.
-- **Any agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com)** can be added in `agents.json` in CubiQ's data folder.
-- **Your own model provider**: in Settings → Agents & Providers, add an OpenAI-compatible, Responses or Anthropic endpoint with its key. It shows up as its own agent in the model picker.
+<details>
+<summary>Opening an unsigned build</summary>
 
-API keys you enter are encrypted with your system keychain and used only to call that provider.
+Only proceed if you trust the build’s source. On macOS, use **System Settings → Privacy & Security → Open Anyway** if offered. On Windows, SmartScreen may offer **More info → Run anyway**. Signed and notarized releases avoid these warnings.
 
-## Working with agents
+</details>
 
-- **Threads.** Each thread runs one agent in a project folder. Pick the agent and model in the thread header; switching agents can hand off a summary of the work so far.
-- **Permission modes.** *Ask* asks before every tool call, *Auto-edit* lets the agent read and edit files but still asks before commands, *Full* allows everything. A git guardrail checks every shell command.
-- **Changes.** The side panel shows the working-tree diff. Open any file or hunk in your editor (VS Code, Cursor, Zed, JetBrains IDEs, Xcode and more) at the exact line.
-- **Skills.** Type `/` for workflow skills. The agent loads its other skills by itself when the work calls for them.
-- **Library** (⌘⇧L). Every skill, MCP server and agent in one place. MCP servers you add here reach every agent in every thread.
-- **Built-in browser** (⌘⇧B). Open your dev server beside the thread; the agent can click, type, read the console and take screenshots in the same page. Pick an element to attach it to your message.
-- **Terminal** (⌃\`). A real shell in the project folder.
-- **Message Center.** The bell in the sidebar lists permission requests from other threads and turns that finished while you were away.
-- **Usage.** The thread header shows the thread's tokens and cost, and how close you are to your plan's rate limits.
+## Get started
 
-Press ⌘K (Ctrl+K on Windows and Linux) to search actions, skills, threads and projects.
+1. **Connect an agent.** Use one of the integrations below, or add a provider in **Settings → Agents & Providers**.
+2. **Open a project.** Choose a local folder and create a thread. Select the agent, model, and permission mode before sending a request.
+3. **Review the work.** Follow the agent’s tool activity, inspect changes, and run your project’s checks.
+4. **Try Design.** Switch to **Design**, describe a page or screen, and refine it on the canvas. A project folder is required for **Build in codebase**.
 
-## Design mode
+### Agent integrations
 
-Switch the sidebar to **Design** and describe what you want: "Landing page for a note-taking app", "Mobile login", "Pitch deck for a coffee brand".
+| Integration | Setup |
+| :--- | :--- |
+| **Claude** | Built-in SDK integration. Sign in with Claude Code (`claude`) or provide `ANTHROPIC_API_KEY`. |
+| **Codex** | Install the `codex` CLI and sign in with `codex login`. |
+| **OpenCode** | Install and configure the `opencode` CLI. CubiQ connects through ACP. |
+| **Cursor** | Install and sign in to the `cursor-agent` CLI. |
+| **Custom ACP agent** | Add its command to `agents.json` in CubiQ’s data folder, then restart. |
+| **Model provider** | Add an OpenAI-compatible Chat Completions, Responses, or Anthropic Messages endpoint in Settings. |
 
-- The first time, CubiQ offers to download its library of real-site design references (about 45 MB; also in Settings → Design). The agent picks a fitting look from it and builds the page from **Foundation**, CubiQ's component kit, so every page shares one set of tokens and parts.
-- The canvas shows the page live as it's written. Click to select an element, double-click to edit its text, and change its props, spacing and colours in the panel.
-- Ask for **variants** to compare layouts side by side, **comment** on the canvas, or **draw** on it to show the agent what you mean.
-- Preview at desktop, tablet and phone sizes, present a deck, and export to HTML, PNG or PDF.
-- **Build in codebase** hands a finished design to a coding thread that implements it in your project (needs a project folder).
+`agents.json` in the app’s data folder configures custom integrations. [`bench/agents.json`](bench/agents.json) is a separate configuration used only for repository benchmarks.
 
-## Settings
+### Keyboard shortcuts
 
-Open Settings with ⌘, (Ctrl+, on Windows and Linux): appearance (light, dark, density, motion), the default agent and permission mode for new threads, your editor, providers and keys, and automatic updates.
+| Action | macOS | Windows / Linux |
+| :--- | :--- | :--- |
+| Command palette | `⌘K` | `Ctrl+K` |
+| Settings | `⌘,` | `Ctrl+,` |
+| Library | `⌘⇧L` | `Ctrl+Shift+L` |
+| Browser panel | `⌘⇧B` | `Ctrl+Shift+B` |
+| Changes panel | `⌘⇧D` | `Ctrl+Shift+D` |
 
 ## Build from source
 
-You need [Bun](https://bun.sh) and Git.
+Install [Git](https://git-scm.com), [Node.js 22+](https://nodejs.org), and [Bun](https://bun.sh) using the version declared in `package.json`.
 
 ```bash
 git clone https://github.com/cubisai/harness.git
 cd harness
-bun install
-bun run dev     # start the app
-bun run dist    # build an installer for this system
+bun install --frozen-lockfile
+bun run dev
 ```
 
-Checks: `bun run typecheck`, `bun run test` and `bun run design:check`.
+```bash
+bun run typecheck     # TypeScript checks
+bun run test          # Automated test suite
+bun run design:check  # Design-system checks
+bun run build         # Compile the app
+bun run dist          # Package for the current operating system
+```
 
-## Privacy
+To explore the interface without Electron or an agent, run `bun run preview:ui` and open `http://localhost:5199`. This preview uses a mock backend; it does not edit projects or run agents.
 
-CubiQ runs on your machine. Your projects, threads and settings stay in its local data folder. Prompts go only to the agent or provider you choose, under that service's own terms. Saved keys are encrypted with your system keychain.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository layout, development conventions, and optional evaluations.
+
+## Privacy & security
+
+- Projects, threads, and settings are stored locally. Agents may send prompts, file contents, and tool results to the services you configure, subject to their terms.
+- Provider credentials can come from environment variables or the app’s credential storage. Check **Settings → Data & Security** for encryption status on your system.
+- Skills, MCP servers, and agents can access tools and files. Install only trusted integrations and choose permissions appropriate to your project.
+- Local secrets, app profiles, evaluation traces, and benchmark output are excluded from the public repository.
+
+See [SECURITY.md](SECURITY.md) for reporting guidance. Never include API keys, private code, or personal filesystem paths in a public issue.
+
+## Contributing
+
+Bug reports, documentation improvements, and focused pull requests are welcome. Read the [contribution guide](CONTRIBUTING.md), run the checks, and include screenshots for UI changes.
+
+Use [GitHub Issues](https://github.com/cubisai/harness/issues) for bugs and feature requests. For security-sensitive reports, follow [SECURITY.md](SECURITY.md).
+
+## Releases
+
+<details>
+<summary>Maintainer release and signing instructions</summary>
+
+1. Bump `version` in `package.json` on `main`.
+2. Push a matching `cubiq-v<version>` tag, or run **Actions → release-cubiq → Run workflow** with **publish** enabled.
+3. The workflow builds macOS ARM64, Windows x64, and Linux x64 installers and publishes the updater’s `latest*.yml` files. An existing release or a mismatched version tag is rejected.
+
+Without **publish**, installers remain workflow artifacts for seven days. Do not mark unrelated releases as “latest”—the app’s updater uses that release.
+
+Signing is enabled separately for each platform when these repository secrets are configured:
+
+| Secret | Purpose |
+| :--- | :--- |
+| `MAC_CSC_LINK` | Base64 `.p12` Developer ID Application certificate |
+| `MAC_CSC_KEY_PASSWORD` | Password for the macOS certificate |
+| `APPLE_ID` | Apple account used for notarization |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for notarization |
+| `APPLE_TEAM_ID` | Apple Developer team ID |
+| `WIN_CSC_LINK` | Base64 `.pfx` code-signing certificate |
+| `WIN_CSC_KEY_PASSWORD` | Password for the Windows certificate |
+
+Unsigned macOS builds use ad-hoc signing; Windows builds show a SmartScreen warning. macOS auto-update requires a signed build. Packaging configuration lives in [`electron-builder.yml`](electron-builder.yml), and the publishing workflow in [`.github/workflows/release-cubiq.yml`](.github/workflows/release-cubiq.yml).
+
+</details>
+
+## License
+
+The project is licensed under the [MIT License](LICENSE). Bundled fonts and other third-party assets retain their included licenses.

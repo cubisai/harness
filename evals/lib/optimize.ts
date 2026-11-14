@@ -1,8 +1,7 @@
-// Bounded optimizer (roadmap P8.3): score a split, compare a candidate against
+// Bounded optimizer: score a split, compare a candidate against
 // the incumbent with a paired bootstrap over the tasks both runs share, and
 // decide accept/noise/regression/…. Pure: no process spawning and no model
-// calls; the CLI (evals/optimize.ts) wires it to the runner. Plans:
-// .ai/plans/eval-framework.md.
+// calls; the CLI (evals/optimize.ts) wires it to the runner.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

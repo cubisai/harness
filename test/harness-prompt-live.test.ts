@@ -1,9 +1,8 @@
 // Live check of the native agent's first prompt: a question about the project
 // starts with tool calls, not prose, and three independent reads go out in one
 // step. Batching is asserted on Claude (its family notes ask for it) and only
-// logged elsewhere. Skipped unless the provider's key is in the environment
-// (load it from .env: `bun --env-file=.env x vitest run test/harness-prompt-live.test.ts`).
-// TH_PROMPT_MODEL / PGS_PROMPT_MODEL override the models.
+// logged elsewhere. Requires CUBIQ_LIVE_TESTS=1 and the LIVE_* settings
+// documented in .env.example. Run with a disposable provider account.
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +13,7 @@ import type { TurnInput } from "../src/main/agents/types";
 import { BUILT_IN_GUARD } from "../src/main/guard";
 import { createProviderDriver } from "../src/main/harness/driver";
 import { SessionStore } from "../src/main/harness/session";
-import type { HarnessProtocol } from "../src/main/harness/llm/types";
+import { liveProvider } from "./live-provider";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -26,19 +25,8 @@ afterAll(() => {
   while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
 
-interface Case {
-  label: string;
-  envVar: string;
-  baseURL: string;
-  protocol: HarnessProtocol;
-  model: string;
-  batches: boolean;
-}
-
-const cases: Case[] = [
-  { label: "TokenHarbor Claude (Messages)", envVar: "TOKENHARBOR_API_KEY", baseURL: "https://tokenharbor.ai/v1", protocol: "anthropic-messages", model: process.env.TH_PROMPT_MODEL ?? "claude-haiku-5.5", batches: true },
-  { label: "PGS Grove DeepSeek (chat)", envVar: "PGS_API_KEY", baseURL: "https://api.pgsgrove.com/v1", protocol: "openai-chat", model: process.env.PGS_PROMPT_MODEL ?? "deepseek-v4.1-flash", batches: false },
-];
+const configured = liveProvider();
+const cases = [{ ...configured, batches: /claude/i.test(configured.model) }];
 
 /** Lengths of each run of consecutive tool-use events: one run is one step's calls. */
 function callRuns(events: ThreadEvent[]): number[] {
@@ -56,7 +44,7 @@ function callRuns(events: ThreadEvent[]): number[] {
 
 for (const c of cases) {
   const key = process.env[c.envVar] ?? "";
-  describe.skipIf(!key)(`native agent first prompt, live on ${c.label}`, () => {
+  describe.skipIf(!c.enabled)(`native agent first prompt, live on ${c.label}`, () => {
     it("opens with tool calls and batches independent reads", { timeout: 300_000 }, async () => {
       const cwd = tmp();
       mkdirSync(join(cwd, "src"));

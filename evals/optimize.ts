@@ -1,4 +1,4 @@
-// Bounded optimizer CLI (roadmap P8.3). One surface per experiment: it reads the
+// Bounded optimizer CLI. One surface per experiment: it reads the
 // train failures, tries each candidate on the validation split, records every
 // round, and (with --release) checks the winner on the sealed holdout.
 //   bun --env-file=.env evals/optimize.ts --surface model-effort --try "effort=medium;effort=high" --budget 2
@@ -6,7 +6,7 @@
 // --budget <usd> (required, > 0), --trials <n> (default 3, min 3), --provider, --model, --agent,
 // --price <in>,<out> (USD per 1M tokens, for a model that reports no cost; 0,0 for a free one),
 // --id <name> (default opt-<surface>-<yyyymmdd-hhmmss>), --release (run the holdout too), --dry (plan only).
-// Experiments live in .ai/evals/experiments/<id>/. Plan: .ai/plans/p8.md.
+// Experiments live in .ai/evals/experiments/<id>/ (ignored local output).
 
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";

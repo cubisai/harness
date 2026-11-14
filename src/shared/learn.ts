@@ -1,4 +1,4 @@
-// Self-improving CubiQ (plan .ai/plans/self-improve.md): what the main
+// Self-improving CubiQ: what the main
 // process and the renderer share about turn scores and learned lessons.
 
 /** Why a turn wasn't plainly healthy. */

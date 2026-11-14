@@ -24,7 +24,7 @@ export function portInUse(port: number): Promise<boolean> {
 }
 
 /**
- * The user's own OpenCode `provider` section (TokenHarbor, PGS Grove...) and nothing else, handed over in the child's
+ * The user's configured OpenCode `provider` section and nothing else, handed over in the child's
  * environment only: the isolated config dir has none of them, and their keys must not be copied into a file.
  */
 function userProviders(): Record<string, string> {
