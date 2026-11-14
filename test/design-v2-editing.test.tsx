@@ -284,6 +284,13 @@ describe("the bridge gate", () => {
     expect(gate.admit({ type: "scroll" })).toBe(true);
   });
 
+  it("wants the token on a ⌥-drag copy, which writes the file", () => {
+    const gate = session();
+    const nonce = gate.renew();
+    expect(gate.admit({ type: "clone-drop" })).toBe(false);
+    expect(gate.admit({ type: "clone-drop", nonce })).toBe(true);
+  });
+
   it("refuses non-objects and anything it can't measure", () => {
     const gate = session();
     expect(gate.admit(null)).toBe(false);
@@ -307,6 +314,13 @@ describe("reading the new bridge messages", () => {
     }
     expect(readBridgeMessage({ ...base, type: "history-key", action: "undo", extra: 1 })).toEqual({ type: "history-key", action: "undo" });
     expect(readBridgeMessage({ ...base, type: "history-key", action: "delete" })).toBeNull();
+  });
+
+  it("reads a ⌥-drag copy: two elements and before or after", () => {
+    const el = (selector: string) => ({ selector, tag: "div", text: "", html: "", rect: { x: 0, y: 0, width: 10, height: 10 }, path: [] });
+    expect(readBridgeMessage({ ...base, type: "clone-drop", from: el("#a"), ref: el("#b"), position: "after" })).toMatchObject({ type: "clone-drop", from: { selector: "#a" }, ref: { selector: "#b" }, position: "after" });
+    expect(readBridgeMessage({ ...base, type: "clone-drop", from: el("#a"), ref: el("#b"), position: "inside" })).toBeNull();
+    expect(readBridgeMessage({ ...base, type: "clone-drop", from: el("#a"), ref: null, position: "before" })).toBeNull();
   });
 
   it("reads a press on the page", () => {

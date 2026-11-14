@@ -1019,6 +1019,8 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
 .design-frame-box { position: relative; margin: auto; flex-shrink: 0; background: var(--bg); border: 1px solid var(--hairline); }
 .design-stage.fit .design-frame-box { flex: 1; align-self: stretch; margin: 0; border: 0; }
 .design-frame { display: block; border: 0; background: #fff; transform-origin: 0 0; }
+/* Tab lands on the canvas (an iframe never matches :focus-visible, so the canvas marks it): ↓, → or Enter then takes the first component. */
+.design-frame.keyboard-focus { outline: 2px solid var(--focus); outline-offset: 2px; }
 .design-stage.fit .design-frame { width: 100%; height: 100%; }
 /* The 8px grid sits over the page and never takes a click. */
 .design-grid {

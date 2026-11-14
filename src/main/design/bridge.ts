@@ -824,9 +824,49 @@ export function designBridge(
       tip.style.display = "none";
     };
 
+    // ⌥-drag: a copy of the component lands in the gap the pointer is over when the button comes up.
+    const cloneLine = document.createElement("div");
+    cloneLine.style.cssText = `position:fixed;pointer-events:none;z-index:2147483646;background:${selectColor || "#0B0D10"};display:none`;
+    document.documentElement.append(cloneLine);
+    let clone: { source: Element; x: number; y: number; moved: boolean; drop: { el: Element; position: "before" | "after" } | null } | null = null;
+    let skipClick = false;
+    const cloneMove = (x: number, y: number): void => {
+      if (!clone) return;
+      if (!clone.moved && Math.abs(x - clone.x) + Math.abs(y - clone.y) < 5) return;
+      clone.moved = true;
+      hide();
+      const g = gapAt(x, y);
+      const fits = g !== null && !isRoot(g.el) && g.el !== clone.source && !clone.source.contains(g.el);
+      clone.drop = fits && g ? { el: g.el, position: g.position } : null;
+      if (!fits || !g) {
+        cloneLine.style.display = "none";
+        return;
+      }
+      const r = gapLine(g.el, g.position, g.row);
+      const across = r.width >= r.height;
+      Object.assign(cloneLine.style, { display: "block", left: `${across ? r.x : r.x - 1}px`, top: `${across ? r.y - 1 : r.y}px`, width: `${across ? r.width : 2}px`, height: `${across ? 2 : r.height}px` });
+    };
+    const cloneEnd = (): void => {
+      const c = clone;
+      clone = null;
+      cloneLine.style.display = "none";
+      if (!c || !c.moved) return;
+      skipClick = true;
+      if (c.drop) post("clone-drop", { from: describeElement(c.source, selectorFor), ref: describeElement(c.drop.el, selectorFor), position: c.drop.position });
+    };
+
     // Where the pointer last was: the outline is worked out again from there when the page moves under a still mouse.
     let pointer: { x: number; y: number; exact: boolean } | null = null;
     const onMove = (e: MouseEvent): void => {
+      // The button came up outside the frame: no drop.
+      if (clone && e.buttons === 0) {
+        clone = null;
+        cloneLine.style.display = "none";
+      }
+      if (clone) {
+        cloneMove(e.clientX, e.clientY);
+        if (clone.moved) return;
+      }
       pointer = { x: e.clientX, y: e.clientY, exact: e.metaKey || e.ctrlKey };
       hoverAt(pointer);
     };
@@ -901,7 +941,12 @@ export function designBridge(
     const onDown = (e: MouseEvent): void => {
       if (insideEdit(e) || inLayer(e)) return;
       swallow(e);
-      if (e.type === "mousedown") post("pointer");
+      if (e.type === "mouseup") return cloneEnd();
+      post("pointer");
+      if (!e.altKey || e.button !== 0 || editing) return;
+      const hit = hitAt(e.clientX, e.clientY);
+      if (!hit || isRoot(hit)) return;
+      clone = { source: selected.find((el) => el.contains(hit)) ?? componentOf(hit), x: e.clientX, y: e.clientY, moved: false, drop: null };
     };
     // The Actions menu: a right-click on something outside the selection takes that thing first.
     const onContext = (e: MouseEvent): void => {
@@ -937,6 +982,11 @@ export function designBridge(
       if (insideEdit(e) || inLayer(e)) return;
       endEdit(true);
       swallow(e);
+      // The click that ends a ⌥-drag isn't a selection.
+      if (skipClick) {
+        skipClick = false;
+        return;
+      }
       if (e.detail >= 2) return;
       const hit = hitAt(e.clientX, e.clientY);
       if (!hit || isRoot(hit)) return choose([]);
@@ -983,7 +1033,15 @@ export function designBridge(
     // One key's step. True when it did something, so the key doesn't also go to the page.
     const step = (key: string, alt: boolean): boolean => {
       const one = selected.length === 1 ? (selected[0] ?? null) : null;
-      if (selected.length === 0) return false;
+      if (selected.length === 0) {
+        // Tabbed into the canvas with nothing chosen: ↓, → or Enter takes the page's first component.
+        if (alt || !(key === "ArrowDown" || key === "ArrowRight" || key === "Enter") || !document.body) return false;
+        const first = firstChild(document.body);
+        if (!first) return false;
+        first.scrollIntoView({ block: "nearest" });
+        choose([first]);
+        return true;
+      }
       if (key === "Escape") {
         const up = one ? stepUp(one) : null;
         choose(up ? [up] : []);
@@ -1018,7 +1076,7 @@ export function designBridge(
         return;
       }
       // The canvas's own shortcuts, for when the frame has the keyboard: the app decides what they do.
-      if ((mod && /^[gds\\']$/.test(k)) || (!mod && /^(Backspace|Delete|i|\/|v|d|c)$/.test(e.key))) {
+      if ((mod && /^[gdsf\\']$/.test(k)) || (!mod && /^(Backspace|Delete|i|\/|v|d|c)$/.test(e.key))) {
         swallow(e);
         post("canvas-key", { key: e.key, mod, shift: e.shiftKey, alt: e.altKey });
         return;
@@ -1039,6 +1097,8 @@ export function designBridge(
       window.removeEventListener("scroll", rehover, true);
       moved.disconnect();
       cancelAnimationFrame(rehoverFrame);
+      clone = null;
+      cloneLine.remove();
       if (seamKey) post("seam", { seam: null });
       box.remove();
       tip.remove();

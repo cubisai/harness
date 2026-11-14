@@ -611,6 +611,30 @@ export default function DesignCanvas({
   // The element a structural edit made or kept, selected once the reloaded frame is ready.
   const pendingSelect = useRef<string | null>(null);
   const hitWaiter = useRef<((el: SelectedElement | null) => void) | null>(null);
+  // Tab into the canvas shows its focus ring. The sandboxed frame gets no focus event of its own: the window's blur,
+  // with the frame now the active element, is the sign. A press or focus back in the app takes the ring away.
+  const tabbed = useRef(false);
+  useEffect(() => {
+    const ring = (on: boolean) => frameRef.current?.classList.toggle("keyboard-focus", on);
+    const key = (e: KeyboardEvent) => (tabbed.current = e.key === "Tab");
+    const press = () => {
+      tabbed.current = false;
+      ring(false);
+    };
+    const left = () => setTimeout(() => ring(tabbed.current && document.activeElement === frameRef.current), 0);
+    const back = () => ring(false);
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("pointerdown", press, true);
+    window.addEventListener("blur", left);
+    window.addEventListener("focus", back);
+    return () => {
+      window.removeEventListener("keydown", key, true);
+      window.removeEventListener("pointerdown", press, true);
+      window.removeEventListener("blur", left);
+      window.removeEventListener("focus", back);
+    };
+  }, []);
+  const cloneRef = useRef<(source: SelectedElement, ref: SelectedElement, position: "before" | "after") => void>(() => {});
   const studioRef = useRef<{ context: (x: number, y: number) => void; key: (key: string, mod: boolean, shift: boolean, alt: boolean) => boolean; toolOf: () => CanvasTool }>({ context: () => {}, key: () => false, toolOf: () => "select" });
 
   // Only the frame's own window is listened to, and every message is checked (the page is the agent's code).
@@ -699,12 +723,15 @@ export default function DesignCanvas({
         studioRef.current.context(msg.x, msg.y);
       } else if (msg.type === "canvas-key") {
         studioRef.current.key(msg.key, msg.mod, msg.shift, msg.alt);
+      } else if (msg.type === "clone-drop") {
+        if (version === 0) cloneRef.current(msg.from, msg.ref, msg.position);
       } else if (msg.type === "hit-result") {
         hitWaiter.current?.(msg.element);
       } else if (msg.type === "text-commit") {
         if (version !== 0) return;
         editsRef.current.send(msg.target, { kind: "setText", before: msg.before, after: msg.after }, msg.live ? "text" : null);
       } else if (msg.type === "pointer") {
+        frameRef.current?.classList.remove("keyboard-focus");
         if (document.activeElement instanceof HTMLElement && document.activeElement !== frameRef.current) document.activeElement.blur();
       } else if (msg.type === "history-key") {
         if (version === 0) (msg.action === "undo" ? undoRef.current : editsRef.current.redo)();
@@ -1424,6 +1451,21 @@ export default function DesignCanvas({
       }
     });
   };
+  // ⌥-drag: a copy of `source` beside `ref`, in one undo step; the copy is selected once the page has it.
+  const cloneTo = (source: SelectedElement, ref: SelectedElement, position: "before" | "after") => {
+    closePopovers();
+    const from = targetOf(source);
+    const refTo = targetOf(ref);
+    if (!from || !refTo) return setNotice({ text: notAnchored, error: true });
+    void edits.transaction(async (step) => {
+      const refId = ref.id ?? (await step(refTo, { kind: "setProp", name: "data-cubiq-stamp", value: null })).stampedId ?? "";
+      const copy = (await step(from, { kind: "duplicate" })).createdIds?.[0] ?? "";
+      if (!refId || !copy) throw new Error(notAnchored);
+      await step({ id: copy }, { kind: "move", refId, position });
+      pendingSelect.current = copy;
+    });
+  };
+  cloneRef.current = cloneTo;
   const styleElement = (el: SelectedElement | null, changes: { prop: string; value: string }[], key: string) => {
     const target = el ? { ...(el.id ? { id: el.id } : {}), selector: el.selector, tag: el.tag, text: "" } : { selector: "html", tag: "html", text: "" };
     post({ type: "apply-style", target, changes });
@@ -1704,6 +1746,14 @@ export default function DesignCanvas({
       }
       if (mod && k === "d" && !shift) {
         duplicateSelection();
+        return true;
+      }
+      // ⌘F: the Customize panel's prop filter, where the selection's props are.
+      if (mod && k === "f" && !shift && !alt) {
+        const filter = document.querySelector<HTMLInputElement>(".design-customize-filter input");
+        if (!filter) return false;
+        filter.focus();
+        filter.select();
         return true;
       }
       if (mod && k === "s" && onePart) {

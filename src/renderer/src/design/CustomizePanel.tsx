@@ -7,6 +7,7 @@ import { IconClose } from "../icons";
 import { ColorSwatch } from "./ColorSwatch";
 import { RETAG_TAGS } from "../../../shared/design-mutation";
 import { colourTokenOf, colourTokens, inlineStyle, optionLabel, scaleChanges, scaleStepOf, sizeMeta, textVariantProp, typeScale, type ColourToken } from "./text-styles";
+import { MOD_KEY } from "./system-mode";
 import { flowChanges, flowOf, gapSteps, lineOf, startAttrs, startTagOf, wrapShapes, type AttrChange, type Flow, type KitPart, type WrapShape } from "./kit-parts";
 
 /** The page tokens the panel reads and writes. A page without one just doesn't show its control. */
@@ -316,7 +317,7 @@ export function CustomizePanel({
       </div>
       {readOnly && <p className="design-customize-note">Design in progress. Controls return when the turn ends.</p>}
       <div className="design-customize-filter">
-        <input className="text-input" type="search" placeholder="Filter props and values" aria-label="Filter props and values" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input className="text-input" type="search" placeholder={`Filter props and values   ${MOD_KEY}F`} aria-label="Filter props and values" aria-keyshortcuts="Meta+F Control+F" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </div>
       <fieldset className="design-customize-fields" disabled={readOnly}>
         {(canHoldText(el) || isField(el)) && shows("content", "value", "placeholder", "text") && (

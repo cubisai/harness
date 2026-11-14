@@ -70,6 +70,8 @@ export type BridgeMessage =
   | { type: "ready"; path?: string; loaded?: string }
   | { type: "scroll"; x: number; y: number }
   | { type: "selection"; elements: SelectedElement[]; lost: number }
+  /** ⌥-drag ended in a gap: copy `from` there, beside `ref`. */
+  | { type: "clone-drop"; from: SelectedElement; ref: SelectedElement; position: "before" | "after" }
   | { type: "text-commit"; target: { id: string } | { locator: { tag: string; path: number[]; text: string } }; before: string; after: string; live: boolean }
   | { type: "history-key"; action: "undo" | "redo" }
   | { type: "pointer" }
@@ -136,7 +138,7 @@ const rect = (v: unknown): v is FrameRect => {
 export const BRIDGE_LIMITS = { bytes: 256 * 1024, perSecond: 300 };
 
 /** The messages that change the file or its history: they must carry this frame load's token. */
-const NEEDS_NONCE = new Set(["text-commit", "history-key", "canvas-key", "patched"]);
+const NEEDS_NONCE = new Set(["text-commit", "history-key", "canvas-key", "patched", "clone-drop"]);
 
 /**
  * Design v2's door for one frame: drops oversize messages and floods, and drops a file-changing message that doesn't
@@ -235,6 +237,12 @@ export function readBridgeMessage(data: unknown): BridgeMessage | null {
     const rawLost = d.lost;
     const lost = typeof rawLost === "number" && Number.isInteger(rawLost) && rawLost >= 0 && rawLost <= MAX_SELECTED ? rawLost : 0;
     return { type: "selection", elements, lost };
+  }
+  if (d.type === "clone-drop") {
+    const from = readSelected(d.from);
+    const ref = readSelected(d.ref);
+    if (!from || !ref || (d.position !== "before" && d.position !== "after")) return null;
+    return { type: "clone-drop", from, ref, position: d.position };
   }
   if (d.type === "tweaks") {
     if (!str(d.manifest, 8000) || !strMap(d.attrs, 32) || !strMap(d.vars, 32)) return null;
