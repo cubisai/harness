@@ -151,7 +151,7 @@ export function askUserTool(ask: (threadId: string, questions: Question[], signa
   return {
     name: ASK_USER_TOOL,
     description:
-      "Ask the user multiple-choice questions and wait for the answers. Use it only for decisions that are the user's (preferences, trade-offs, scope) and that you can't settle by reading the project; never to ask permission to proceed.",
+      "Ask the user multiple-choice questions and wait for the answers. Use it only for decisions that are the user's (preferences, trade-offs, scope) and that you can't settle by reading the project; never to ask permission to proceed. A thin design brief ('Mobile login') is not such a decision: pick the product and content yourself and say so in one line.",
     input,
     autoAllow: true,
     effect: "mutate",
