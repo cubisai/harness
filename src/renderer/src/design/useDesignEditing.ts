@@ -88,7 +88,11 @@ export function useDesignEditing({
     void client
       .status()
       .then((res) => live && showConflicts(res))
-      .catch((err: unknown) => live && callbacks.current.notify(err instanceof Error ? err.message : String(err), true));
+      .catch((err: unknown) => {
+        const text = err instanceof Error ? err.message : String(err);
+        // The page went away (the agent deleted a helper page): the canvas is already asking which page to show.
+        if (live && !/No such page/.test(text)) callbacks.current.notify(text, true);
+      });
     return () => {
       live = false;
     };

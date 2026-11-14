@@ -478,7 +478,8 @@ export default function DesignCanvas({
   );
   const edits = useDesignEditing({
     threadId,
-    rel: entry?.rel ?? null,
+    // Right after a thread switch the entry is still the last thread's: no page to open until the new one arrives.
+    rel: entry && entryThread.current === threadId ? entry.rel : null,
     on: version === 0,
     onStamp: (at, id) => post({ type: "stamp", path: at, id }),
     reloadFrame,
