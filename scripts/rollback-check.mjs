@@ -1,4 +1,4 @@
-// Rollback trigger 3 (plan/docs/rollback.md): the cache hit rate over the 7
+// Rollback trigger 3: the cache hit rate over the 7
 // days after the M4.5 release against the 7 days before it, read from the
 // app's own database. Nothing leaves the machine.
 //

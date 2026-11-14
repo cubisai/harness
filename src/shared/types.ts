@@ -20,7 +20,7 @@ export type Invocation = "model" | "user";
 /** `expert`: an imported expert's own skills, in that expert's threads only. */
 export type SkillOrigin = "projectCubiq" | "project" | "projectClaude" | "expert" | "harness" | "shared" | "bundled" | "legacy";
 
-/** One skill: a folder with a SKILL.md (see plan/docs/HARNESS.md). */
+/** One skill: a folder with a SKILL.md. */
 export interface SkillEntry {
   name: string;
   description: string;

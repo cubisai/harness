@@ -1116,7 +1116,7 @@ describe("turnEndFromUsage", () => {
 
 describe("Codex policy mapping", () => {
   it("maps permission modes and decisions", () => {
-    // Pinned by spikes (spec/open-questions.md): codex 0.157 still honours "untrusted" and it is the only
+    // Pinned by spikes: codex 0.157 still honours "untrusted" and it is the only
     // policy that asks before every command; the request's sandbox spelling is kebab-case (camelCase is rejected).
     expect(codexPolicy("ask")).toEqual({ approvalPolicy: "untrusted", sandbox: "workspace-write" });
     expect(codexPolicy("ask").approvalPolicy).not.toBe("on-request");

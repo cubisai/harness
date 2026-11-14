@@ -13,3 +13,11 @@ dist/
 !evals/fixtures/*/dist/
 # The bench app profile, project copies and logs.
 bench/.state/
+
+# Local working notes and agent instructions (kept on the dev machine, not shipped).
+/HANDOFF.md
+/CLAUDE.md
+/AGENTS.md
+/.cubiq/
+/*.mov
+/Screenshot*.png
