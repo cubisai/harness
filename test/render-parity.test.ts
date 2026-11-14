@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { canonicalTool, clipSummary } from "../src/shared/tools";
-import { parseUnifiedDiff, unifiedDiff } from "../src/shared/diff";
+import { diffSummary, parseUnifiedDiff, unifiedDiff } from "../src/shared/diff";
 import { handleMessage, newTurnState } from "../src/main/agents/claude";
-import { toolFor } from "../src/main/agents/codex";
+import { resultPayloadFor, toolFor } from "../src/main/agents/codex";
 import { harnessTool, kindLabel } from "../src/main/agents/acp/driver";
 import type { TurnInput } from "../src/main/agents/types";
 import type { ThreadEvent } from "../src/shared/types";
@@ -67,6 +67,28 @@ describe("one edit through two adapters", () => {
       ["add", "const b = 3;"],
     ]);
     expect(parseUnifiedDiff(acpDiff[0]!.unified)).toEqual(parsed);
+  });
+});
+
+describe("a Codex fileChange that adds or deletes a whole file", () => {
+  const changeOf = (kind: string, diff: string) => resultPayloadFor({ type: "fileChange", id: "f", status: "completed", changes: [{ path: "docs/handoff.md", kind: { type: kind }, diff }] } as never) as { diff: { path: string; unified: string }[] };
+  it("counts an added file's lines as additions, a markdown dash included", () => {
+    const out = changeOf("add", "---\nname: x\n---\n# Handoff\n\n- one item\n");
+    expect(diffSummary(out.diff)).toBe(diffSummary([{ path: "docs/handoff.md", unified: unifiedDiff("docs/handoff.md", "", "---\nname: x\n---\n# Handoff\n\n- one item\n") }]));
+    expect(parseUnifiedDiff(out.diff[0]!.unified)[0]).toMatchObject({ additions: 6, deletions: 0 });
+  });
+  it("counts a deleted file's lines as deletions", () => {
+    expect(parseUnifiedDiff(changeOf("delete", "a\nb\n").diff[0]!.unified)[0]).toMatchObject({ additions: 0, deletions: 2 });
+  });
+  it("counts an update that comes as bare hunks, with or without ---/+++ lines", () => {
+    const hunks = "@@ -1,2 +1,2 @@\n a\n-b\n+c\n+d\n";
+    expect(diffSummary(changeOf("update", hunks).diff)).toBe("+2 −1");
+    expect(diffSummary(changeOf("update", `--- a/docs/handoff.md\n+++ b/docs/handoff.md\n${hunks}`).diff)).toBe("+2 −1");
+    expect(parseUnifiedDiff(changeOf("update", hunks).diff[0]!.unified)[0]).toMatchObject({ path: "docs/handoff.md", additions: 2, deletions: 1 });
+  });
+  it("leaves an update's real diff alone", () => {
+    const real = unifiedDiff("src/a.ts", "x\n", "y\n");
+    expect(changeOf("update", real).diff[0]!.unified).toBe(real);
   });
 });
 

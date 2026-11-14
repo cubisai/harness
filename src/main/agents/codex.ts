@@ -3,7 +3,7 @@ import { CODE_HINT, CODE_HINT_CODEX_EXEC, CODE_HINT_DEFERRED } from "../code-hin
 import { z } from "zod";
 import type { RunPayload, RunResult, ToolDiff } from "../../shared/tools";
 import { clipAgentSummary, clipSummary } from "../../shared/tools";
-import { diffSummary } from "../../shared/diff";
+import { diffSummary, unifiedDiff } from "../../shared/diff";
 import { normalizePlan } from "../../shared/plan";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -1560,11 +1560,16 @@ export function resultPayloadFor(item: ThreadItem): unknown | null {
     return { exitCode: c.exitCode, output: c.aggregatedOutput ?? "" } satisfies RunResult;
   }
   if (item.type === "fileChange") {
-    const f = item as { changes: { path: string; diff?: unknown; unified_diff?: unknown; kind?: { unified_diff?: unknown } }[] };
+    const f = item as { changes: { path: string; diff?: unknown; unified_diff?: unknown; kind?: { type?: unknown; unified_diff?: unknown } }[] };
     const diff: ToolDiff[] = f.changes
       .map((c) => {
-        const unified =
+        const text =
           typeof c.diff === "string" ? c.diff : typeof c.unified_diff === "string" ? c.unified_diff : typeof c.kind?.unified_diff === "string" ? c.kind.unified_diff : "";
+        // A new or deleted file comes as its whole text, with no hunks: as a diff it would count +0 −0.
+        const whole = text !== "" && !/^@@ /m.test(text);
+        const made = whole && c.kind?.type === "add" ? unifiedDiff(c.path, "", text) : whole && c.kind?.type === "delete" ? unifiedDiff(c.path, text, "") : text;
+        // An update comes as bare hunks (no `diff --git` header), which parse as no file at all: +0 −0 on the card.
+        const unified = made && !/^diff --git /m.test(made) ? `diff --git a/${c.path} b/${c.path}\n${/^--- /m.test(made) ? "" : `--- a/${c.path}\n+++ b/${c.path}\n`}${made}` : made;
         return { path: c.path, unified };
       })
       .filter((d) => d.unified);
