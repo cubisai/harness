@@ -65,11 +65,18 @@ function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
 const clamp = (n: number | undefined, lo: number, hi: number, dflt: number): number =>
   n === undefined || !Number.isFinite(n) ? dflt : Math.min(hi, Math.max(lo, Math.round(n)));
 
-/** A page in the design folder the tools may render: inside it, an existing file, html or svg. */
-function pageOf(deps: DesignToolDeps, threadId: string, path: string | undefined): { rel: string } | ToolOutput {
+/**
+ * A page in the design folder the tools may render: inside it, an existing file, html or svg. A `?query` or `#hash`
+ * after the file name (a deck's slide, `index.html#3`) is kept apart as `suffix`, so the agent never has to write a
+ * wrapper page to see one slide.
+ */
+function pageOf(deps: DesignToolDeps, threadId: string, path: string | undefined): { rel: string; suffix: string } | ToolOutput {
   const root = deps.root(threadId);
   if (!root) return { text: "This thread has no design folder.", isError: true };
-  const want = (path ?? "index.html").trim().replace(/\\/g, "/").replace(new RegExp(`^(\\./)?${deps.folder(threadId)}/`), "");
+  const full = (path ?? "index.html").trim().replace(/\\/g, "/").replace(new RegExp(`^(\\./)?${deps.folder(threadId)}/`), "");
+  const cut = full.search(/[?#]/);
+  const want = cut < 0 ? full : full.slice(0, cut);
+  const suffix = cut < 0 ? "" : encodeURI(full.slice(cut)).replace(/%25([0-9a-f]{2})/gi, "%$1");
   const rel = resolveInside(root, want || "index.html");
   if (!rel) return { text: `${want} is outside ${deps.folder(threadId)}/.`, isError: true };
   let isFile = false;
@@ -80,7 +87,7 @@ function pageOf(deps: DesignToolDeps, threadId: string, path: string | undefined
   }
   if (!isFile) return { text: `${deps.folder(threadId)}/${rel} doesn't exist yet. Build the page first.`, isError: true };
   if (!/\.(html?|svg)$/i.test(rel)) return { text: `${rel} isn't a page (html or svg).`, isError: true };
-  return { rel };
+  return { rel, suffix };
 }
 
 /** The system id the direction tool records: a Foundation theme is its library style (the service maps it), another kit's theme is `kit:<kit>/<theme>`. */
@@ -93,6 +100,34 @@ export function directionStyle(kit: string | undefined, theme: string): string {
   return `kit:${k}/${t.split("/").pop() ?? t}`;
 }
 
+/** How often in a row one page's lint came back with the same findings. */
+export interface LintRepeat {
+  findings: string;
+  count: number;
+  at: number;
+}
+
+/** Same findings this many lint runs in a row means the agent can't clear them: it should stop and say so. */
+export const LINT_STUCK_RUNS = 3;
+/** A gap this long starts the count again (a new turn, most likely). */
+const LINT_REPEAT_GAP_MS = 15 * 60_000;
+
+/**
+ * Records one lint result for `key` (page and width) and, from the third identical result in a row, tells the agent to
+ * stop fixing: re-running lint on findings it can't clear only burns the turn (seen: 12 identical runs, then the cap).
+ */
+export function stuckNote(runs: Map<string, LintRepeat>, key: string, findings: readonly LintFinding[], now: number): string {
+  const sig = findings
+    .map((f) => `${f.rule}|${f.selector}|${f.detail}`)
+    .sort()
+    .join("\n");
+  const last = runs.get(key);
+  const count = last && last.findings === sig && now - last.at < LINT_REPEAT_GAP_MS ? last.count + 1 : 1;
+  runs.set(key, { findings: sig, count, at: now });
+  if (count < LINT_STUCK_RUNS) return "";
+  return `\nSame ${findings.length === 1 ? "finding" : `${findings.length} findings`} as your last ${count - 1} lint runs: your fixes aren't clearing ${findings.length === 1 ? "it" : "them"}. Stop fixing. Delete any helper or test pages you made, then report which findings remain and why, and end the turn.`;
+}
+
 const failed = (what: string, err: unknown): ToolOutput => ({ text: `${what} failed: ${err instanceof Error ? err.message : String(err)}`, isError: true });
 
 /**
@@ -101,13 +136,15 @@ const failed = (what: string, err: unknown): ToolOutput => ({ text: `${what} fai
  * artifact. Offered only to design threads.
  */
 export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool[] {
+  // The last lint result per page and width, to spot an agent re-running lint on findings it can't clear.
+  const lintRuns = new Map<string, LintRepeat>();
   const tools: HarnessTool[] = [
     define({
       name: DESIGN_SCREENSHOT_TOOL,
       description:
         "Render a page of this design off screen and return a PNG, to check your work visually. Use width 390 for mobile, 1440 for desktop.",
       input: {
-        path: z.string().optional().describe("Page inside the design folder; default index.html"),
+        path: z.string().optional().describe("Page inside the design folder; default index.html. Add #N for slide N of a deck (index.html#3)"),
         width: z.number().optional().describe("Viewport width in CSS px, 320-2560; default 1440"),
         height: z.number().optional().describe("Viewport height in CSS px, 320-4000; default 900"),
         fullPage: z.boolean().optional().describe("Capture the whole scroll height (up to 4000 px); default false"),
@@ -120,9 +157,9 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
         const width = clamp(args.width, 320, 2560, 1440);
         const height = clamp(args.height, 320, 4000, 900);
         try {
-          const shot = await deps.screenshot(deps.url(threadId, page.rel), { width, height, fullPage: args.fullPage === true });
+          const shot = await deps.screenshot(deps.url(threadId, page.rel) + page.suffix, { width, height, fullPage: args.fullPage === true });
           const note = shot.cut ? " (full page, cut at 4000 px)" : args.fullPage ? " (full page)" : "";
-          return { text: `${deps.folder(threadId)}/${page.rel} at ${shot.width}×${shot.height}${note}.`, imagePng: shot.png.toString("base64") };
+          return { text: `${deps.folder(threadId)}/${page.rel}${page.suffix} at ${shot.width}×${shot.height}${note}.`, imagePng: shot.png.toString("base64") };
         } catch (err) {
           return failed("Screenshot", err);
         }
@@ -150,7 +187,10 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
           const kit = deps.kits?.ground(threadId, page.rel) ?? null;
           const result = kit ? { ...allowed, findings: [...kit.findings, ...allowed.findings] } : allowed;
           // A clean page is finished: polishing past this point costs the user time and tokens for little.
-          const done = result.findings.length === 0 ? `\nClean: this page is done. Unless the user asked for more, check any other pages you changed, then report and stop.` : "";
+          const done =
+            result.findings.length === 0
+              ? `\nClean: this page is done. Unless the user asked for more, check any other pages you changed, delete any helper or test pages you made, then report and stop.`
+              : stuckNote(lintRuns, `${page.rel}@${width}`, result.findings, Date.now());
           return { text: `${deps.folder(threadId)}/${page.rel} at ${width}px\n${formatLint(result)}${kit ? `\n${kit.summary}` : ""}${done}` };
         } catch (err) {
           return failed("Lint", err);

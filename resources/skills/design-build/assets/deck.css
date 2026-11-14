@@ -3,8 +3,8 @@
 html, body { margin: 0; height: 100%; }
 body {
   overflow: hidden;
-  background: var(--color-surface-2, #e5e5e5);
-  color: var(--color-text, #111);
+  background: var(--color-surface-2);
+  color: var(--color-text);
   font-family: var(--font-sans, system-ui, sans-serif);
   -webkit-font-smoothing: antialiased;
 }
@@ -21,7 +21,7 @@ h1, h2, h3, p, ul, ol { margin: 0; }
   margin: -540px 0 0 -960px;
   transform: scale(var(--deck-scale, 0.5));
   overflow: hidden;
-  background: var(--color-bg, #fff);
+  background: var(--color-bg);
   padding: 96px 128px;
   display: none;
 }
@@ -32,7 +32,7 @@ h1, h2, h3, p, ul, ol { margin: 0; }
   right: 16px;
   bottom: 12px;
   font: 12px/16px var(--font-mono, monospace);
-  color: var(--color-text-muted, #666);
+  color: var(--color-text-muted);
   pointer-events: none;
 }
 
@@ -50,7 +50,7 @@ body:has(.deck.is-overview) { overflow: auto; }
   cursor: pointer;
   outline: 4px solid transparent;
 }
-.deck.is-overview .slide.is-active { outline-color: var(--color-primary, #2563eb); }
+.deck.is-overview .slide.is-active { outline-color: var(--color-primary); }
 
 @media print {
   @page { size: 1920px 1080px; margin: 0; }

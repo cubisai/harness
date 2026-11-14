@@ -74,4 +74,4 @@ What a senior designer checks before calling a screen done. `design_lint` flags 
 
 ## 5. Finish
 
-Run `design_lint` on each page and fix every `kit`, contrast and targets finding; its `Kit:` line says how much of the page is kit parts. Load each page with `design_screenshot` (390 and 1440; 1920 for a deck) and fix console errors and broken images. Delete scratch files you made. Then say in one or two lines what you built and what to try. If the message has a `Selected in …` block, change only those elements.
+Run `design_lint` on each page and fix every `kit`, contrast and targets finding; its `Kit:` line says how much of the page is kit parts. Load each page with `design_screenshot` (390 and 1440; 1920 for a deck, one slide at a time as `index.html#3`) and fix console errors and broken images. Don't add helper or test pages to look at something; delete any you made. A clean lint means the page is done: stop polishing. Then say in one or two lines what you built and what to try. If the message has a `Selected in …` block, change only those elements.
