@@ -77,6 +77,15 @@ function inKitPicture(el: El5): boolean {
 /** A literal colour in a declaration's value, outside a `var()` fallback. */
 const LITERAL_COLOR = /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\(/i;
 
+/** Common CSS named colours: `background: white` is a literal just like `#fff`. */
+const NAMED_COLORS = new Set(["white", "black", "red", "green", "blue", "yellow", "orange", "purple", "pink", "gray", "grey", "silver", "navy", "teal", "maroon", "olive", "lime", "aqua", "cyan", "magenta", "fuchsia", "brown", "gold", "beige", "ivory", "indigo", "violet", "crimson", "coral", "salmon", "tomato", "khaki", "lavender", "plum", "tan", "turquoise", "whitesmoke", "gainsboro", "lightgray", "lightgrey", "darkgray", "darkgrey", "dimgray", "dimgrey", "slategray", "slategrey", "snow", "linen", "wheat", "chocolate", "firebrick", "darkred", "darkblue", "darkgreen", "skyblue", "steelblue", "royalblue", "midnightblue"]);
+
+/** Those names as one whole-word test, built once. */
+const NAMED_COLOR = new RegExp(`\\b(?:${[...NAMED_COLORS].join("|")})\\b`, "i");
+
+/** Properties that paint a colour, so a named colour there is a literal (a custom property is not one). */
+const COLOR_PROPERTY = /^(?:color|background(?:-color|-image)?|border|border-color|border-(?:top|right|bottom|left)|border-[-a-z]+-color|outline|outline-color|fill|stroke|box-shadow|text-shadow|caret-color|accent-color|text-decoration|text-decoration-color|column-rule|column-rule-color)$/i;
+
 /** The custom property names a stylesheet declares (`system/tokens.css`: the theme's tokens). */
 export function tokenNamesIn(css: string): Set<string> {
   return new Set([...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/(--[a-z0-9_-]+)\s*:/gi)].map((m) => m[1]!.toLowerCase()));
@@ -153,7 +162,14 @@ export function groundPage(html: string, manifest: KitManifest, pageCss = "", th
   }
 
   const plain = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  const hasLiteral = (d: string): boolean => d.includes(":") && LITERAL_COLOR.test(d.slice(d.indexOf(":") + 1).replace(/var\([^()]*(\([^()]*\))?[^()]*\)/g, ""));
+  const hasLiteral = (d: string): boolean => {
+    if (!d.includes(":")) return false;
+    const at = d.indexOf(":");
+    const value = d.slice(at + 1).replace(/var\([^()]*(\([^()]*\))?[^()]*\)/g, "");
+    if (LITERAL_COLOR.test(value)) return true;
+    // A named colour only counts in a property that paints, and a URL's file name is not a colour.
+    return COLOR_PROPERTY.test(d.slice(0, at).trim()) && NAMED_COLOR.test(value.replace(/url\([^)]*\)/gi, ""));
+  };
   let literals = 0;
   let pageTokens = 0;
   for (const m of plain.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {

@@ -30,7 +30,7 @@ describe("kit grounding", () => {
   });
 
   it("leaves plain HTML, scripts, svg and page CSS on its own classes alone", () => {
-    const g = groundPage('<html><head><style>.hero{background:red}</style></head><body><div class="hero"><svg viewBox="0 0 1 1"><path d="M0 0"/></svg><p>Hi</p></div><script>1</script></body></html>', foundation());
+    const g = groundPage('<html><head><style>.hero{background:var(--color-accent)}</style></head><body><div class="hero"><svg viewBox="0 0 1 1"><path d="M0 0"/></svg><p>Hi</p></div><script>1</script></body></html>', foundation());
     expect(g.findings).toEqual([]);
     expect(g.elements).toBe(2);
     expect(g.parts).toBe(0);
@@ -42,7 +42,7 @@ describe("kit grounding", () => {
     const css = (rule: string) => groundPage(`<style>${rule}</style><button data-ui="button">Go</button>`, m).findings.map((f) => f.id);
     expect(css('[data-ui="button"] { border-radius: 0 }')).toEqual(["redraw-part"]);
     expect(css('.bar [data-ui="button"] { margin-left: auto }')).toEqual([]);
-    expect(css('[data-ui="mystery"] { color: red }')).toEqual([]);
+    expect(css('[data-ui="mystery"] { color: var(--color-accent) }')).toEqual([]);
     expect(css('/* [data-ui="button"] { color: red } */')).toEqual([]);
   });
 
@@ -65,6 +65,15 @@ describe("page CSS in grounding", () => {
     expect(ids(groundPage(page(".hero { color: #123456; }"), foundation()))).toContain("literal-color");
     expect(ids(groundPage(page(".hero { background: rgb(1 2 3); }"), foundation()))).toContain("literal-color");
     expect(ids(groundPage(page(":root { --brand: #123456; } .hero { color: var(--brand, #fff); }"), foundation()))).not.toContain("literal-color");
+  });
+
+  it("flags named colours in colour properties only", () => {
+    expect(ids(groundPage(page(".hero { background: white; }"), foundation()))).toContain("literal-color");
+    expect(ids(groundPage(page(".hero { border: 1px solid black; }"), foundation()))).toContain("literal-color");
+    expect(ids(groundPage(page(".hero { color: var(--color-text, white); }"), foundation()))).not.toContain("literal-color");
+    expect(ids(groundPage(page(".hero { background: transparent; color: currentColor; }"), foundation()))).not.toContain("literal-color");
+    expect(ids(groundPage(page(".hero { background: url(white.png) no-repeat; }"), foundation()))).not.toContain("literal-color");
+    expect(ids(groundPage(page('.hero { font-family: "Red Hat Display"; animation-name: white; }'), foundation()))).not.toContain("literal-color");
   });
 
   it("flags a new colour token on :root, not a re-set theme token or an alias of one", () => {

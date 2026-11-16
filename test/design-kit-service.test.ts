@@ -281,7 +281,7 @@ describe("tokens from the agent", () => {
 
   it("lint adds the kit check on a kit thread: unknown parts, bad values, redrawn parts, and the coverage line", async () => {
     const s = setup("kit:foundation");
-    s.write("index.html", '<html><head><style>[data-ui="button"] { background: red; } .hero { padding: 8px; }</style></head><body><div class="hero"><button data-ui="button" data-variant="huge">Go</button><div data-ui="buton">x</div></div></body></html>');
+    s.write("index.html", '<html><head><style>[data-ui="button"] { background: var(--color-accent); } .hero { padding: 8px; }</style></head><body><div class="hero"><button data-ui="button" data-variant="huge">Go</button><div data-ui="buton">x</div></div></body></html>');
     const out = await run(s, DESIGN_LINT_TOOL, {});
     expect(out.isError).toBeFalsy();
     expect(out.text).toContain("kit 3");
