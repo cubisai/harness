@@ -116,6 +116,7 @@ export async function runReport(b: BrowserBackend, list: Assertion[], opts: { sc
     return { assertion, pass, actual: String(a?.actual) };
   });
   const logs = await b.logs(false);
-  const screenshot = opts.screenshot ? (await b.screenshot()).path : null;
+  // A pane that can't be captured still gets its checks reported.
+  const screenshot = opts.screenshot ? await b.screenshot().then((s) => s.path, (err: unknown) => `none (${err instanceof Error ? err.message : String(err)})`) : null;
   return { url: urlText, target: opts.target, checks, logs, screenshot };
 }

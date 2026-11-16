@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { formatSnapshot } from "../src/main/browser/snapshot";
 import { browserTools } from "../src/main/browser/tools";
 import { isAllowedUrl, normalizeUrl } from "../src/main/browser/url";
-import { BrowserController, type LogEntry } from "../src/main/browser/controller";
+import { BrowserController, capturePane, type LogEntry } from "../src/main/browser/controller";
 import type { BrowserBackend } from "../src/main/browser/backend";
 import type { ToolContext } from "../src/main/agents/types";
 import { tempDir } from "./helpers";
@@ -60,6 +60,32 @@ describe("formatSnapshot", () => {
   it("says when a page is empty or cut short", () => {
     expect(formatSnapshot({ url: "about:blank", title: "", nodes: [], truncated: false })).toContain("(no visible content)");
     expect(formatSnapshot({ url: "x", title: "t", nodes: [{ kind: "text", name: "a" }], truncated: true })).toContain("snapshot truncated");
+  });
+});
+
+describe("capturePane", () => {
+  const never = () => new Promise<never>(() => {});
+  const image = (png: string) => ({ isEmpty: () => png === "", toPNG: () => Buffer.from(png) });
+  const pane = (capture: () => Promise<unknown>, cdp: () => Promise<unknown>) => {
+    const invalidate = vi.fn();
+    return { invalidate, wc: { invalidate, capturePage: capture, debugger: { sendCommand: cdp } } as unknown as Parameters<typeof capturePane>[0] };
+  };
+
+  it("asks for a repaint and returns the painted frame", async () => {
+    const p = pane(async () => image("frame"), never);
+    expect((await capturePane(p.wc, 20)).toString()).toBe("frame");
+    expect(p.invalidate).toHaveBeenCalled();
+  });
+
+  it("falls back to DevTools' capture when capturePage hangs or throws", async () => {
+    const cdp = async () => ({ data: Buffer.from("cdp").toString("base64") });
+    expect((await capturePane(pane(never, cdp).wc, 20)).toString()).toBe("cdp");
+    expect((await capturePane(pane(async () => Promise.reject(new Error("UnknownVizError")), cdp).wc, 20)).toString()).toBe("cdp");
+  });
+
+  it("fails with what to do instead of hanging", async () => {
+    await expect(capturePane(pane(never, never).wc, 20)).rejects.toThrow(/is hidden in the app.*browser_snapshot/);
+    await expect(capturePane(pane(async () => image(""), async () => ({})).wc, 20)).rejects.toThrow(/is hidden in the app/);
   });
 });
 

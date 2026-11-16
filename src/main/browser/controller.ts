@@ -16,6 +16,36 @@ const MAX_PRINTS = 2000;
 
 export type LogEntry = BrowserLogEntry;
 
+/** How long one way of capturing the pane may take before the next is tried. */
+export const CAPTURE_STEP_MS = 10_000;
+
+const within = <T>(ms: number, work: Promise<T>): Promise<T | undefined> =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    work.then(
+      (v) => (clearTimeout(timer), resolve(v)),
+      (e) => (clearTimeout(timer), reject(e)),
+    );
+  });
+
+/**
+ * A PNG of the pane. A <webview> whose element is hidden in the app (display:none, visibility:hidden) never
+ * paints, and capturePage and DevTools' capture then both wait forever: one such call hung a design turn until the
+ * 10-minute watchdog. Each try is bounded. DevTools' capture is the fallback because capturePage can also throw
+ * on a visible pane ("UnknownVizError") where DevTools still returns the frame. A hidden or minimised window is fine.
+ */
+export async function capturePane(
+  wc: Pick<WebContents, "capturePage" | "invalidate"> & { debugger: Pick<WebContents["debugger"], "sendCommand"> },
+  stepMs = CAPTURE_STEP_MS,
+): Promise<Buffer> {
+  wc.invalidate();
+  const image = await within(stepMs, wc.capturePage()).catch(() => undefined);
+  if (image && !image.isEmpty()) return image.toPNG();
+  const shot = (await within(stepMs, wc.debugger.sendCommand("Page.captureScreenshot", { format: "png" })).catch(() => undefined)) as { data?: string } | undefined;
+  if (shot?.data) return Buffer.from(shot.data, "base64");
+  throw new Error("The browser pane is hidden in the app, so it can't be captured. Use browser_snapshot to read the page.");
+}
+
 /** The non-desktop viewports browser_open can emulate. */
 export const DEVICE_PRESETS: Record<Exclude<DevicePreset, "desktop">, { width: number; height: number; deviceScaleFactor: number; mobile: boolean }> = {
   mobile: { width: 390, height: 844, deviceScaleFactor: 3, mobile: true },
@@ -460,8 +490,7 @@ export class BrowserController {
 
   async screenshot(): Promise<{ path: string; png: Buffer }> {
     const wc = await this.page();
-    const image = await wc.capturePage();
-    const png = image.toPNG();
+    const png = await capturePane(wc);
     mkdirSync(this.screenshotDir, { recursive: true });
     const path = join(this.screenshotDir, `browser-${new Date().toISOString().replace(/[:.]/g, "-")}.png`.toLowerCase());
     writeFileSync(path, png);
