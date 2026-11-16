@@ -88,7 +88,8 @@ async function waitIdle(userDataDir: string, threadId: string, until: number): P
     }
     const top = events.filter((e) => !e.parentId);
     const starts = top.filter((e) => e.kind === "turn-start").length;
-    const ends = top.filter((e) => e.kind === "turn-end").length;
+    // An agent error that ends the turn comes without a turn-end (ACP agents), so it counts as one.
+    const ends = top.filter((e) => e.kind === "turn-end" || e.kind === "error").length;
     if (ends >= 1 && ends >= starts && Date.now() - lastChange >= QUIET_MS) return "ended";
     if (Date.now() - lastChange > STALL_MS) return "stalled";
   }
