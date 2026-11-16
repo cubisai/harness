@@ -50,6 +50,7 @@ import { keepTweaks } from "./design/tweaks";
 import { resolveVariantSet } from "./design/variants";
 import { brandEdits, forkKitSystem } from "./design/kit-library";
 import { DesignKitService, kitPagePrompt } from "./design/kit-service";
+import { SystemGuard } from "./design/system-guard";
 import { FOUNDATION_BASE, FOUNDATION_THEME, forkSystem, isLegacyStyleId, KIT_PREFIX, listDesignSystems, listKitSystems, materializeSystem, pickFromShortlist, resolveDesignSystem, type DesignSystemInfo } from "./design/systems";
 import { AUTO_SYSTEM, isAuto, modeLabel, parseReferenceSystemId, referenceSystemId, STYLE_PREFIX, type DesignDirection, type DirectionReference } from "../shared/direction";
 import { adaptNote, adaptReference, adaptSummary, type AdaptReport } from "./design/reference-adapter";
@@ -125,6 +126,10 @@ export class Service {
   private designReferenceCache: string | null = null;
   /** Finds a kit's folder by id: the bundled Foundation first, then what's installed. */
   private kitDirOf: ((kitId: string) => string | null) | null = null;
+  /** Undoes an agent's shell writes to a design thread's managed `system/` when its turn ends. */
+  private readonly systemGuard = new SystemGuard();
+  /** Per design thread, the note about undone system/ changes for its next turn. */
+  private systemNotes = new Map<string, string>();
   /** Kits and themes: the picker's lists, theme switches, kit moves, the project's own copies. */
   readonly kits: DesignKitService = new DesignKitService({
     getThread: (id) => this.store.getThread(id),
@@ -138,6 +143,8 @@ export class Service {
       const system = this.threadSystem(thread);
       if (root && system) this.syncThreadSystem(thread, system, join(root, "system"));
     },
+    systemWriting: (dir) => this.systemGuard.settle(dir),
+    systemWritten: (dir) => this.systemGuard.refresh(dir),
     systemById: (projectId, id) => this.previewSystem(projectId, id),
     kitDir: (kitId) => this.kitDirOf?.(kitId) ?? null,
     broadcast: (update) => this.broadcast(update),
@@ -865,6 +872,8 @@ export class Service {
     let followUp: SendRequest | null = null;
     // Set once the agent starts: the pages written since are linted after the turn, however it ends (a stopped turn too).
     let lintSince: number | null = null;
+    // The design thread's managed `system/` folder, guarded for this turn so the agent's shell writes there are undone.
+    let guardDir: string | null = null;
     // Set when the agent reports the turn's end; only such a turn may get the design-lint fix round.
     let turnEnded = false;
     try {
@@ -935,7 +944,10 @@ export class Service {
       const lintNote = compact ? "" : await this.takeAutoLint(thread.id);
       // The thread's issue: in full the first time a session sees it, one line after; automatic rounds go without.
       const issueText = compact || round > 0 || req.designFixRound ? "" : await this.issuePromptNote(current);
-      const basePrompt = (catchUp ? `${catchUp}\n---\n${prompt}` : prompt) + issueText + lintNote;
+      // What CubiQ undid in system/ after the last turn, said once on this turn.
+      const guardNote = compact ? "" : (this.systemNotes.get(thread.id) ?? "");
+      if (!compact) this.systemNotes.delete(thread.id);
+      const basePrompt = (catchUp ? `${catchUp}\n---\n${prompt}` : prompt) + issueText + lintNote + guardNote;
       // A resumed session keeps the block its cache was built on; tell it once what changed since. The stored user event stays as sent.
       const update = current.sessionId !== null ? (this.memoryUpdates?.(thread.projectId, thread.id) ?? null) : null;
       const turnPrompt = update ? `${update}\n\n${basePrompt}` : basePrompt;
@@ -948,6 +960,13 @@ export class Service {
       const turnStartedAt = Date.now() - 2000;
       const beforeDeliverables = this.artifacts ? snapshotDeliverables(cwd, this.otherDesignDirs(thread.projectId, thread.id)) : undefined;
       if (!compact) lintSince = turnStartedAt;
+      if (thread.kind === "design" && !compact) {
+        const root = this.designRoot(thread.id);
+        if (root) {
+          guardDir = join(root, "system");
+          this.systemGuard.begin(guardDir);
+        }
+      }
       await driver.runTurn({
         threadId: thread.id,
         cwd,
@@ -1217,6 +1236,14 @@ export class Service {
     } finally {
       watchdog?.dispose();
       if (watchdog && this.turnWatchdogs.get(thread.id) === watchdog) this.turnWatchdogs.delete(thread.id);
+      if (guardDir) {
+        const restored = this.systemGuard.end(guardDir);
+        if (restored.length > 0) {
+          const list = restored.slice(0, 5).join(", ") + (restored.length > 5 ? ` and ${restored.length - 5} more` : "");
+          this.emit(thread.id, { kind: "notice", text: `Undid changes to system/ (${list}): CubiQ manages it.` });
+          this.systemNotes.set(thread.id, `\n\n(CubiQ: \`system/\` is managed by CubiQ, so your changes to ${list} were undone. Put page styles in the page or its own CSS file, using the tokens; ask the user to change the theme in the style picker.)`);
+        }
+      }
       const lintRun = lintSince !== null ? this.queueAutoLint(thread.id, lintSince) : null;
       // A design turn that ends with new contrast or target findings gets one fix round now (the thread stays running while it's linted).
       const fix = lintRun && turnEnded && !followUp && !req.designFixRound && !controller.signal.aborted ? await this.designFixNote(lintRun, controller.signal) : null;
@@ -1704,23 +1731,29 @@ export class Service {
    * a lost folder is rebuilt from the exact pinned file, else from Foundation's base theme so the page still renders.
    */
   private syncThreadSystem(thread: Thread, system: DesignSystemInfo, dir: string): void {
-    // A retired library style stays exactly as it was written: its source is gone.
-    if (isLegacyStyleId(system.id) && readMarker(dir) === system.id) return;
-    const ref = system.kit?.id === "foundation" ? this.threadReference(thread) : null;
-    if (!ref) {
-      materializeSystem(system, dir);
-      clearReference(dir);
-      return;
-    }
-    if (isPinned(dir, ref)) {
-      // Pinned: Foundation's parts refresh, the adapted tokens and REFERENCE.md never move.
-      materializeSystem(system, dir);
-    } else if (this.designReferences && pinnedVariant(this.designReferences, ref.slug)?.sha256 === ref.sha256) {
-      // The exact pinned file is here (a new pick, or system/ was lost): adapt it now.
-      materializeReference({ foundation: system, source: this.designReferences, ref, fontsDir: this.designFontsDir, systemDir: dir });
-    } else if (!existsSync(join(dir, "tokens.css"))) {
-      // That version isn't on this machine and nothing is written: Foundation's base theme, so the page still renders.
-      materializeSystem(system, dir);
+    // An agent's shell write since the turn began is undone first, so the refresh below doesn't adopt it.
+    this.systemGuard.settle(dir);
+    try {
+      // A retired library style stays exactly as it was written: its source is gone.
+      if (isLegacyStyleId(system.id) && readMarker(dir) === system.id) return;
+      const ref = system.kit?.id === "foundation" ? this.threadReference(thread) : null;
+      if (!ref) {
+        materializeSystem(system, dir);
+        clearReference(dir);
+        return;
+      }
+      if (isPinned(dir, ref)) {
+        // Pinned: Foundation's parts refresh, the adapted tokens and REFERENCE.md never move.
+        materializeSystem(system, dir);
+      } else if (this.designReferences && pinnedVariant(this.designReferences, ref.slug)?.sha256 === ref.sha256) {
+        // The exact pinned file is here (a new pick, or system/ was lost): adapt it now.
+        materializeReference({ foundation: system, source: this.designReferences, ref, fontsDir: this.designFontsDir, systemDir: dir });
+      } else if (!existsSync(join(dir, "tokens.css"))) {
+        // That version isn't on this machine and nothing is written: Foundation's base theme, so the page still renders.
+        materializeSystem(system, dir);
+      }
+    } finally {
+      this.systemGuard.refresh(dir);
     }
   }
 
@@ -1918,6 +1951,8 @@ export class Service {
     let aiParts = false;
     let icons = false;
     if (root) {
+      // An agent's shell write to system/ this turn is undone before CubiQ writes the folder (refreshed below).
+      this.systemGuard.settle(join(root, "system"));
       if (system) {
         const dir = join(root, "system");
         if (ref && system.kit?.id === "foundation") {
@@ -1965,6 +2000,7 @@ export class Service {
       } catch {
         // The tier note below still reaches the agent.
       }
+      this.systemGuard.refresh(join(root, "system"));
     }
     const folder = designOf(saved);
     const head = `Direction: ${direction.surface}, ${modeLabel(direction.mode)}, tier ${tier}.`;

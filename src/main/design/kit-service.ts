@@ -24,6 +24,10 @@ export interface KitServiceDeps {
   threadSystem(thread: Thread): DesignSystemInfo | null;
   /** Copy the thread's system into its `system/` (a reference stays pinned); plain materialize when absent. */
   syncSystem?(thread: Thread): void;
+  /** CubiQ is about to write this `system/` folder (the turn guard first undoes the agent's shell writes there). */
+  systemWriting?(dir: string): void;
+  /** CubiQ itself just wrote this `system/` folder (the turn guard re-takes its snapshot). */
+  systemWritten?(dir: string): void;
   /** A system by id, kits included. */
   systemById(projectId: string | null, id: string): DesignSystemInfo | null;
   kitDir(kitId: string): string | null;
@@ -209,7 +213,11 @@ export class DesignKitService {
     if (this.deps.syncSystem) this.deps.syncSystem(thread);
     else {
       const system = this.deps.threadSystem(thread);
-      if (root && system) materializeSystem(system, join(root, "system"));
+      if (root && system) {
+        this.deps.systemWriting?.(join(root, "system"));
+        materializeSystem(system, join(root, "system"));
+        this.deps.systemWritten?.(join(root, "system"));
+      }
     }
     this.deps.broadcast({ type: "thread", thread });
     return thread;
@@ -387,7 +395,10 @@ export class DesignKitService {
     if (!dir) return change();
     const capture = (): Map<string, string | null> => new Map(SNAPSHOT_FILES.map((f) => [f, read(join(dir, f))]));
     const before = capture();
+    // The folder may be a thread's own system/ (a pinned reference): the turn guard keeps this edit, not an agent's.
+    this.deps.systemWriting?.(dir);
     const result = change();
+    this.deps.systemWritten?.(dir);
     const stack = this.undo.get(threadId) ?? [];
     stack.push({ label, dir, before, after: capture() });
     this.undo.set(threadId, stack.slice(-MAX_UNDO));
@@ -410,7 +421,9 @@ export class DesignKitService {
       const root = this.deps.designRoot(other.id);
       if (!root) continue;
       try {
+        this.deps.systemWriting?.(join(root, "system"));
         materializeSystem(system, join(root, "system"));
+        this.deps.systemWritten?.(join(root, "system"));
       } catch {
         // Its next turn copies it again.
       }
@@ -425,10 +438,12 @@ export class DesignKitService {
     const step = stack?.pop();
     if (!step) return null;
     const files = action === "undo" ? step.before : step.after;
+    this.deps.systemWriting?.(step.dir);
     for (const [name, text] of files) {
       if (text === null) rmSync(join(step.dir, name), { force: true });
       else writeFileSync(join(step.dir, name), text);
     }
+    this.deps.systemWritten?.(step.dir);
     to.set(threadId, [...(to.get(threadId) ?? []), step]);
     const thread = this.deps.getThread(threadId);
     const system = this.deps.threadSystem(thread);
