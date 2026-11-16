@@ -39,9 +39,30 @@ export interface Grounding {
   /** Content elements on the page, and how many of them are the kit's parts (unknown `data-ui` values don't count). */
   elements: number;
   parts: number;
+  /** Content elements that are a kit part or sit inside one that owns its contents: a table part's cells are the kit's too,
+   * but what a layout part (stack, grid, section, slide) or a block wrapper holds needs parts of its own. */
+  covered: number;
   /** Distinct parts used, most used first. */
   used: { ui: string; count: number }[];
 }
+
+/** Class names that mean a kit part by another name, when the kit has that part. */
+const TWIN_ALIASES: Record<string, string> = { tag: "badge", chip: "badge", pill: "badge", meter: "progress", metric: "stat", kpi: "stat" };
+
+/** Part categories whose names are too common as page classes to call a class of that name a hand-built twin. */
+const NO_TWIN_CATEGORIES = new Set(["layout", "content"]);
+
+/** Inside a known part of the kit (not counting `el` itself). */
+function inPart(el: El5, known: ReadonlyMap<string, unknown>): boolean {
+  for (let n = (el as { parentNode?: unknown }).parentNode; n && typeof n === "object" && "attrs" in n; n = (n as { parentNode?: unknown }).parentNode) {
+    const ui = (n as El5).attrs.find((a) => a.name === "data-ui")?.value;
+    if (ui && known.has(ui)) return true;
+  }
+  return false;
+}
+
+/** A deck scaffold's slide frame (`section.slide`, from deck.css): the kit's slide part goes inside it. */
+const isSlideFrame = (el: El5): boolean => el.tagName === "section" && /(^|\s)slide(\s|$)/.test(el.attrs.find((a) => a.name === "class")?.value ?? "");
 
 /** Elements kit parts are built on: a page rule that recolours one of these recolours every part made of it. */
 const PART_ELEMENTS = new Set(["a", "button", "input", "select", "textarea", "label", "table", "th", "td", "h1", "h2", "h3", "h4", "h5", "h6", "p", "ul", "ol", "li", "nav", "dialog", "details", "summary"]);
@@ -104,6 +125,17 @@ export function groundPage(html: string, manifest: KitManifest, pageCss = "", th
   const counts = new Map<string, number>();
   let elements = 0;
   let parts = 0;
+  let covered = 0;
+  const owners = new Map(manifest.components.filter((c) => c.kind !== "composition" && (c.category ?? "").toLowerCase() !== "layout").map((c) => [c.ui, c]));
+  // Parts a page class can twin: the kit's components outside layout and type, never a composition or the plain link.
+  const twinable = new Set(manifest.components.filter((c) => c.kind !== "composition" && c.ui !== "link" && !NO_TWIN_CATEGORIES.has((c.category ?? "").toLowerCase())).map((c) => c.ui));
+  const twins = new Map<string, { count: number; example: string }>();
+  // Elements already counted as a twin: a BEM child under one (`stat__n` in `.stat`) is that same twin, not another.
+  const twinEls = new Set<unknown>();
+  const underTwin = (el: El5): boolean => {
+    for (let n = (el as { parentNode?: unknown }).parentNode; n; n = (n as { parentNode?: unknown }).parentNode) if (twinEls.has(n)) return true;
+    return false;
+  };
   let css = "";
   let svgLiterals = 0;
   let svgExample = "";
@@ -117,7 +149,23 @@ export function groundPage(html: string, manifest: KitManifest, pageCss = "", th
     if (NOT_CONTENT.has(el.tagName)) continue;
     elements += 1;
     const ui = el.attrs.find((a) => a.name === "data-ui")?.value;
-    if (!ui) continue;
+    const owned = inPart(el, owners);
+    if ((ui && byUi.has(ui)) || owned) covered += 1;
+    if (!ui) {
+      if (owned || isSlideFrame(el) || underTwin(el)) continue;
+      const classes = (el.attrs.find((a) => a.name === "class")?.value ?? "").split(/\s+/).filter(Boolean);
+      for (const cls of classes) {
+        const root = cls.toLowerCase().split(/__|--/)[0]!;
+        const twin = twinable.has(root) ? root : TWIN_ALIASES[root];
+        if (!twin || !twinable.has(twin)) continue;
+        const seen = twins.get(twin) ?? { count: 0, example: `${el.tagName}.${cls}` };
+        seen.count += 1;
+        twins.set(twin, seen);
+        twinEls.add(el);
+        break;
+      }
+      continue;
+    }
     const part = byUi.get(ui);
     if (!part) {
       unknown.set(ui, (unknown.get(ui) ?? 0) + 1);
@@ -145,6 +193,27 @@ export function groundPage(html: string, manifest: KitManifest, pageCss = "", th
     });
   }
   for (const [selector, detail] of [...badValues].slice(0, MAX_EACH)) findings.push({ rule: "kit", id: "bad-prop", selector, detail });
+  for (const [ui, { count, example }] of [...twins].sort((a, b) => b[1].count - a[1].count).slice(0, MAX_EACH)) {
+    findings.push({
+      rule: "kit",
+      id: "hand-built-part",
+      selector: example,
+      detail: `${example}${count > 1 ? ` ×${count}` : ""} is built by hand, and ${manifest.name} has a ${ui} part: use data-ui="${ui}" (design_kit_inspect component:"${ui}"), so it follows the theme and the kit.`,
+    });
+  }
+  // Deck slides whose body isn't the kit's slide part: the part lays the kit's parts out at slide size.
+  if (byUi.has("slide")) {
+    const frames = els.filter(isSlideFrame);
+    const bare = frames.filter((f) => !walk(f).some((d) => d.attrs.some((a) => a.name === "data-ui" && a.value === "slide")));
+    if (bare.length) {
+      findings.push({
+        rule: "kit",
+        id: "slide-body",
+        selector: "section.slide",
+        detail: `${bare.length} of ${frames.length} slide${frames.length === 1 ? "" : "s"} ha${bare.length === 1 ? "s" : "ve"} no ${manifest.name} slide body inside: put <div data-ui="slide"> in each section.slide and build it from the kit's parts (design_kit_inspect block:"slide-content").`,
+      });
+    }
+  }
 
   css += pageCss;
   let redraws = 0;
@@ -240,7 +309,7 @@ export function groundPage(html: string, manifest: KitManifest, pageCss = "", th
   }
 
   const used = [...counts].map(([ui, count]) => ({ ui, count })).sort((a, b) => b.count - a.count || a.ui.localeCompare(b.ui));
-  return { findings, elements, parts, used };
+  return { findings, elements, parts, covered, used };
 }
 
 /** Edit distance, for "did you mean". */
@@ -257,7 +326,8 @@ function distance(a: string, b: string): number {
 /** One line on how much of the page is built from the kit. */
 export function groundingSummary(g: Grounding, kitName: string): string {
   if (!g.parts) return `Kit: no ${kitName} parts on this page (${g.elements} elements). Build from its parts: design_kit_inspect lists them.`;
-  const pct = g.elements ? Math.round((g.parts / g.elements) * 100) : 0;
+  const pct = g.elements ? Math.round((g.covered / g.elements) * 100) : 0;
   const top = g.used.slice(0, 8).map((u) => `${u.ui}×${u.count}`).join(", ");
-  return `Kit: ${g.parts} of ${g.elements} elements are ${kitName} parts (${pct}%): ${top}${g.used.length > 8 ? ", …" : ""}.`;
+  const low = pct < 25 ? " Most of the page is hand-built: swap in the parts the kit has (design_kit_inspect)." : "";
+  return `Kit: ${pct}% of ${g.elements} elements are in ${kitName} parts (${g.parts} part${g.parts === 1 ? "" : "s"}: ${top}${g.used.length > 8 ? ", …" : ""}).${low}`;
 }

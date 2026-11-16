@@ -273,7 +273,7 @@ describe("tokens from the agent", () => {
     expect(found.text).toMatch(/^button: /m);
     expect((await run(s, DESIGN_KIT_INSPECT_TOOL, { search: "zzqx" })).text).toMatch(/^Nothing in Foundation matches/);
     const page = await run(s, DESIGN_KIT_INSPECT_TOOL, { page: "index.html" });
-    expect(page.text).toMatch(/^Kit: 2 of 2 elements are Foundation parts/);
+    expect(page.text).toMatch(/^Kit: 100% of 2 elements are in Foundation parts \(2 parts: /);
     expect(page.text).toMatch(/^button×1: /m);
     expect((await run(s, DESIGN_KIT_INSPECT_TOOL, { page: "../x.html" })).isError).toBe(true);
     expect((await run(s, DESIGN_KIT_INSPECT_TOOL, { page: "gone.html" })).isError).toBe(true);
@@ -290,7 +290,7 @@ describe("tokens from the agent", () => {
     expect(out.text).toMatch(/\[kit\] \[data-ui="button"\]\[data-variant="huge"\] — data-variant="huge" isn't a value of button: use /);
     expect(out.text).toContain("page CSS redraws the kit's button");
     expect(out.text).not.toContain(".hero");
-    expect(out.text).toMatch(/Kit: 1 of 3 elements are Foundation parts \(33%\): button×1\./);
+    expect(out.text).toMatch(/Kit: 33% of 3 elements are in Foundation parts \(1 part: button×1\)\./);
   });
 
   it("lint says nothing about kits off a kit", async () => {
