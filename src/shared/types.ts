@@ -1191,6 +1191,11 @@ export interface AgentCapabilities {
   manualCompact?: boolean;
   /** An expert team's members run as this agent's own subagents (Claude SDK agents, OpenCode config agents); otherwise the lead plays every role. */
   subagentTeams?: boolean;
+  /**
+   * The agent resends every image of its session on each model call, so the design tools hand back at most this many
+   * per session: past a provider's per-request cap (DeepRelay: 16) every call of the session fails. Absent: no limit.
+   */
+  sessionImageLimit?: number;
 }
 
 /** How an agent's credential row behaves in Settings: data from its driver, never its id. */

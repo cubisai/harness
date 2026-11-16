@@ -45,7 +45,37 @@ export interface DesignToolDeps {
   kits?: DesignKitToolDeps;
   /** The downloaded design references; the reference tools are offered only when this is given. */
   references?: ReferenceSource;
+  /**
+   * Whether one more image may go back into this thread's conversation (and counts it). False once the agent's history
+   * holds as many as its provider takes in one request: past that, every request fails. Absent: always.
+   */
+  takeImage?(threadId: string): boolean;
 }
+
+/**
+ * `takeImage` for {@link DesignToolDeps}: `limitOf` gives a thread's per-session image limit (its agent's
+ * `sessionImageLimit`, null for none). A new session starts again at zero; the first turn's count carries into the
+ * session it creates.
+ */
+export function imageBudget(limitOf: (threadId: string) => { limit: number | null; sessionId: string | null } | null): (threadId: string) => boolean {
+  const sent = new Map<string, { session: string | null; count: number }>();
+  return (threadId) => {
+    const t = limitOf(threadId);
+    if (!t || t.limit === null) return true;
+    const seen = sent.get(threadId);
+    const count = seen && (seen.session === t.sessionId || seen.session === null) ? seen.count : 0;
+    if (count >= t.limit) {
+      sent.set(threadId, { session: t.sessionId, count });
+      return false;
+    }
+    sent.set(threadId, { session: t.sessionId, count: count + 1 });
+    return true;
+  };
+}
+
+/** What a screenshot tool says instead of the image once the conversation holds as many as its model takes. */
+export const imageBudgetNote = (instead: string): string =>
+  ` No image this time: this conversation already carries as many images as its model takes in one request. ${instead} instead, and say in your reply what you couldn't look at.`;
 
 /** What the kit tools need from the app. Each returns what to tell the agent and throws with a message when it can't. */
 export interface DesignKitToolDeps {
@@ -157,6 +187,7 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
         const width = clamp(args.width, 320, 2560, 1440);
         const height = clamp(args.height, 320, 4000, 900);
         try {
+          if (deps.takeImage && !deps.takeImage(threadId)) return { text: `${deps.folder(threadId)}/${page.rel}${page.suffix}:${imageBudgetNote("Check the page with design_lint (contrast, spacing, kit and craft checks)")}` };
           const shot = await deps.screenshot(deps.url(threadId, page.rel) + page.suffix, { width, height, fullPage: args.fullPage === true });
           const note = shot.cut ? " (full page, cut at 4000 px)" : args.fullPage ? " (full page)" : "";
           return { text: `${deps.folder(threadId)}/${page.rel}${page.suffix} at ${shot.width}×${shot.height}${note}.`, imagePng: shot.png.toString("base64") };
@@ -354,6 +385,7 @@ function kitTools(deps: DesignToolDeps, kits: DesignKitToolDeps, threadId: strin
         } catch (err) {
           return { text: err instanceof Error ? err.message : String(err), isError: true };
         }
+        if (deps.takeImage && !deps.takeImage(threadId)) return { text: `${args.component.trim()}:${imageBudgetNote("Read the part with design_kit_inspect")}` };
         try {
           const shot = await deps.screenshot(deps.url(threadId, rel), { width: clamp(args.width, 320, 2560, 1280), height: 720, fullPage: true });
           const what = Object.keys(props).length ? ` with ${Object.entries(props).map(([k, v]) => `${k}=${v}`).join(" ")}` : "";

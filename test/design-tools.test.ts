@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { buildDesignExport, exportFileName, type DesignExportDeps } from "../src/main/design/export";
 import { SHOT_MAX_HEIGHT, Shooter, type ShotWindow } from "../src/main/design/shooter";
 import { kitIndexEntry, kitThemeIndex } from "../src/main/design/systems";
-import { designTools, directionStyle, type DesignToolDeps } from "../src/main/design/tools";
+import { designTools, directionStyle, imageBudget, type DesignToolDeps } from "../src/main/design/tools";
 import { tempDir } from "./helpers";
 
 const PNG = Buffer.from("png-bytes");
@@ -252,6 +252,34 @@ describe("design tools", () => {
     expect(await save.run({ markdown: "   " })).toMatchObject({ isError: true });
     expect(await save.run({ markdown: "x".repeat(40_000) })).toMatchObject({ isError: true });
     expect(deps.saved).toEqual(["# Round 1\n"]);
+  });
+
+  it("sends no image once the conversation holds its model's most, and says what to use instead", async () => {
+    const root = tempDir();
+    writeFileSync(join(root, "index.html"), "<p>hi</p>");
+    const deps = toolDeps(root, { takeImage: () => false });
+    const out = await tool(deps, "design_screenshot").run({});
+    expect(out.imagePng).toBeUndefined();
+    expect(out.isError).toBeUndefined();
+    expect(out.text).toContain("No image this time");
+    expect(out.text).toContain("design_lint");
+    expect(deps.shots).toHaveLength(0);
+  });
+});
+
+describe("imageBudget", () => {
+  it("gives a session its agent's number of images, and starts again for a new session", () => {
+    const threads: Record<string, { limit: number | null; sessionId: string | null }> = { a: { limit: 3, sessionId: null }, c: { limit: null, sessionId: "s" } };
+    const take = imageBudget((id) => threads[id] ?? null);
+    // The first turn's image counts toward the session it then creates.
+    expect(take("a")).toBe(true);
+    threads.a!.sessionId = "s1";
+    expect([take("a"), take("a"), take("a")]).toEqual([true, true, false]);
+    threads.a!.sessionId = "s2";
+    expect(take("a")).toBe(true);
+    // An agent with no limit, and an unknown thread, are never limited.
+    expect(Array.from({ length: 10 }, () => take("c")).every(Boolean)).toBe(true);
+    expect(take("gone")).toBe(true);
   });
 });
 

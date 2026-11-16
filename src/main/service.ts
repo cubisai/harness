@@ -228,6 +228,11 @@ export class Service {
     return [...this.drivers.values()];
   }
 
+  /** An agent's declared capabilities, or null when it isn't available. */
+  capabilitiesOf(agent: string): AgentDriver["capabilities"] | null {
+    return this.drivers.get(agent)?.capabilities ?? null;
+  }
+
   private driverFor(agent: string): AgentDriver {
     const d = this.drivers.get(agent);
     if (!d) throw new Error(`The agent "${agent}" isn't available. Install it or pick another agent for this thread.`);

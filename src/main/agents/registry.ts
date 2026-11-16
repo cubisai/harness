@@ -29,6 +29,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
   {
     // Reads skills from .opencode/skills, .claude/skills, and .agents/skills.
     // manualCompact: its ACP server runs "/compact" (session summarize) without advertising it (checked on 1.18.33).
+    // sessionImageLimit: it resends every image of the session on each call (DeepRelay refuses a 17th, 2026-11-16).
     id: "opencode",
     label: "OpenCode",
     command: "opencode",
@@ -37,7 +38,7 @@ export const ACP_PRESETS: AcpAgentConfig[] = [
     args: ["acp", "--print-logs", "--log-level", "INFO"],
     // v2 takes only lowercase levels (and v1 only uppercase): checked on 2.1.0 and 1.19.0.
     argsByMajor: { "2": ["acp", "--print-logs", "--log-level", "info"] },
-    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, permissionGranularity: "perTool", skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "projectClaude", "shared"] }, mcpRouter: true, manualCompact: true, subagentTeams: true },
+    capabilities: { mcpStdio: true, interrupt: true, perMessageModel: true, permissionGranularity: "perTool", skillsDelivery: { mode: "tool", prefix: "", reads: ["project", "projectClaude", "shared"] }, mcpRouter: true, manualCompact: true, subagentTeams: true, sessionImageLimit: 12 },
     injector: "opencode",
     guardPlugin: "opencode",
     effortVia: "opencode-variants",

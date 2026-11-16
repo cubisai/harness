@@ -36,7 +36,7 @@ import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
 import { DOC_SCHEME, documentUrl, pdfPageCount, serveDocument } from "./documents/serve";
 import { documentTools } from "./documents/tools";
-import { designTools } from "./design/tools";
+import { designTools, imageBudget } from "./design/tools";
 import { selectorFor } from "./browser/picker";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
@@ -576,6 +576,15 @@ async function main(): Promise<void> {
   referenceStore.cleanStaging();
   // Each design thread's own tools (bound to it), made once so its list keeps the same identity.
   const designToolLists = new Map<string, HarnessTool[]>();
+  // An agent that resends every image of its session (OpenCode) gets only its declared number back from the design tools.
+  const takeImage = imageBudget((id) => {
+    try {
+      const thread = store.getThread(id);
+      return { limit: service.capabilitiesOf(thread.agent)?.sessionImageLimit ?? null, sessionId: thread.sessionId };
+    } catch {
+      return null;
+    }
+  });
   const designToolsOf = (threadId: string): HarnessTool[] => {
     let list = designToolLists.get(threadId);
     if (!list) {
@@ -608,6 +617,7 @@ async function main(): Promise<void> {
           },
           // Always given, so the tools are always listed; before a download they say so.
           references: referenceStore,
+          takeImage,
         },
         threadId,
       );
