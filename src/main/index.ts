@@ -487,7 +487,8 @@ async function main(): Promise<void> {
     },
   );
   // The pane is one target: a thread whose turn is running owns it until the turn ends (service is set up below).
-  const tools = browserTools(browser, { busy: (threadId) => service.isRunning(threadId) });
+  // takeImage is set up below with the design tools; it's only called once a turn runs.
+  const tools = browserTools(browser, { busy: (threadId) => service.isRunning(threadId), takeImage: (threadId) => takeImage(threadId) });
   const memoryEnabled = (pid: string) => memoryOn(settings.get(), pid);
   const memoryTools = [memoryReadTool({ store: memory.store, enabled: memoryEnabled }), memoryWriteTool({ store: memory.store, enabled: memoryEnabled })];
   // Dev servers the app starts for the agent (P5.5); only these are ever stopped, all of them on quit.
@@ -700,6 +701,7 @@ async function main(): Promise<void> {
             writeFileSync(join(root, pdfRel), printed.pdf);
             return { pages: pdfPageCount(printed.pdf), text: printed.text, png: printed.png };
           },
+          takeImage,
         },
         threadId,
       );

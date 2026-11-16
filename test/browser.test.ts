@@ -3,6 +3,8 @@ import { formatSnapshot } from "../src/main/browser/snapshot";
 import { browserTools } from "../src/main/browser/tools";
 import { isAllowedUrl, normalizeUrl } from "../src/main/browser/url";
 import { BrowserController, type LogEntry } from "../src/main/browser/controller";
+import type { BrowserBackend } from "../src/main/browser/backend";
+import type { ToolContext } from "../src/main/agents/types";
 import { tempDir } from "./helpers";
 
 // The controller imports electron at module load; there is no real one under vitest.
@@ -58,6 +60,25 @@ describe("formatSnapshot", () => {
   it("says when a page is empty or cut short", () => {
     expect(formatSnapshot({ url: "about:blank", title: "", nodes: [], truncated: false })).toContain("(no visible content)");
     expect(formatSnapshot({ url: "x", title: "t", nodes: [{ kind: "text", name: "a" }], truncated: true })).toContain("snapshot truncated");
+  });
+});
+
+describe("browser_screenshot image budget", () => {
+  const backend = { kind: "headless", ensureOpen: async () => {}, screenshot: async () => ({ path: "/s.png", png: Buffer.from("p") }) } as unknown as BrowserBackend;
+  const shot = (takeImage?: (id: string) => boolean) => browserTools(backend, { takeImage }).find((t) => t.name === "browser_screenshot")!;
+  const ctx = { threadId: "t1" } as unknown as ToolContext;
+
+  it("returns the image while the thread's budget lasts, and the path alone after", async () => {
+    expect((await shot(() => true).run({ look: true }, ctx)).imagePng).toBe(Buffer.from("p").toString("base64"));
+    const spent = await shot(() => false).run({ look: true }, ctx);
+    expect(spent.imagePng).toBeUndefined();
+    expect(spent.text).toMatch(/^Saved \/s\.png\. No image this time.*browser_snapshot/);
+  });
+
+  it("doesn't spend the budget on a screenshot that only saves", async () => {
+    const take = vi.fn(() => true);
+    expect((await shot(take).run({ look: false }, ctx)).imagePng).toBeUndefined();
+    expect(take).not.toHaveBeenCalled();
   });
 });
 

@@ -8,6 +8,8 @@ import { formatLint, type LintFinding, type LintResult } from "./lint";
 import type { Shot } from "./shooter";
 import { MODES, SURFACES, type DesignDirection } from "../../shared/direction";
 import { getReference, searchReferences, type ReferenceSource } from "./references";
+import { imageBudgetNote } from "../image-budget";
+export { imageBudget, imageBudgetNote } from "../image-budget";
 
 export const DESIGN_SCREENSHOT_TOOL = "design_screenshot";
 export const DESIGN_LINT_TOOL = "design_lint";
@@ -51,31 +53,6 @@ export interface DesignToolDeps {
    */
   takeImage?(threadId: string): boolean;
 }
-
-/**
- * `takeImage` for {@link DesignToolDeps}: `limitOf` gives a thread's per-session image limit (its agent's
- * `sessionImageLimit`, null for none). A new session starts again at zero; the first turn's count carries into the
- * session it creates.
- */
-export function imageBudget(limitOf: (threadId: string) => { limit: number | null; sessionId: string | null } | null): (threadId: string) => boolean {
-  const sent = new Map<string, { session: string | null; count: number }>();
-  return (threadId) => {
-    const t = limitOf(threadId);
-    if (!t || t.limit === null) return true;
-    const seen = sent.get(threadId);
-    const count = seen && (seen.session === t.sessionId || seen.session === null) ? seen.count : 0;
-    if (count >= t.limit) {
-      sent.set(threadId, { session: t.sessionId, count });
-      return false;
-    }
-    sent.set(threadId, { session: t.sessionId, count: count + 1 });
-    return true;
-  };
-}
-
-/** What a screenshot tool says instead of the image once the conversation holds as many as its model takes. */
-export const imageBudgetNote = (instead: string): string =>
-  ` No image this time: this conversation already carries as many images as its model takes in one request. ${instead} instead, and say in your reply what you couldn't look at.`;
 
 /** What the kit tools need from the app. Each returns what to tell the agent and throws with a message when it can't. */
 export interface DesignKitToolDeps {
