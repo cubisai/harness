@@ -97,7 +97,7 @@ const DARK = reference({
   elevation: "Elevation is rejected. The system has no shadows; depth comes from photography.",
 });
 
-/** Every one of the 17 pairs in both schemes, as failures. */
+/** Every contrast pair in both schemes, as failures. */
 function contrastFailures(result: AdaptResult): string[] {
   const failures: string[] = [];
   for (const scheme of ["light", "dark"] as const) {
@@ -164,7 +164,7 @@ describe("adaptReference", () => {
     expect(roles.accent).toMatchObject({ value: "#2b59c3", confidence: "role-text" });
   });
 
-  it("passes all 17 contrast pairs in both schemes, the second one derived", () => {
+  it("passes every contrast pair in both schemes, the second one derived", () => {
     expect(contrastFailures(light)).toEqual([]);
     expect(light.report.native).toBe("light");
     expect(light.report.notes).toContain("Dark scheme derived from the light one.");

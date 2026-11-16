@@ -1215,9 +1215,10 @@ export function designLint(
     if (!rendered) continue;
     scanned += 1;
 
-    // Contrast: composite the text color over the effective background.
+    // Contrast: composite the text color over the effective background. A progress or meter's own text is its
+    // fallback for browsers without one: it's never drawn.
     try {
-      if (hasText(el)) {
+      if (hasText(el) && el.tagName !== "PROGRESS" && el.tagName !== "METER") {
         const fgRaw = h.parseColor(cs.color);
         if (fgRaw) {
           let bg: Rgba | null = null;
