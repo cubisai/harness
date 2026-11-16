@@ -2,7 +2,10 @@
 // bench's own app copy. Records per turn the style picked, pages written, tools used, the agent's last lint and
 // usage; `bench/design-score.ts` lints and screenshots the pages afterwards.
 //
-//   bun bench/design-live.ts --out <dir> [--root <app checkout>] [--agents claude,codex] [--prompts 1-10 | 1,3,4] [--port 9490]
+//   bun bench/design-live.ts --out <dir> [--root <app checkout>] [--agents claude,codex] [--prompts 1-10 | 1,3,4] [--port 9490] [--cap-min 12]
+//
+// A turn runs until the agent ends it; `--cap-min` stops it after that many minutes. A turn with no new event for
+// STALL_MS is treated as hung either way.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -16,8 +19,7 @@ import type { BenchAgent } from "./lib/types";
 const ROOT = join(import.meta.dirname, "..");
 const POLL_MS = 5_000;
 const QUIET_MS = 10_000;
-const TURN_MS = 12 * 60_000;
-const STALL_MS = 5 * 60_000;
+const STALL_MS = 15 * 60_000;
 
 export const DESIGN_PROMPTS = [
   "Landing page, note-taking app",
@@ -141,7 +143,8 @@ async function runAgent(cdp: Cdp, userDataDir: string, project: { id: string; di
     if (row?.agent !== agent.agent || row.model !== agent.model) throw new Error(`thread ${thread.id} is ${JSON.stringify(row)}, wanted ${agent.agent}/${agent.model}`);
     console.log(`[${agent.id}] #${index} ${prompt} → ${thread.id}`);
     await cdp.evaluate(`(window.unskilled.send(${JSON.stringify({ threadId: thread.id, text: prompt })}).catch((e) => console.error("design-live send", e)), true)`);
-    const end = await waitIdle(userDataDir, thread.id, Date.now() + TURN_MS);
+    const cap = Number(arg("cap-min"));
+    const end = await waitIdle(userDataDir, thread.id, cap > 0 ? Date.now() + cap * 60_000 : Number.POSITIVE_INFINITY);
     if (end !== "ended") {
       await within(cdp.call("interrupt", thread.id).catch(() => undefined));
       await sleep(10_000);
