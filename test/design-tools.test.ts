@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { buildDesignExport, exportFileName, type DesignExportDeps } from "../src/main/design/export";
 import { SHOT_MAX_HEIGHT, Shooter, type ShotWindow } from "../src/main/design/shooter";
 import { kitIndexEntry, kitThemeIndex } from "../src/main/design/systems";
-import { designTools, directionStyle, imageBudget, type DesignToolDeps } from "../src/main/design/tools";
+import { deckSlides, designTools, directionStyle, imageBudget, LINT_MAX_SLIDES, mergeSlideLints, type DesignToolDeps } from "../src/main/design/tools";
 import { tempDir } from "./helpers";
 
 const PNG = Buffer.from("png-bytes");
@@ -186,6 +186,39 @@ describe("design tools", () => {
     expect((await tool(clean, "design_lint").run({})).text).toContain("Clean: this page is done");
     const dirty = toolDeps(root, { evaluate: async () => JSON.stringify({ findings: [{ rule: "targets", selector: "a", detail: "20×20px" }], skipped: [], scanned: 9 }) });
     expect((await tool(dirty, "design_lint").run({})).text).not.toContain("Clean:");
+  });
+
+  it("lints every slide of a deck at slide size, and lists a finding once with the slides it's on", async () => {
+    const root = tempDir();
+    const slide = '<section class="slide"><div data-ui="slide"><p>x</p></div></section>';
+    writeFileSync(join(root, "index.html"), `<main class="deck">${slide.repeat(3)}</main><script src="deck.js"></script>`);
+    const seen: { url: string; width: number; height: number }[] = [];
+    const deps = toolDeps(root, {
+      evaluate: async (url, width, height) => {
+        seen.push({ url, width, height });
+        const n = Number(url.split("#")[1]);
+        const findings = [{ rule: "slop", selector: "h1", detail: "same on every slide" }, ...(n === 2 ? [{ rule: "contrast", selector: "p", detail: "2.0:1" }] : [])];
+        return JSON.stringify({ findings, skipped: [], scanned: 5 });
+      },
+    });
+    const out = await tool(deps, "design_lint").run({});
+    expect(seen.map((e) => `${e.url.split("/").pop()} ${e.width}x${e.height}`)).toEqual(["index.html#1 1920x1080", "index.html#2 1920x1080", "index.html#3 1920x1080"]);
+    expect(out.text).toContain("designs/abcd1234/index.html at 3 slides at 1920×1080");
+    expect(out.text).toContain("- [contrast] slide 2: p — 2.0:1");
+    expect(out.text).toContain("- [slop] slides 1, 2, 3: h1 — same on every slide");
+    expect(out.text).toContain("(15 elements)");
+    // One slide on request: that slide alone, still at slide size.
+    seen.length = 0;
+    expect((await tool(deps, "design_lint").run({ path: "index.html#2" })).text).toContain("designs/abcd1234/index.html#2 at 1920×1080");
+    expect(seen.map((e) => `${e.url.split("/").pop()} ${e.width}x${e.height}`)).toEqual(["index.html#2 1920x1080"]);
+  });
+
+  it("counts a deck's slides only when it loads the deck runtime, and merges per-slide lints", () => {
+    expect(deckSlides('<section class="slide a"></section><section class="slide"></section><script src="deck.js?v=2"></script>')).toBe(2);
+    expect(deckSlides('<section class="slide"></section>')).toBe(0);
+    expect(deckSlides('<section class="slideshow"></section><script src="deck.js"></script>')).toBe(0);
+    expect(mergeSlideLints([{ findings: [], skipped: ["x"], scanned: 2 }, { findings: [], skipped: ["x"], scanned: 3 }])).toEqual({ findings: [], skipped: ["x"], scanned: 5 });
+    expect(LINT_MAX_SLIDES).toBe(30);
   });
 
   it("screenshots one slide of a deck from a #hash (or ?query) on the path, without a wrapper page", async () => {
