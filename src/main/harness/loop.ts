@@ -63,6 +63,10 @@ export interface LoopInput {
   prepare?(messages: LlmMessage[], last: LlmUsage | null): Promise<void>;
   /** On an overflow before anything streamed; true retries the step once (a second overflow rethrows). */
   onOverflow?(messages: LlmMessage[]): Promise<boolean>;
+  /** The session already learned the model can't take images: drop them before every call. */
+  textOnly?: boolean;
+  /** Called once when a retry without images succeeded, so the caller can persist the stripped history and remember it. */
+  onTextOnly?(messages: LlmMessage[]): void;
   /** Tests. */
   stream?: typeof streamLlm;
 }
@@ -91,6 +95,33 @@ export const runsInParallel = (t: LoopTool | undefined): boolean => t?.parallel 
 export const REPEAT_FAIL_NOTE = "This exact command has now failed 3 times this turn. Don't run it again unchanged: read the error, change the approach, or tell the user what's blocking you.";
 /** Self-improve S6: a user message after an answer claims checks pass without one running, when nudges are on. */
 export const UNBACKED_PASS_NOTE = "You said tests or checks pass, but no test, typecheck, lint or build command ran this turn. Run the relevant check now and report its real result, or say plainly that it wasn't run.";
+/** A text-only model's stand-in for an image it can't see. */
+export const IMAGE_DROPPED_NOTE = "[Image not shown: this model can't view images. Work from text: read the file, the DOM or the lint instead.]";
+
+/**
+ * Replaces every image in the history with a text note, in place: a tool result's
+ * `imagePng` and a user message's image part. True when it changed anything.
+ */
+export function withoutImages(messages: LlmMessage[]): boolean {
+  let changed = false;
+  for (const m of messages) {
+    if (m.role === "tool") {
+      m.results.forEach((r, i) => {
+        if (r.imagePng === undefined) return;
+        const { imagePng: _image, ...rest } = r;
+        m.results[i] = { ...rest, text: `${r.text}\n${IMAGE_DROPPED_NOTE}` };
+        changed = true;
+      });
+    } else if (m.role === "user") {
+      m.content.forEach((p, i) => {
+        if (p.type !== "image") return;
+        m.content[i] = { type: "text", text: IMAGE_DROPPED_NOTE };
+        changed = true;
+      });
+    }
+  }
+  return changed;
+}
 
 const add = (a: LlmUsage, b: LlmUsage): LlmUsage => ({
   inputTokens: a.inputTokens + b.inputTokens,
@@ -120,6 +151,10 @@ export async function runLoop(input: LoopInput): Promise<LoopResult> {
   let usage = emptyUsage();
   let last: LlmUsage | null = null;
   let overflowRetried = false;
+  // Images a text-only model can't take: dropped from the start, or after one retry taught us.
+  let textOnly = input.textOnly === true;
+  let imageRetried = false;
+  let pendingTextOnly = false;
 
   const append = (m: LlmMessage): void => {
     input.messages.push(m);
@@ -145,6 +180,7 @@ export async function runLoop(input: LoopInput): Promise<LoopResult> {
     let streamedText = false;
     let streamedToolInput = false;
 
+    if (textOnly) withoutImages(input.messages);
     try {
       for await (const e of stream(input.route, { ...input.request, messages: input.messages, tools: definitions }, { signal: input.signal })) {
         if (e.type === "text-delta") {
@@ -180,9 +216,23 @@ export async function runLoop(input: LoopInput): Promise<LoopResult> {
           continue;
         }
       }
+      // A bad request that carried images, with nothing streamed yet, usually means
+      // the model can't view them: retry this call once with every image stripped.
+      if (err instanceof LlmError && err.kind === "bad-request" && !streamedText && !streamedToolInput && !textOnly && !imageRetried && withoutImages(input.messages)) {
+        imageRetried = true;
+        textOnly = true;
+        pendingTextOnly = true;
+        step--; // The retry isn't a step.
+        continue;
+      }
       throw err;
     }
     if (!message) throw new LlmError(`${input.route.label} ended the answer early.`, "transient");
+    // The retry worked, so the caller persists the stripped history and remembers it.
+    if (pendingTextOnly) {
+      pendingTextOnly = false;
+      input.onTextOnly?.(input.messages);
+    }
 
     showMessage(input.emit, message, itemId);
     append({ role: "assistant", content: message });

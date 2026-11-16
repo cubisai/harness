@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ThreadEvent } from "../src/shared/types";
-import { REPEAT_FAIL_NOTE, UNBACKED_PASS_NOTE, runLoop, runsInParallel, type LoopInput, type LoopTool } from "../src/main/harness/loop";
+import { IMAGE_DROPPED_NOTE, REPEAT_FAIL_NOTE, UNBACKED_PASS_NOTE, runLoop, runsInParallel, type LoopInput, type LoopTool } from "../src/main/harness/loop";
 import { decide, refusal } from "../src/main/harness/permissions";
 import type { Route } from "../src/main/harness/llm/client";
 import { LlmError, emptyUsage, type AssistantPart, type LlmEvent, type LlmMessage, type LlmRequest } from "../src/main/harness/llm/types";
@@ -411,5 +411,81 @@ describe("refusal", () => {
   it("keeps the mode refusals", () => {
     expect(refusal("plan", "deny")).toMatch(/^Plan mode is read-only/);
     expect(refusal("ask", "deny")).toBe("This call isn't allowed in the current mode.");
+  });
+});
+
+describe("images to a text-only model", () => {
+  /** Whether a message as sent on the wire holds an image. */
+  const holdsImage = (m: LlmMessage): boolean => (m.role === "tool" ? m.results.some((r) => r.imagePng !== undefined) : m.role === "user" ? m.content.some((p) => p.type === "image") : false);
+
+  /** A fake model that rejects any request holding an image with a 400, and otherwise answers. */
+  function visionless(answer: AssistantPart[]) {
+    const requests: LlmRequest[] = [];
+    const withImage: boolean[] = [];
+    const stream = (async function* (_r: Route, req: LlmRequest): AsyncGenerator<LlmEvent> {
+      requests.push(req);
+      const found = req.messages.some(holdsImage);
+      withImage.push(found);
+      if (found) throw new LlmError("HTTP 400", "bad-request", 400);
+      for (const p of answer) if (p.type === "text") yield { type: "text-delta", text: p.text };
+      yield { type: "finish", reason: "stop", message: answer, usage: usage(10) };
+    }) as LoopInput["stream"];
+    return { stream, requests, withImage };
+  }
+
+  const withImage: LlmMessage[] = [
+    { role: "user", content: [{ type: "text", text: "look" }] },
+    { role: "assistant", content: [call("c1", "read", { path: "a.png" })] },
+    { role: "tool", results: [{ callId: "c1", name: "read", text: "a.png", imagePng: "iVBORw0KGgo=" }] },
+  ];
+
+  it("retries once without the images and keeps the session text-only", async () => {
+    const s = visionless(text("done"));
+    let stripped = 0;
+    const { input } = setup({ stream: s.stream, messages: structuredClone(withImage), onTextOnly: () => stripped++ });
+    expect(await runLoop(input)).toMatchObject({ stop: "done" });
+    expect(s.withImage).toEqual([true, false]);
+    expect(s.requests).toHaveLength(2);
+    const toolMessage = s.requests[1]!.messages.find((m): m is Extract<LlmMessage, { role: "tool" }> => m.role === "tool")!;
+    expect(toolMessage.results[0]!.imagePng).toBeUndefined();
+    expect(toolMessage.results[0]!.text).toContain(IMAGE_DROPPED_NOTE);
+    expect(stripped).toBe(1);
+  });
+
+  it("rethrows a bad request when the history holds no images", async () => {
+    let calls = 0;
+    const stream = (async function* (): AsyncGenerator<LlmEvent> {
+      calls++;
+      throw new LlmError("HTTP 400", "bad-request", 400);
+    }) as LoopInput["stream"];
+    let stripped = 0;
+    const { input } = setup({ stream, onTextOnly: () => stripped++ });
+    await expect(runLoop(input)).rejects.toMatchObject({ kind: "bad-request" });
+    expect(calls).toBe(1);
+    expect(stripped).toBe(0);
+  });
+
+  it("rethrows when the retry without images fails too", async () => {
+    let calls = 0;
+    const stream = (async function* (): AsyncGenerator<LlmEvent> {
+      calls++;
+      throw new LlmError("HTTP 400", "bad-request", 400);
+    }) as LoopInput["stream"];
+    let stripped = 0;
+    const { input } = setup({ stream, messages: structuredClone(withImage), onTextOnly: () => stripped++ });
+    await expect(runLoop(input)).rejects.toMatchObject({ kind: "bad-request" });
+    expect(calls).toBe(2);
+    expect(stripped).toBe(0);
+  });
+
+  it("drops images from the first call when the session is already text-only", async () => {
+    const s = visionless(text("done"));
+    let stripped = 0;
+    const messages: LlmMessage[] = [{ role: "user", content: [{ type: "image", mediaType: "image/png", data: "iVBORw0KGgo=" }] }];
+    const { input } = setup({ stream: s.stream, messages, textOnly: true, onTextOnly: () => stripped++ });
+    expect(await runLoop(input)).toMatchObject({ stop: "done" });
+    expect(s.withImage).toEqual([false]);
+    expect(s.requests).toHaveLength(1);
+    expect(stripped).toBe(0);
   });
 });
