@@ -47,10 +47,10 @@ describe("claimsPass", () => {
 
 describe("ranChecks", () => {
   it("recognises test, typecheck, lint and build commands", () => {
-    for (const c of ["npm test", "bun run typecheck", "pytest -q", "go test ./...", "cargo clippy", "npx tsc --noEmit", "make check", "cd pkg && npm test", "CI=1 vitest run"]) {
+    for (const c of ["npm test", "bun run typecheck", "pytest -q", "go test ./...", "cargo clippy", "npx tsc --noEmit", "make check", "cd pkg && npm test", "CI=1 vitest run", "./node_modules/.bin/vitest run", "/usr/local/bin/pytest -q"]) {
       expect(ranChecks([c]), c).toBe(true);
     }
-    for (const c of ["ls -la", "cat src/a.ts", "git status", "echo tests pass", "echo 'all tests pass'", "printf 'build succeeded'", "git commit -m 'fix test'", "rg test src/", "cat test/a.test.ts"]) {
+    for (const c of ["ls -la", "cat src/a.ts", "git status", "echo tests pass", "echo 'all tests pass'", "printf 'build succeeded'", "git commit -m 'fix test'", "rg test src/", "cat test/a.test.ts", "/usr/bin/git log --grep test", "/bin/echo build ok"]) {
       expect(ranChecks([c]), c).toBe(false);
     }
   });

@@ -365,6 +365,34 @@ describe("AutomationRunner.drain", () => {
     expect(dest.payloads.filter((p) => p.automationId === "a1")).toHaveLength(2);
   });
 
+  it("resumes scheduled runs once a manual run settles after paused-budget, without piling up cancelled runs", async () => {
+    let now = 1_000;
+    const { db } = open(() => now);
+    db.create(base({ id: "a1", budgetUsd: 0.1 }));
+    let cost = 0.25;
+    const runner = new AutomationRunner(makeDeps(db, { now: () => now, totals: () => ({ costUsd: cost, inputTokens: 1, outputTokens: 1 }) }));
+
+    now = 300_000;
+    runner.tick(now);
+    await runner.drain();
+    expect(db.runs("a1")[0]!.status).toBe("paused-budget");
+
+    // Parked: later intervals claim nothing (no cancelled rows per tick).
+    now = 600_000;
+    expect(runner.tick(now)).toBe(0);
+    expect(db.runs("a1")).toHaveLength(1);
+
+    cost = 0.05;
+    runner.runNow("a1");
+    await runner.drain();
+    expect(db.runs("a1")[0]!.status).toBe("succeeded");
+
+    now = 900_000;
+    expect(runner.tick(now)).toBe(1);
+    await runner.drain();
+    expect(db.runs("a1").map((r) => r.status)).toEqual(["succeeded", "succeeded", "paused-budget"]);
+  });
+
   it("waits for an interactive turn and leaves the queue for the next drain", async () => {
     const now = 1_000;
     const { db } = open(() => now);

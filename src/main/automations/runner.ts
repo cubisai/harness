@@ -56,6 +56,15 @@ function reason(err: unknown): string {
 }
 
 /** Claimed-but-not-yet-run run ids, drained one at a time. */
+/**
+ * Scheduled runs stay parked while the newest settled run (cancelled and queued ones skipped) is
+ * paused-budget on the current config. A config change or a manual run that settles lifts it.
+ */
+function budgetPaused(store: RunnerDeps["store"], a: { id: string; configVersion: number }, exceptRunId?: number): boolean {
+  const latest = store.runs(a.id, 20).find((r) => r.id !== exceptRunId && r.status !== "cancelled" && r.status !== "queued");
+  return latest?.status === "paused-budget" && latest.configVersion === a.configVersion;
+}
+
 export class AutomationRunner {
   private queue: number[] = [];
   private draining = false;
@@ -131,8 +140,7 @@ export class AutomationRunner {
     for (const a of store.list()) {
       if (!a.enabled) continue;
       try {
-        const latest = store.runs(a.id, 1)[0];
-        if (latest?.status === "paused-budget" && latest.configVersion === a.configVersion) continue;
+        if (budgetPaused(store, a)) continue;
         const last = store.lastScheduled(a.id) ?? a.createdAt;
         for (const t of dueTimes(a.schedule, last, now, a.missed, a.anchor)) {
           const run = store.claimRun(a.id, runKey(a.id, t), t);
@@ -193,7 +201,7 @@ export class AutomationRunner {
       store.finishRun(id, { status: "cancelled" });
       return;
     }
-    if (!manual && store.runs(a.id, 20).some((r) => r.id !== id && r.status === "paused-budget" && r.configVersion === a.configVersion)) {
+    if (!manual && budgetPaused(store, a, id)) {
       store.finishRun(id, { status: "cancelled" });
       return;
     }

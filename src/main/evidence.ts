@@ -79,7 +79,8 @@ export function isCheckCommand(command: string): boolean {
       seg = seg.replace(/^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s]*)\s+/, "").trim();
     }
     if (!seg || /^cd(?:\s|$)/i.test(seg)) continue;
-    const verb = seg.replace(/^(?:\.\/|\/[^\s/]+\/)+/, "");
+    // The program's own name: `./node_modules/.bin/vitest` → `vitest`, `/usr/bin/git` → `git`.
+    const verb = seg.replace(/^\S*\//, "");
     if (NON_CHECK_VERB.test(verb)) continue;
     if (CHECK_COMMAND.test(seg)) return true;
   }
