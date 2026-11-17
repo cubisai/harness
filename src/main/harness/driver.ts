@@ -3,6 +3,7 @@
 // app's guide, memory, browser and MCP tools, and a JSONL session per thread.
 
 import { randomUUID } from "node:crypto";
+import { BoundedMap, BoundedSet } from "../bounded";
 import { CODE_HINT } from "../code-hint";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -93,14 +94,17 @@ function protocolOf(provider: Provider): HarnessProtocol | null {
   return provider.wireProtocol === "gemini" ? null : provider.wireProtocol;
 }
 
+/** Sessions a provider driver remembers reads, script store and the text-only flag for; past it the oldest forgets them, as a restart does. */
+const SESSION_CACHE_CAP = 64;
+
 export function createProviderDriver(providerId: string, deps: ProviderDriverDeps): AgentDriver {
   const id = providerAgentId(providerId);
   // Files read per session, kept across turns so an edit next turn needs no re-read (a restart forgets them).
-  const readsBySession = new Map<string, Map<string, number>>();
+  const readsBySession = new BoundedMap<string, Map<string, number>>(SESSION_CACHE_CAP);
   // run_code's store/load values, per session, the same way.
-  const codeStateBySession = new Map<string, Map<string, string>>();
+  const codeStateBySession = new BoundedMap<string, Map<string, string>>(SESSION_CACHE_CAP);
   // Sessions whose model rejected an image once: their images go as a text note from then on.
-  const textOnlySessions = new Set<string>();
+  const textOnlySessions = new BoundedSet<string>(SESSION_CACHE_CAP);
   const current = (): Provider | undefined => deps.provider();
 
   const models = (): ModelOption[] =>

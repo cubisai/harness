@@ -765,6 +765,12 @@ async function main(): Promise<void> {
     outputDir: join(userData, "harness-output"),
     guardScript,
   });
+  /** Drop a deleted thread's cached tool lists and code-mode state. */
+  const forgetThread = (id: string): void => {
+    for (const map of [designToolLists, designThreadTools, shellToolLists, teamToolLists, documentToolLists, threadToolLists] as Map<string, unknown>[]) map.delete(id);
+    codeServer.forget(id);
+    codeModeOf.forget(id);
+  };
   // Started on first use, for Codex and ACP agents, which take tools over MCP.
   let toolServer: Promise<ToolServer> | null = null;
   // `/mcp-skills` adds the skill tool for agents in "tool" delivery mode.
@@ -2019,7 +2025,9 @@ async function main(): Promise<void> {
   });
   ipcMain.handle("projects:delete", async (_e, id: string) => {
     for (const shell of shells.list()) if (threadOf(shell.threadId)?.projectId === id) await shells.stop(shell.id);
-    return service.deleteProject(id);
+    const gone = store.listThreads(id).map((t) => t.id);
+    await service.deleteProject(id);
+    for (const tid of gone) forgetThread(tid);
   });
   ipcMain.handle("shells:list", (_e, threadId: string) => shells.list(threadId));
   ipcMain.handle("shells:output", (_e, id: string, since?: number) => {
@@ -2100,10 +2108,9 @@ async function main(): Promise<void> {
   );
   ipcMain.handle("threads:delete", async (_e, id: string) => {
     await shells.stopThread(id);
-    shellToolLists.delete(id);
     await service.deleteThread(id);
+    forgetThread(id);
     // Its team workspace and Codex member roles go with it.
-    teamToolLists.delete(id);
     rmSync(teamRunDir(id), { recursive: true, force: true });
     rmSync(join(userData, "codex-roles", id), { recursive: true, force: true });
   });

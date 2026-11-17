@@ -15,6 +15,8 @@ const MAX_MATCHES = 100;
 export const SCRIPT_MAX_MATCHES = 5000;
 /** Directory listings in flight at once during a walk. */
 const MAX_OPEN_DIRS = 8;
+/** Stats in flight at once while sorting matches by mtime. */
+const STAT_CONCURRENCY = 64;
 
 function escapeRegExp(ch: string): string {
   return ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -135,23 +137,29 @@ export const globTool: NativeTool = {
     const limit = intAny(args, ["limit"]);
     const re = globToRegExp(pattern);
     const matches: { rel: string; mtimeMs: number }[] = [];
+    // A script without a limit gets an error past the cap anyway: stop walking there, before any stat.
+    const refuseAt = ctx.script && limit === undefined ? SCRIPT_MAX_MATCHES : Infinity;
     for await (const file of walkFiles(dir.abs, ctx.signal)) {
-      if (re.test(file.rel)) matches.push({ rel: file.rel, mtimeMs: 0 });
+      if (!re.test(file.rel)) continue;
+      matches.push({ rel: file.rel, mtimeMs: 0 });
+      if (matches.length > refuseAt) throw new ToolError(`More than ${SCRIPT_MAX_MATCHES} files match ${pattern}; narrow the pattern or the path, or set a limit.`);
     }
-    // mtimes fill in concurrently, newest first; a file that raced away sorts oldest.
-    await Promise.all(
-      matches.map(async (m) => {
+    // mtimes fill in a few at a time, newest first; a file that raced away sorts oldest.
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (next < matches.length) {
+        const m = matches[next++]!;
         try {
           m.mtimeMs = (await stat(join(dir.abs, m.rel))).mtimeMs;
         } catch {
           // keep the oldest possible time
         }
-      }),
-    );
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(STAT_CONCURRENCY, matches.length) }, worker));
     const display = { summary: pattern };
     matches.sort((a, b) => b.mtimeMs - a.mtimeMs);
     if (ctx.script) {
-      if (limit === undefined && matches.length > SCRIPT_MAX_MATCHES) throw new ToolError(`More than ${SCRIPT_MAX_MATCHES} files match ${pattern}; narrow the pattern or the path, or set a limit.`);
       const paths = matches.slice(0, limit ?? SCRIPT_MAX_MATCHES).map((m) => m.rel);
       return { text: paths.join("\n"), data: paths, display };
     }

@@ -36,13 +36,14 @@ export const CODE_MODE_DESCRIPTION = `${CODE_DESCRIPTION} Scripts here only read
 const PARENT_WAIT_MS = 2000;
 
 /** Per-thread code mode: read from settings the first time a thread asks, then fixed for this app run, so a session's tool list never changes. */
-export function codeModes(read: () => CodeMode | undefined): (threadId: string) => CodeMode {
+export function codeModes(read: () => CodeMode | undefined): ((threadId: string) => CodeMode) & { forget(threadId: string): void } {
   const fixed = new Map<string, CodeMode>();
-  return (threadId) => {
+  const modeOf = (threadId: string): CodeMode => {
     let mode = fixed.get(threadId);
     if (!mode) fixed.set(threadId, (mode = read() ?? "off"));
     return mode;
   };
+  return Object.assign(modeOf, { forget: (threadId: string) => void fixed.delete(threadId) });
 }
 
 export interface CodeServerDeps {
@@ -82,7 +83,7 @@ const readsOnly = (t: HarnessTool): boolean => !NEVER.has(t.name) && (t.effect ?
  * Claude's in-process server. Read-only: a script can't write, edit, run
  * commands or ask; the agent does those itself.
  */
-export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string): HarnessTool } {
+export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string): HarnessTool; forget(threadId: string): void } {
   const states = new Map<string, Map<string, string>>();
   const reads = new Map<string, Map<string, number>>();
   const tools = new Map<string, HarnessTool>();
@@ -139,6 +140,12 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
         tools.set(threadId, tool);
       }
       return tool;
+    },
+    /** A deleted thread's script store, read times and tool go with it. */
+    forget(threadId) {
+      states.delete(threadId);
+      reads.delete(threadId);
+      tools.delete(threadId);
     },
   };
 }

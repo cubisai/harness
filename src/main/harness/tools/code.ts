@@ -18,6 +18,30 @@ const DEFAULT_MEMORY_BYTES = 64 * 1024 * 1024;
 /** Limits on what a script may keep in the session state, in characters. */
 const MAX_STATE_VALUE_CHARS = 256 * 1024;
 const MAX_STATE_CHARS = 1024 * 1024;
+/** Console output one run keeps, in characters: a print loop can't fill memory before the time limit stops it. */
+const MAX_LOG_CHARS = 256 * 1024;
+
+/** A run's console lines, up to MAX_LOG_CHARS; later lines are only counted. */
+class LogBuffer {
+  private lines: string[] = [];
+  private chars = 0;
+  private dropped = 0;
+  get length(): number {
+    return this.lines.length;
+  }
+  push(line: string): void {
+    if (this.dropped || this.chars + line.length > MAX_LOG_CHARS) {
+      this.dropped += 1;
+      return;
+    }
+    this.chars += line.length + 1;
+    this.lines.push(line);
+  }
+  /** The kept lines, with a note for the dropped ones. */
+  shown(): string[] {
+    return this.dropped ? [...this.lines, `[… ${this.dropped} more console line${this.dropped === 1 ? "" : "s"} dropped]`] : this.lines;
+  }
+}
 
 export interface CodeToolOptions {
   /** Every tool the loop offers; `run_code` and the agent-ish ones are hidden from a script. */
@@ -77,7 +101,8 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
     summarize: (args) => oneLine(String(args.code ?? "")),
     run: async (args, call) => {
       const code = typeof args.code === "string" ? args.code : "";
-      const logs: string[] = [];
+      const logs = new LogBuffer();
+      const spill = { outputDir: o.outputDir, callId: call.id };
       let stopReason: "timeout" | "abort" | null = null;
       let runtime: QuickJSRuntime | null = null;
       let context: QuickJSContext | null = null;
@@ -120,7 +145,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         if (isFail(evaluated)) {
           const message = explain(errorText(context, evaluated.error), o);
           evaluated.error.dispose();
-          return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
+          return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs, spill), isError: true };
         }
         const promise = evaluated.value;
         let settled: Awaited<ReturnType<QuickJSContext["resolvePromise"]>> | null = null;
@@ -135,12 +160,12 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
           promise.dispose();
         }
         if (settled === null) {
-          return { text: failure(stopReason === "abort" ? STOPPED : timingOut(timeoutMs), logs), isError: true };
+          return { text: failure(stopReason === "abort" ? STOPPED : timingOut(timeoutMs), logs, spill), isError: true };
         }
         if (isFail(settled)) {
           const message = explain(errorText(context, settled.error), o);
           settled.error.dispose();
-          return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
+          return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs, spill), isError: true };
         }
         const wasUndefined = context.typeof(settled.value) === "undefined";
         const rendered = render(context, settled.value);
@@ -151,16 +176,16 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
           const drained = await Promise.race([Promise.allSettled([...pending].map((d) => d.settled)).then(() => true), stop.promise.then(() => false)]);
           if (!drained) {
             const why = stopReason === "abort" ? STOPPED : timingOut(timeoutMs);
-            return { text: failure(`${why} The script returned with ${left} tool call${left === 1 ? "" : "s"} it never awaited still running; they were stopped. Await every tool call.`, logs), isError: true };
+            return { text: failure(`${why} The script returned with ${left} tool call${left === 1 ? "" : "s"} it never awaited still running; they were stopped. Await every tool call.`, logs, spill), isError: true };
           }
         }
         if (o.state) for (const key of written) o.state.set(key, staged.get(key)!);
-        let text = [...logs, `=> ${rendered}`].join("\n");
+        let text = [...logs.shown(), `=> ${rendered}`].join("\n");
         if (wasUndefined && logs.length === 0) text += "\n\nThe script returned undefined and printed nothing: return a value (or console.log it) so there is something to read.";
         return { text: bound(text, { outputDir: o.outputDir, callId: call.id }) };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
+        return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs, spill), isError: true };
       } finally {
         stop.done();
         runAbort.abort();
@@ -182,7 +207,7 @@ function install(
   context: QuickJSContext,
   runtime: QuickJSRuntime,
   o: CodeToolOptions,
-  logs: string[],
+  logs: LogBuffer,
   parentId: string,
   signal: AbortSignal,
   staged: Map<string, string>,
@@ -526,9 +551,10 @@ function explain(message: string, o: CodeToolOptions): string {
 }
 
 /** Console output before an error still reaches the model, with the error after it. */
-function failure(message: string, logs: string[]): string {
+function failure(message: string, logs: LogBuffer, spill: { outputDir: string; callId: string }): string {
   const tail = `Error: ${message}\n\nCalls made before the error are not undone.`;
-  return logs.length ? `${logs.join("\n")}\n\n${tail}` : tail;
+  // Long output is bounded like a success's; the error stays at the end, never cut off.
+  return logs.length ? `${bound(logs.shown().join("\n"), spill)}\n\n${tail}` : tail;
 }
 
 /** Stops a script that is waiting on a host function no interrupt can reach. */

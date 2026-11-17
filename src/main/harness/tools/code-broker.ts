@@ -10,7 +10,7 @@ import type { CodeToolOptions } from "./code";
 
 /** At most this many of one script's tool calls run at once; the rest wait their turn. */
 export const MAX_IN_FLIGHT = 16;
-/** One script's calls shown as rows; past this, one note row stands in for the rest (a loop can make thousands). */
+/** One script's read calls shown as rows; past this, one note row stands in for the rest (a loop can make thousands). Effects are always shown. */
 export const MAX_LISTED_CALLS = 40;
 
 export interface CodeBrokerOptions {
@@ -83,11 +83,13 @@ export function createCodeBroker(o: CodeBrokerOptions): CodeToolOptions["broker"
     // The row goes up before the permission ask, so a refused call shows in the thread too.
     const toolUseId = `${parentId ?? scriptId}:${++childCalls}`;
     const rowKey = parentId ?? scriptId;
-    const n = (listed.get(rowKey) ?? 0) + 1;
-    listed.set(rowKey, n);
-    const shown = n <= MAX_LISTED_CALLS;
+    // Only reads count toward the cap: an edit, a command or a state change always gets its row.
+    const effect = runsAlone(tool);
+    const n = effect ? 0 : (listed.get(rowKey) ?? 0) + 1;
+    if (!effect) listed.set(rowKey, n);
+    const shown = effect || n <= MAX_LISTED_CALLS;
     if (n === MAX_LISTED_CALLS + 1) {
-      o.emit({ kind: "tool-use", toolUseId: `${rowKey}:more`, name: "Note", summary: `Calls after the first ${MAX_LISTED_CALLS} run without their own rows`, ...nest });
+      o.emit({ kind: "tool-use", toolUseId: `${rowKey}:more`, name: "Note", summary: `Read calls after the first ${MAX_LISTED_CALLS} run without their own rows`, ...nest });
       o.emit({ kind: "tool-result", toolUseId: `${rowKey}:more`, isError: false, summary: "Not listed", ...nest });
     }
     const emit = (e: Parameters<CodeBrokerOptions["emit"]>[0]): void => {
