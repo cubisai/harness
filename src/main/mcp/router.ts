@@ -24,9 +24,14 @@ interface PoolEntry {
   client: Client;
   transport: Transport;
   lastUsed: number;
+  /** Calls using this entry right now; the sweeper never closes an entry with one. */
+  inFlight: number;
   /** Shared by concurrent callers; set once per entry, before the first await. */
   connecting?: Promise<void>;
 }
+
+/** The reply for a call the user stopped; the connection stays up for other callers. */
+const INTERRUPTED = "Interrupted by the user.";
 
 /** A pid is still running (signal 0 only probes). */
 function alive(pid: number): boolean {
@@ -57,8 +62,13 @@ export class McpClientPool {
     this.onToolsChanged = opts.onToolsChanged;
   }
 
-  /** Call one tool on this server, connecting it first if needed; never throws. */
-  async callTool(spec: McpServerSpec, name: string, args: Record<string, unknown>): Promise<{ ok: boolean; text: string; isError: boolean }> {
+  /**
+   * Call one tool on this server, connecting it first if needed; never throws.
+   * `signal` stops waiting (the SDK tells the server the request is cancelled),
+   * without closing the shared connection under other callers.
+   */
+  async callTool(spec: McpServerSpec, name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<{ ok: boolean; text: string; isError: boolean }> {
+    if (signal?.aborted) return { ok: false, text: INTERRUPTED, isError: true };
     this.startSweeper();
     const key = stableStringify(spec);
     let entry = this.entries.get(key);
@@ -66,25 +76,37 @@ export class McpClientPool {
       entry = this.createEntry(spec);
       this.entries.set(key, entry);
     }
+    entry.inFlight++;
+    entry.lastUsed = this.now();
     try {
-      if (!entry.connecting) entry.connecting = this.race(entry.client.connect(entry.transport), this.connectTimeoutMs);
-      await entry.connecting;
-      const result = await this.race(entry.client.callTool({ name, arguments: args }), this.callTimeoutMs);
-      entry.lastUsed = this.now();
+      if (!entry.connecting) {
+        entry.connecting = this.race(entry.client.connect(entry.transport), this.connectTimeoutMs);
+        // A caller who stopped early no longer awaits it; a failed connect must not go unhandled.
+        entry.connecting.catch(() => {});
+      }
+      // Stop during a cold start settles at once; the connect itself carries on for the next caller.
+      await this.raceAbort(entry.connecting, signal);
+      const result = await this.race(entry.client.callTool({ name, arguments: args }, undefined, signal ? { signal } : undefined), this.callTimeoutMs);
       const parts: string[] = [];
       const content = (result.content ?? []) as { type: string; text?: string }[];
       for (const part of content) parts.push(part.type === "text" ? (part.text ?? "") : `[${part.type} content omitted]`);
       return { ok: true, text: parts.join("\n"), isError: result.isError === true };
     } catch (err) {
+      // An abort is the caller's Stop, not a broken server: keep the client for everyone else.
+      if (signal?.aborted) return { ok: false, text: INTERRUPTED, isError: true };
       await this.drop(key, entry);
       return { ok: false, text: err instanceof Error ? err.message : String(err), isError: true };
+    } finally {
+      entry.inFlight--;
+      entry.lastUsed = this.now();
     }
   }
 
-  /** Close entries idle for at least `idleMs`. */
+  /** Close entries idle for at least `idleMs`, leaving alone any with a call in flight. */
   async sweep(): Promise<void> {
     const now = this.now();
     for (const [key, entry] of [...this.entries]) {
+      if (entry.inFlight > 0) continue;
       if (now - entry.lastUsed >= this.idleMs) {
         this.entries.delete(key);
         await this.closeEntry(entry);
@@ -107,7 +129,7 @@ export class McpClientPool {
     const transport: Transport = clientTransport(spec);
     const client = new Client({ name: "cubiq", version: "1.0.0" });
     client.setNotificationHandler(ToolListChangedNotificationSchema, () => this.onToolsChanged?.(spec));
-    return { client, transport, lastUsed: this.now() };
+    return { client, transport, lastUsed: this.now(), inFlight: 0 };
   }
 
   private async drop(key: string, entry: PoolEntry): Promise<void> {
@@ -129,6 +151,20 @@ export class McpClientPool {
       timer = setTimeout(() => reject(new Error(`No answer in ${Math.round(ms / 1000)} seconds.`)), ms);
     });
     return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+  }
+
+  /** Settle with the work or reject as soon as `signal` aborts; the work itself keeps running. */
+  private raceAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return work;
+    if (signal.aborted) return Promise.reject(new Error(INTERRUPTED));
+    let onAbort: (() => void) | undefined;
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => reject(new Error(INTERRUPTED));
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+    return Promise.race([work, aborted]).finally(() => {
+      if (onAbort) signal.removeEventListener("abort", onAbort);
+    });
   }
 
   private startSweeper(): void {
@@ -307,7 +343,7 @@ export function routerTools(
           return { text: JSON.stringify({ status: "validation_error", server, tool, error: check.errorMessage, expected: found.inputSchema }), isError: true };
         }
       }
-      const r = await deps.pool.callTool(target.spec, tool, args);
+      const r = await deps.pool.callTool(target.spec, tool, args, ctx?.signal);
       return { text: r.text, isError: r.isError };
     },
   });

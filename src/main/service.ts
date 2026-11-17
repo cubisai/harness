@@ -1005,7 +1005,8 @@ export class Service {
           }
           if (event.kind === "assistant-text" || event.kind === "tool-use" || event.kind === "thinking" || event.kind === "error" || event.kind === "plan") answered = true;
           // An Edit that completed is what makes a file change count even outside git.
-          if (event.kind === "tool-use" && event.name === "Edit") editIds.add(event.toolUseId);
+          // Canonical: the native loop's writeTool emits "Write", which is a file change too.
+          if (event.kind === "tool-use" && canonicalTool(event.name) === "Edit") editIds.add(event.toolUseId);
           if (event.kind === "tool-result" && !event.isError && editIds.has(event.toolUseId)) {
             edited = true;
             editDiffs.push(...diffsOf(event.payload));

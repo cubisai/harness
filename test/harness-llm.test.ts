@@ -102,6 +102,32 @@ describe("openai-chat", () => {
       expect((e as LlmError).kind).toBe("overflow");
     }
   });
+
+  it("keeps extra_content from a tool-call delta so Gemini's thought signature survives", () => {
+    const f = finish(
+      run("openai-chat", [
+        { choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "read", arguments: '{"path":"a"}' }, extra_content: { google: { thought_signature: "sig" } } }] } }] },
+        { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+      ]),
+    );
+    expect(f.message).toEqual([{ type: "tool-call", id: "c1", name: "read", input: { path: "a" }, extra: { google: { thought_signature: "sig" } } }]);
+  });
+
+  it("replays extra_content on the assistant tool call only when it was set", () => {
+    const withExtra = request({
+      messages: [{ role: "assistant", content: [{ type: "tool-call", id: "c1", name: "read", input: { path: "a" }, extra: { google: { thought_signature: "sig" } } }] }],
+    });
+    const messages = PROTOCOLS["openai-chat"].body(withExtra).messages as Record<string, unknown>[];
+    const call = (messages.at(-1)!.tool_calls as Record<string, unknown>[])[0]!;
+    expect(call).toEqual({ id: "c1", type: "function", function: { name: "read", arguments: '{"path":"a"}' }, extra_content: { google: { thought_signature: "sig" } } });
+
+    const plain = request({
+      messages: [{ role: "assistant", content: [{ type: "tool-call", id: "c1", name: "read", input: { path: "a" } }] }],
+    });
+    const plainMessages = PROTOCOLS["openai-chat"].body(plain).messages as Record<string, unknown>[];
+    const plainCall = (plainMessages.at(-1)!.tool_calls as Record<string, unknown>[])[0]!;
+    expect("extra_content" in plainCall).toBe(false);
+  });
 });
 
 describe("openai-responses", () => {

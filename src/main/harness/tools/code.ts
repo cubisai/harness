@@ -82,7 +82,12 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
       let runtime: QuickJSRuntime | null = null;
       let context: QuickJSContext | null = null;
       let disposeInstall: (() => void) | null = null;
-      let stop: { promise: Promise<void>; done: () => void } | null = null;
+      // The run owns its tool calls: Stop or the time limit aborts every one still running or queued.
+      const runAbort = new AbortController();
+      const stop = watchStop(call.signal, timeoutMs, (r) => {
+        stopReason ??= r;
+        runAbort.abort();
+      });
       // Host promises of tool calls still in flight: freed before the context, or QuickJS aborts on a leak.
       const pending = new Set<QuickJSDeferredPromise>();
       try {
@@ -94,11 +99,11 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         const afterDeadline = shouldInterruptAfterDeadline(Date.now() + timeoutMs);
         live.setInterruptHandler(() => {
           if (call.signal.aborted) {
-            stopReason = "abort";
+            stopReason ??= "abort";
             return true;
           }
           if (afterDeadline(live)) {
-            stopReason = "timeout";
+            stopReason ??= "timeout";
             return true;
           }
           return false;
@@ -106,7 +111,9 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         context = live.newContext();
         // Writes go to a copy; only a successful run commits them to the session.
         const staged = new Map<string, string>(o.state);
-        disposeInstall = install(context, live, o, logs, call.id, call.signal, staged, pending);
+        // The keys this run wrote: a commit applies only these, so a concurrent script's writes survive.
+        const written = new Set<string>();
+        disposeInstall = install(context, live, o, logs, call.id, runAbort.signal, staged, written, pending);
 
         // "script.js" names the file in error stacks; the wrapper adds one line, so user line 1 is file line 2.
         const evaluated = context.evalCode(`(async () => {\n${code}\n})()`, "script.js");
@@ -116,7 +123,6 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
           return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
         }
         const promise = evaluated.value;
-        stop = watchStop(call.signal, timeoutMs, (r) => (stopReason = r));
         let settled: Awaited<ReturnType<QuickJSContext["resolvePromise"]>> | null = null;
         try {
           // resolvePromise registers a host callback on the script's promise; the
@@ -126,7 +132,6 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
           if (isFail(kick)) kick.error.dispose();
           settled = await Promise.race([settledPromise, stop.promise.then(() => null)]);
         } finally {
-          stop.done();
           promise.dispose();
         }
         if (settled === null) {
@@ -140,10 +145,16 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         const wasUndefined = context.typeof(settled.value) === "undefined";
         const rendered = render(context, settled.value);
         settled.value.dispose();
-        if (o.state) {
-          o.state.clear();
-          for (const [key, value] of staged) o.state.set(key, value);
+        // Tool calls the script started but didn't await: a run isn't done while they still run.
+        if (pending.size) {
+          const left = pending.size;
+          const drained = await Promise.race([Promise.allSettled([...pending].map((d) => d.settled)).then(() => true), stop.promise.then(() => false)]);
+          if (!drained) {
+            const why = stopReason === "abort" ? STOPPED : timingOut(timeoutMs);
+            return { text: failure(`${why} The script returned with ${left} tool call${left === 1 ? "" : "s"} it never awaited still running; they were stopped. Await every tool call.`, logs), isError: true };
+          }
         }
+        if (o.state) for (const key of written) o.state.set(key, staged.get(key)!);
         let text = [...logs, `=> ${rendered}`].join("\n");
         if (wasUndefined && logs.length === 0) text += "\n\nThe script returned undefined and printed nothing: return a value (or console.log it) so there is something to read.";
         return { text: bound(text, { outputDir: o.outputDir, callId: call.id }) };
@@ -151,6 +162,8 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         const message = err instanceof Error ? err.message : String(err);
         return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
       } finally {
+        stop.done();
+        runAbort.abort();
         for (const deferred of pending) if (deferred.alive) deferred.dispose();
         pending.clear();
         disposeInstall?.();
@@ -173,6 +186,7 @@ function install(
   parentId: string,
   signal: AbortSignal,
   staged: Map<string, string>,
+  written: Set<string>,
   pending: Set<QuickJSDeferredPromise>,
 ): () => void {
   // QuickJS's own JSON.parse, kept for the context's life: arrays and objects
@@ -257,6 +271,7 @@ function install(
     for (const [k, v] of staged) if (k !== key) total += k.length + v.length;
     if (total > MAX_STATE_CHARS) return fail(`store(key, value): the session state may not exceed ${MAX_STATE_CHARS} characters.`);
     staged.set(key, text);
+    written.add(key);
   });
   context.setProp(context.global, "store", store);
   store.dispose();

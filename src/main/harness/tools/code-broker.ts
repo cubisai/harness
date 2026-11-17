@@ -31,18 +31,41 @@ export function createCodeBroker(o: CodeBrokerOptions): CodeToolOptions["broker"
   const max = o.maxInFlight ?? MAX_IN_FLIGHT;
   let active = 0;
   const waiting: (() => void)[] = [];
-  const acquire = async (): Promise<void> => {
+  /** A slot, or false when the run stopped first (a stopped run's queued calls never start). */
+  const acquire = async (signal: AbortSignal): Promise<boolean> => {
+    if (signal.aborted) return false;
     if (active < max) {
       active += 1;
-      return;
+      return true;
     }
     // A freed slot is handed straight to the next waiter, so the count never overshoots.
-    await new Promise<void>((resolve) => waiting.push(resolve));
+    return new Promise<boolean>((resolve) => {
+      const take = (): void => {
+        signal.removeEventListener("abort", leave);
+        resolve(true);
+      };
+      const leave = (): void => {
+        const i = waiting.indexOf(take);
+        if (i >= 0) waiting.splice(i, 1);
+        resolve(false);
+      };
+      waiting.push(take);
+      signal.addEventListener("abort", leave, { once: true });
+    });
   };
   const release = (): void => {
     const next = waiting.shift();
     if (next) next();
     else active -= 1;
+  };
+  // Calls to a tool that may not overlap (edits, shell: `parallel: false`) run one at a time, in call order.
+  let serialTail: Promise<void> = Promise.resolve();
+  const serialTurn = (): { ready: Promise<void>; done: () => void } => {
+    let done!: () => void;
+    const mine = new Promise<void>((resolve) => (done = resolve));
+    const ready = serialTail;
+    serialTail = ready.then(() => mine);
+    return { ready, done };
   };
 
   const listed = new Map<string, number>();
@@ -76,7 +99,13 @@ export function createCodeBroker(o: CodeBrokerOptions): CodeToolOptions["broker"
       emit({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(auth.reason), ...nest });
       return { text: auth.reason, isError: true };
     }
-    await acquire();
+    const serial = runsAlone(tool) ? serialTurn() : null;
+    if (serial) await serial.ready;
+    if (!(await acquire(signal))) {
+      serial?.done();
+      emit({ kind: "tool-result", toolUseId, isError: true, summary: NOT_STARTED, ...nest });
+      return { text: NOT_STARTED, isError: true };
+    }
     try {
       // `script` asks read, glob and grep for plain values; the row shows a bounded copy of the text.
       const result = await tool.run(args, { id: toolUseId, signal, onOutput: () => {}, script: true });
@@ -90,9 +119,15 @@ export function createCodeBroker(o: CodeBrokerOptions): CodeToolOptions["broker"
       return { text, isError: true };
     } finally {
       release();
+      serial?.done();
     }
   };
 }
+
+/** Edits, shell commands and tools declared `parallel: false` (mutating app tools) may not overlap; reads and fetches may. */
+export const runsAlone = (tool: LoopTool): boolean => tool.parallel === false || tool.access === "edit" || tool.access === "shell";
+
+const NOT_STARTED = "Not run: the script was stopped or timed out first.";
 
 const oneLine = (text: string, max = 160): string => {
   const line = text.trim().split("\n")[0] ?? "";

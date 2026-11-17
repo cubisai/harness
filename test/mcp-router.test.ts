@@ -178,6 +178,49 @@ describe("McpClientPool", () => {
     expect(() => process.kill(pid, 0)).toThrow();
   }, 20_000);
 
+  it("returns an interrupted error for a signal that is already aborted, without connecting", async () => {
+    const pool = new McpClientPool();
+    const spec: McpServerSpec = { type: "stdio", command: process.execPath, args: [MANY, "--name", "mock-database", "--tools", "5", "--seed", "1"] };
+    const target = mockTools("mock-database", 5, 1)[0]!;
+    const controller = new AbortController();
+    controller.abort();
+    const r = await pool.callTool(spec, target.name, requiredArgs(target), controller.signal);
+    expect(r).toEqual({ ok: false, isError: true, text: "Interrupted by the user." });
+    await pool.closeAll();
+  }, 20_000);
+
+  it("sweep leaves a client alone while a call is in flight", async () => {
+    // idleMs 0 means any entry the sweeper may touch is due: without the in-flight guard,
+    // this sweep would close the client under the running call.
+    const pool = new McpClientPool({ idleMs: 0 });
+    const spec: McpServerSpec = { type: "stdio", command: process.execPath, args: [MANY, "--name", "mock-database", "--tools", "5", "--seed", "1"] };
+    const target = mockTools("mock-database", 5, 1)[0]!;
+    const pending = pool.callTool(spec, target.name, requiredArgs(target));
+    await pool.sweep();
+    const r = await pending;
+    expect(r.ok).toBe(true);
+    expect(r.isError).toBe(false);
+    expect(r.text).toContain(`SENTINEL-mock-database-${target.name}`);
+    await pool.closeAll();
+  }, 20_000);
+
+  it("an aborted call leaves the shared client usable for the next call", async () => {
+    const pool = new McpClientPool();
+    const spec: McpServerSpec = { type: "stdio", command: process.execPath, args: [MANY, "--name", "mock-database", "--tools", "5", "--seed", "1"] };
+    const target = mockTools("mock-database", 5, 1)[0]!;
+    const controller = new AbortController();
+    // Abort right after the call starts: it is still connecting, so this settles from the signal.
+    const pending = pool.callTool(spec, target.name, requiredArgs(target), controller.signal);
+    controller.abort();
+    const interrupted = await pending;
+    expect(interrupted).toEqual({ ok: false, isError: true, text: "Interrupted by the user." });
+    // The pool must not have dropped the connection: the same client serves the next call.
+    const r = await pool.callTool(spec, target.name, requiredArgs(target));
+    expect(r.ok).toBe(true);
+    expect(r.text).toContain(`SENTINEL-mock-database-${target.name}`);
+    await pool.closeAll();
+  }, 20_000);
+
   it("times out a hung connect and stops the child", async () => {
     const pidFile = join(tempDir(), "hang");
     const pool = new McpClientPool({ connectTimeoutMs: 1500 });
@@ -357,6 +400,21 @@ describe("routerTools", () => {
     expect(wrongType.isError).toBe(true);
     expect(JSON.parse(wrongType.text).status).toBe("validation_error");
     expect(calls).toHaveLength(0);
+  });
+
+  it("call_mcp_tool forwards the caller's abort signal to the pool", async () => {
+    const seen: (AbortSignal | undefined)[] = [];
+    const pool = {
+      callTool: async (_spec: McpServerSpec, _name: string, _args: Record<string, unknown>, signal?: AbortSignal) => {
+        seen.push(signal);
+        return { ok: true, text: "RAN", isError: false };
+      },
+    };
+    const { call } = fakeRouter([dbEntry], new Map([[DB_SPEC, dbListing]]), pool);
+    const controller = new AbortController();
+    const out = await call.run({ server: "db", tool: "run_query", arguments: { sql: "select 1" } }, { signal: controller.signal });
+    expect(out.text).toBe("RAN");
+    expect(seen).toEqual([controller.signal]);
   });
 
   it("call_mcp_tool forwards valid arguments and returns the server's text", async () => {
