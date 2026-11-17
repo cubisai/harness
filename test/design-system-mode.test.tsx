@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { colorRoles, foundationGroups, foundationOf, ramp, resolveVars, schemeValues, siblingUrl, tokenMatches } from "../src/renderer/src/design/system-mode";
+import { colorRoles, foundationGroups, foundationOf, kitFontAlias, kitFontStack, ramp, resolveVars, schemeValues, siblingUrl, tokenMatches } from "../src/renderer/src/design/system-mode";
 
 const t = (name: string, light: string, dark: string | null = null) => ({ name, light, dark });
 
 describe("System mode's foundations", () => {
+  it("leads each loaded family in a stack with its private alias", () => {
+    const loaded = new Set(["Inter Variable", "Geist"]);
+    expect(kitFontStack(`Inter, "Inter Variable", system-ui, sans-serif`, loaded)).toBe(`Inter, "${kitFontAlias("Inter Variable")}", "Inter Variable", system-ui, sans-serif`);
+    expect(kitFontStack("geist, sans-serif", loaded)).toBe(`"CubiQ Kit Geist", geist, sans-serif`);
+    expect(kitFontStack("system-ui, sans-serif", new Set())).toBe("system-ui, sans-serif");
+  });
   it("puts each token on one page, and a component's own non-colour token on none", () => {
     expect(foundationOf(t("--color-primary", "#123456"))).toBe("colors");
     expect(foundationOf(t("--text-md", "16px"))).toBe("typography");

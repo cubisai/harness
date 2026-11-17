@@ -14,6 +14,8 @@ describe("Build in code", () => {
     expect(prompt).toContain("real components, styles and tokens");
     expect(prompt).toContain("Don't copy the prototype's HTML or CSS wholesale");
     expect(prompt).toContain("Run the project's checks");
+    // A live Codex run replaced the site's home page with the pricing design; existing pages stay unless the handoff says otherwise.
+    expect(prompt).toContain("Don't remove or rewrite existing pages or content unless the handoff says the design replaces them.");
   });
 });
 

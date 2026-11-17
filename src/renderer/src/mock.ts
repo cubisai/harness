@@ -818,6 +818,7 @@ export function installMock(): void {
     designKitDoc: async () => ({ kit: null, copyOnWrite: false, editable: false, parts: [], blocks: [], draft: null }),
     designKitSample: async () => "index.html",
     designKitGallery: async () => "index.html",
+    designSystemFonts: async () => [],
     designPropAll: async () => ({ count: 0, pages: 0 }),
     designKitEdit: async (threadId) => ({ doc: { kit: null, copyOnWrite: false, editable: false, parts: [], blocks: [], draft: null }, thread: Object.values(threads).flat().find((t) => t.id === threadId)! }),
     designKitDraftSave: async (threadId) => ({ doc: { kit: null, copyOnWrite: false, editable: false, parts: [], blocks: [], draft: null }, thread: Object.values(threads).flat().find((t) => t.id === threadId)! }),

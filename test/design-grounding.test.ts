@@ -30,7 +30,7 @@ describe("kit grounding", () => {
   });
 
   it("leaves plain HTML, scripts, svg and page CSS on its own classes alone", () => {
-    const g = groundPage('<html><head><style>.hero{background:red}</style></head><body><div class="hero"><svg viewBox="0 0 1 1"><path d="M0 0"/></svg><p>Hi</p></div><script>1</script></body></html>', foundation());
+    const g = groundPage('<html><head><style>.hero{background:var(--color-accent)}</style></head><body><div class="hero"><svg viewBox="0 0 1 1"><path d="M0 0"/></svg><p>Hi</p></div><script>1</script></body></html>', foundation());
     expect(g.findings).toEqual([]);
     expect(g.elements).toBe(2);
     expect(g.parts).toBe(0);
@@ -42,8 +42,30 @@ describe("kit grounding", () => {
     const css = (rule: string) => groundPage(`<style>${rule}</style><button data-ui="button">Go</button>`, m).findings.map((f) => f.id);
     expect(css('[data-ui="button"] { border-radius: 0 }')).toEqual(["redraw-part"]);
     expect(css('.bar [data-ui="button"] { margin-left: auto }')).toEqual([]);
-    expect(css('[data-ui="mystery"] { color: red }')).toEqual([]);
+    expect(css('[data-ui="mystery"] { color: var(--color-accent) }')).toEqual([]);
     expect(css('/* [data-ui="button"] { color: red } */')).toEqual([]);
+  });
+
+  it("counts what sits inside a part as covered: a table's cells are the kit's too", () => {
+    const g = groundPage('<body><table data-ui="table"><tr><td>1</td><td>2</td></tr></table><div class="x"><p>Hi</p></div></body>', foundation());
+    // The parser adds the table's <tbody>: table, tbody, tr and both cells are covered; the div and its p are not.
+    expect([g.elements, g.parts, g.covered]).toEqual([7, 1, 5]);
+    expect(groundingSummary(g, "Foundation")).toBe("Kit: 71% of 7 elements are in Foundation parts (1 part: table×1).");
+    const low = groundPage(`<body><p data-ui="text">A</p>${"<div><span>x</span></div>".repeat(4)}</body>`, foundation());
+    expect(groundingSummary(low, "Foundation")).toMatch(/^Kit: 11% of 9 elements .* Most of the page is hand-built/);
+  });
+
+  it("names hand-built twins of the kit's parts, by class, BEM root or alias", () => {
+    const m = foundation();
+    const g = groundPage('<body><span class="tag">New</span><span class="tag">Hot</span><div class="stat__n">42</div><div class="meter"></div><div class="card"><h3 class="card__title">x</h3></div></body>', m);
+    // The card's BEM child is that same card, not a second one.
+    expect(g.findings.map((f) => f.detail.split(" is built")[0])).toEqual(["span.tag ×2", "div.stat__n", "div.meter", "div.card"]);
+    expect(g.findings[0]!.detail).toContain('use data-ui="badge"');
+    // Inside a part, on layout or type names, the deck's slide frame and a plain link: no twin.
+    const quiet = groundPage('<body><div data-ui="card"><span class="tag">a</span></div><div class="stack"><p class="text">t</p><a class="link">l</a><div class="bar">search</div></div><section class="slide"><div data-ui="slide"></div></section></body>', m);
+    expect(quiet.findings).toEqual([]);
+    // A layout part holds anything: a hand-built tag inside a stack is still a twin.
+    expect(groundPage('<body><div data-ui="stack"><span class="tag">a</span></div></body>', m).findings.map((f) => f.id)).toEqual(["hand-built-part"]);
   });
 
   it("caps each kind of finding so a page full of one mistake stays readable", () => {
@@ -65,6 +87,15 @@ describe("page CSS in grounding", () => {
     expect(ids(groundPage(page(".hero { color: #123456; }"), foundation()))).toContain("literal-color");
     expect(ids(groundPage(page(".hero { background: rgb(1 2 3); }"), foundation()))).toContain("literal-color");
     expect(ids(groundPage(page(":root { --brand: #123456; } .hero { color: var(--brand, #fff); }"), foundation()))).not.toContain("literal-color");
+  });
+
+  it("flags named colours in colour properties only", () => {
+    expect(ids(groundPage(page(".hero { background: white; }"), foundation()))).toContain("literal-color");
+    expect(ids(groundPage(page(".hero { border: 1px solid black; }"), foundation()))).toContain("literal-color");
+    expect(ids(groundPage(page(".hero { color: var(--color-text, white); }"), foundation()))).not.toContain("literal-color");
+    expect(ids(groundPage(page(".hero { background: transparent; color: currentColor; }"), foundation()))).not.toContain("literal-color");
+    expect(ids(groundPage(page(".hero { background: url(white.png) no-repeat; }"), foundation()))).not.toContain("literal-color");
+    expect(ids(groundPage(page('.hero { font-family: "Red Hat Display"; animation-name: white; }'), foundation()))).not.toContain("literal-color");
   });
 
   it("flags a new colour token on :root, not a re-set theme token or an alias of one", () => {
@@ -97,10 +128,17 @@ describe("page CSS in grounding", () => {
   });
 
   it("flags a deck page that doesn't load deck.js", () => {
-    const deck = (scripts: string) => `<html><body><main class="deck"><section class="slide"><h1>A</h1></section><section class="slide"><h1>B</h1></section></main>${scripts}</body></html>`;
+    const slide = (t: string) => `<section class="slide"><div data-ui="slide"><h1 data-ui="heading" data-level="1">${t}</h1></div></section>`;
+    const deck = (scripts: string) => `<html><body><main class="deck">${slide("A")}${slide("B")}</main>${scripts}</body></html>`;
     expect(ids(groundPage(deck('<script src="system/ui.js"></script>'), foundation()))).toEqual(["deck-runtime"]);
     expect(ids(groundPage(deck('<script src="deck.js?v=2"></script>'), foundation()))).toEqual([]);
-    expect(ids(groundPage('<section class="slide"><h1>A</h1></section>', foundation()))).toEqual([]);
+    expect(ids(groundPage(slide("A"), foundation()))).toEqual([]);
+  });
+
+  it("flags deck slides without the kit's slide body", () => {
+    const g = groundPage('<section class="slide"><div data-ui="slide"><p data-ui="text">A</p></div></section><section class="slide slide--band"><div class="head"><h2>B</h2></div></section>', foundation());
+    expect(ids(g)).toEqual(["slide-body"]);
+    expect(g.findings[0]!.detail).toMatch(/^1 of 2 slides has no Foundation slide body inside/);
   });
 
   it("flags element rules that recolour kit parts, not ones that leave parts out", () => {

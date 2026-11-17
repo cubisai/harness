@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { HarnessTool, ToolOutput } from "../agents/types";
 import { resolveInside } from "../artifacts";
 import { runDocScript, type ScriptResult } from "./run";
+import { imageBudgetNote } from "../image-budget";
 
 export interface DocumentToolDeps {
   /** The thread's working folder, or null when it has none. */
@@ -23,6 +24,8 @@ export interface DocumentToolDeps {
   printPdf(threadId: string, htmlRel: string, pdfRel: string): Promise<{ pages: number; text: string; png: Buffer }>;
   /** The HTML starter a PDF begins from (absolute path). */
   pdfTemplate: string;
+  /** False when the thread's conversation already holds as many images as its model takes (see imageBudget). */
+  takeImage?(threadId: string): boolean;
 }
 
 type Format = "docx" | "pptx" | "xlsx" | "pdf";
@@ -131,7 +134,9 @@ export function documentTools(deps: DocumentToolDeps, threadId: string): Harness
           const bad = badText(printed.text);
           if (bad) return error(`${out.rel}: garbled or placeholder text: "${bad}". Fix ${src.rel} (save it as UTF-8 with your file tools, replace placeholders) and call document_build again.`);
           if (!printed.text.trim()) return error(`${out.rel} has no text: check ${src.rel} has its content in the <body>.`);
-          return { text: `OK: ${out.rel} — ${printed.pages} page${printed.pages === 1 ? "" : "s"}. Page 1 is attached: check nothing overlaps or is cut off.`, imagePng: printed.png.toString("base64") };
+          const done = `OK: ${out.rel} — ${printed.pages} page${printed.pages === 1 ? "" : "s"}.`;
+          if (deps.takeImage && !deps.takeImage(threadId)) return { text: `${done}${imageBudgetNote("Check the text above")}` };
+          return { text: `${done} Page 1 is attached: check nothing overlaps or is cut off.`, imagePng: printed.png.toString("base64") };
         } catch (err) {
           return error(`Printing ${src.rel} failed: ${err instanceof Error ? err.message : String(err)}`);
         }

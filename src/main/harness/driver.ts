@@ -99,6 +99,8 @@ export function createProviderDriver(providerId: string, deps: ProviderDriverDep
   const readsBySession = new Map<string, Map<string, number>>();
   // run_code's store/load values, per session, the same way.
   const codeStateBySession = new Map<string, Map<string, string>>();
+  // Sessions whose model rejected an image once: their images go as a text note from then on.
+  const textOnlySessions = new Set<string>();
   const current = (): Provider | undefined => deps.provider();
 
   const models = (): ModelOption[] =>
@@ -149,7 +151,7 @@ export function createProviderDriver(providerId: string, deps: ProviderDriverDep
       const turnId = randomUUID();
       input.onEvent({ kind: "turn-start", turnId, agent: id, model: input.model });
       try {
-        await runTurn(providerId, deps, input, turnId, started, readsBySession, codeStateBySession);
+        await runTurn(providerId, deps, input, turnId, started, readsBySession, codeStateBySession, textOnlySessions);
       } catch (err) {
         input.onEvent({ kind: "error", message: errorText(err) });
         input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 0, outputTokens: 0, durationMs: Date.now() - started });
@@ -178,6 +180,7 @@ async function runTurn(
   started: number,
   readsBySession: Map<string, Map<string, number>>,
   codeStateBySession: Map<string, Map<string, string>>,
+  textOnlySessions: Set<string>,
 ): Promise<void> {
   const provider = deps.provider();
   if (!provider) throw new Error("This provider was removed in Settings. Pick another agent for this thread.");
@@ -529,6 +532,12 @@ async function runTurn(
     onMessage: (m) => deps.sessions.append(sid, m),
     prepare,
     onOverflow: () => compact("auto", null),
+    textOnly: textOnlySessions.has(sid),
+    onTextOnly: (m) => {
+      textOnlySessions.add(sid);
+      deps.sessions.replace(sid, m);
+      input.onEvent({ kind: "notice", text: `${entry.name ?? entry.id} can't take images, so images in this conversation are now sent as a text note.` });
+    },
     ...(deps.stream ? { stream: deps.stream } : {}),
   });
 

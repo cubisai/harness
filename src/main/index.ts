@@ -36,7 +36,7 @@ import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
 import { DOC_SCHEME, documentUrl, pdfPageCount, serveDocument } from "./documents/serve";
 import { documentTools } from "./documents/tools";
-import { designTools } from "./design/tools";
+import { designTools, imageBudget } from "./design/tools";
 import { selectorFor } from "./browser/picker";
 import { spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
@@ -487,7 +487,8 @@ async function main(): Promise<void> {
     },
   );
   // The pane is one target: a thread whose turn is running owns it until the turn ends (service is set up below).
-  const tools = browserTools(browser, { busy: (threadId) => service.isRunning(threadId) });
+  // takeImage is set up below with the design tools; it's only called once a turn runs.
+  const tools = browserTools(browser, { busy: (threadId) => service.isRunning(threadId), takeImage: (threadId) => takeImage(threadId) });
   const memoryEnabled = (pid: string) => memoryOn(settings.get(), pid);
   const memoryTools = [memoryReadTool({ store: memory.store, enabled: memoryEnabled }), memoryWriteTool({ store: memory.store, enabled: memoryEnabled })];
   // Dev servers the app starts for the agent (P5.5); only these are ever stopped, all of them on quit.
@@ -576,6 +577,15 @@ async function main(): Promise<void> {
   referenceStore.cleanStaging();
   // Each design thread's own tools (bound to it), made once so its list keeps the same identity.
   const designToolLists = new Map<string, HarnessTool[]>();
+  // An agent that resends every image of its session (OpenCode) gets only its declared number back from the design tools.
+  const takeImage = imageBudget((id) => {
+    try {
+      const thread = store.getThread(id);
+      return { limit: service.capabilitiesOf(thread.agent)?.sessionImageLimit ?? null, sessionId: thread.sessionId };
+    } catch {
+      return null;
+    }
+  });
   const designToolsOf = (threadId: string): HarnessTool[] => {
     let list = designToolLists.get(threadId);
     if (!list) {
@@ -608,6 +618,7 @@ async function main(): Promise<void> {
           },
           // Always given, so the tools are always listed; before a download they say so.
           references: referenceStore,
+          takeImage,
         },
         threadId,
       );
@@ -690,6 +701,7 @@ async function main(): Promise<void> {
             writeFileSync(join(root, pdfRel), printed.pdf);
             return { pages: pdfPageCount(printed.pdf), text: printed.text, png: printed.png };
           },
+          takeImage,
         },
         threadId,
       );
@@ -1299,6 +1311,7 @@ async function main(): Promise<void> {
   designHandle("design:kit-doc", (threadId: string) => service.kits.doc(threadId));
   designHandle("design:kit-sample", (threadId: string, request: unknown) => service.kits.sample(threadId, readKitSample(request)));
   designHandle("design:kit-gallery", (threadId: string, request: unknown) => service.kits.gallery(threadId, readKitGallery(request)));
+  designHandle("design:system-fonts", (threadId: string) => service.kits.fonts(threadId));
   designHandle("design:prop-all", (threadId: string, rel: unknown, ui: unknown, name: unknown, value: unknown, dryRun: unknown) => {
     if (typeof rel !== "string" || typeof ui !== "string" || !/^[a-z0-9-]{1,64}$/.test(ui) || typeof name !== "string" || !/^data-[a-z0-9-]{1,64}$/.test(name)) throw new Error("Bad prop.");
     if (value !== null && (typeof value !== "string" || value.length > 200)) throw new Error("Bad prop value.");

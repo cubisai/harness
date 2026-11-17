@@ -18,13 +18,15 @@ export const COLOR_ROLES = [
 ] as const;
 export type ColorRole = (typeof COLOR_ROLES)[number];
 
-/** The pairs every scheme must pass, the same 17 the style contrast test checks. */
+/** The pairs every scheme must pass. */
 export const CONTRAST_PAIRS: readonly [ColorRole, ColorRole, number][] = [
   ["text", "bg", 4.5],
   ["text", "surface", 4.5],
   ["text", "surface-2", 4.5],
   ["text-muted", "bg", 4.5],
   ["text-muted", "surface", 4.5],
+  // Muted copy in a filled card or on an icon disc sits on the raised surface.
+  ["text-muted", "surface-2", 4.5],
   ["on-primary", "primary", 4.5],
   ["on-accent", "accent", 4.5],
   ["accent-text", "bg", 4.5],
@@ -573,7 +575,7 @@ function onColour(fill: Rgb, bg: Rgb, text: Rgb): Rgb {
   return contrast(white, fill) >= contrast(black, fill) ? white : black;
 }
 
-/** Every role of one scheme from its core, with all 17 pairs repaired by lightness; fixes are logged. */
+/** Every role of one scheme from its core, with every contrast pair repaired by lightness; fixes are logged. */
 function completeScheme(core: Core, scheme: Scheme, fixes: ContrastFix[]): Record<ColorRole, string> {
   const soft = scheme === "light" ? 0.9 : 0.8;
   const roles: Record<ColorRole, Rgb> = {

@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { HarnessTool, ToolOutput } from "../agents/types";
@@ -8,6 +8,8 @@ import { formatLint, type LintFinding, type LintResult } from "./lint";
 import type { Shot } from "./shooter";
 import { MODES, SURFACES, type DesignDirection } from "../../shared/direction";
 import { getReference, searchReferences, type ReferenceSource } from "./references";
+import { imageBudgetNote } from "../image-budget";
+export { imageBudget, imageBudgetNote } from "../image-budget";
 
 export const DESIGN_SCREENSHOT_TOOL = "design_screenshot";
 export const DESIGN_LINT_TOOL = "design_lint";
@@ -45,6 +47,11 @@ export interface DesignToolDeps {
   kits?: DesignKitToolDeps;
   /** The downloaded design references; the reference tools are offered only when this is given. */
   references?: ReferenceSource;
+  /**
+   * Whether one more image may go back into this thread's conversation (and counts it). False once the agent's history
+   * holds as many as its provider takes in one request: past that, every request fails. Absent: always.
+   */
+  takeImage?(threadId: string): boolean;
 }
 
 /** What the kit tools need from the app. Each returns what to tell the agent and throws with a message when it can't. */
@@ -88,6 +95,33 @@ function pageOf(deps: DesignToolDeps, threadId: string, path: string | undefined
   if (!isFile) return { text: `${deps.folder(threadId)}/${rel} doesn't exist yet. Build the page first.`, isError: true };
   if (!/\.(html?|svg)$/i.test(rel)) return { text: `${rel} isn't a page (html or svg).`, isError: true };
   return { rel, suffix };
+}
+
+/** The most slides one design_lint call checks, so a long deck stays one call's worth of rendering. */
+export const LINT_MAX_SLIDES = 30;
+
+/** A deck page's slide count (its `section.slide`s, with the deck runtime loaded), or 0 for any other page. */
+export function deckSlides(html: string): number {
+  if (!/<script[^>]+src=["'][^"']*deck\.js/i.test(html)) return 0;
+  return [...html.matchAll(/<section\b[^>]*\bclass=["'][^"']*\bslide\b/gi)].length;
+}
+
+/**
+ * One lint of a whole deck from per-slide runs: a finding on several slides is listed once with all of them, so a
+ * deck-wide mistake stays one line.
+ */
+export function mergeSlideLints(runs: LintResult[]): LintResult {
+  const byKey = new Map<string, { finding: LintFinding; slides: number[] }>();
+  runs.forEach((run, i) => {
+    for (const f of run.findings) {
+      const key = `${f.rule}|${f.selector}|${f.detail}`;
+      const hit = byKey.get(key);
+      if (hit) hit.slides.push(i + 1);
+      else byKey.set(key, { finding: f, slides: [i + 1] });
+    }
+  });
+  const findings = [...byKey.values()].map(({ finding, slides }) => ({ ...finding, selector: `slide${slides.length > 1 ? "s" : ""} ${slides.join(", ")}: ${finding.selector}` }));
+  return { findings, skipped: [...new Set(runs.flatMap((r) => r.skipped))], scanned: runs.reduce((n, r) => n + r.scanned, 0) };
 }
 
 /** The system id the direction tool records: a Foundation theme is its library style (the service maps it), another kit's theme is `kit:<kit>/<theme>`. */
@@ -157,6 +191,7 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
         const width = clamp(args.width, 320, 2560, 1440);
         const height = clamp(args.height, 320, 4000, 900);
         try {
+          if (deps.takeImage && !deps.takeImage(threadId)) return { text: `${deps.folder(threadId)}/${page.rel}${page.suffix}:${imageBudgetNote("Check the page with design_lint (contrast, spacing, kit and craft checks)")}` };
           const shot = await deps.screenshot(deps.url(threadId, page.rel) + page.suffix, { width, height, fullPage: args.fullPage === true });
           const note = shot.cut ? " (full page, cut at 4000 px)" : args.fullPage ? " (full page)" : "";
           return { text: `${deps.folder(threadId)}/${page.rel}${page.suffix} at ${shot.width}×${shot.height}${note}.`, imagePng: shot.png.toString("base64") };
@@ -170,19 +205,35 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
       description:
         "Check a page of this design against the design rules: text contrast (4.5:1, 3:1 large), tap targets (44×44), on a kit its grounding (parts, props and values outside components.json, page CSS that redraws a part) and how much of the page is kit parts, spacing on the 4px grid, colors that aren't --color-* tokens, and generic-AI tells (eyebrow labels, gradient text, side stripes, hard shadows, identical card grids, emoji icons, overused display fonts). Returns findings with CSS selectors, worst first.",
       input: {
-        path: z.string().optional().describe("Page inside the design folder; default index.html"),
-        width: z.number().optional().describe("Viewport width in CSS px, 320-2560; default 1440"),
+        path: z.string().optional().describe("Page inside the design folder; default index.html. A deck is checked slide by slide at 1920×1080 (clipped or overlapping text included); add #N for one slide"),
+        width: z.number().optional().describe("Viewport width in CSS px, 320-2560; default 1440 (a deck: 1920)"),
       },
       autoAllow: true,
       effect: "read",
       run: async (args) => {
         const page = pageOf(deps, threadId, args.path);
         if (!("rel" in page)) return page;
-        const width = clamp(args.width, 320, 2560, 1440);
+        const root = deps.root(threadId);
+        let deck = 0;
         try {
-          const raw = await deps.evaluate(deps.url(threadId, page.rel), width, 900, deps.lintScript);
-          const root = deps.root(threadId);
-          const parsed = JSON.parse(String(raw)) as LintResult;
+          if (root) deck = deckSlides(readFileSync(join(root, page.rel), "utf8"));
+        } catch {
+          // Unreadable: lint it as a page.
+        }
+        // A deck shows one slide at a time, so a page lint saw only the first: lint each slide (or the one asked for) at slide size.
+        const slides = page.suffix ? 0 : deck;
+        const width = clamp(args.width, 320, 2560, deck ? 1920 : 1440);
+        const height = deck ? Math.round((width * 9) / 16) : 900;
+        try {
+          const url = deps.url(threadId, page.rel);
+          const parsed = slides
+            ? mergeSlideLints(
+                await Promise.all(
+                  Array.from({ length: Math.min(slides, LINT_MAX_SLIDES) }, async (_, i) => JSON.parse(String(await deps.evaluate(`${url}#${i + 1}`, width, height, deps.lintScript))) as LintResult),
+                ),
+              )
+            : (JSON.parse(String(await deps.evaluate(url + page.suffix, width, height, deps.lintScript))) as LintResult);
+          if (slides > LINT_MAX_SLIDES) parsed.skipped.push(`slides ${LINT_MAX_SLIDES + 1}-${slides} (lint them as ${page.rel}#${LINT_MAX_SLIDES + 1} and on)`);
           const allowed = root ? withoutAllowed(parsed, styleAllows(root)) : parsed;
           const kit = deps.kits?.ground(threadId, page.rel) ?? null;
           const result = kit ? { ...allowed, findings: [...kit.findings, ...allowed.findings] } : allowed;
@@ -191,7 +242,8 @@ export function designTools(deps: DesignToolDeps, threadId: string): HarnessTool
             result.findings.length === 0
               ? `\nClean: this page is done. Unless the user asked for more, check any other pages you changed, delete any helper or test pages you made, then report and stop.`
               : stuckNote(lintRuns, `${page.rel}@${width}`, result.findings, Date.now());
-          return { text: `${deps.folder(threadId)}/${page.rel} at ${width}px\n${formatLint(result)}${kit ? `\n${kit.summary}` : ""}${done}` };
+          const what = slides ? `${Math.min(slides, LINT_MAX_SLIDES)} slide${slides === 1 ? "" : "s"} at ${width}×${height}` : deck ? `${width}×${height}` : `${width}px`;
+          return { text: `${deps.folder(threadId)}/${page.rel}${page.suffix} at ${what}\n${formatLint(result)}${kit ? `\n${kit.summary}` : ""}${done}` };
         } catch (err) {
           return failed("Lint", err);
         }
@@ -354,6 +406,7 @@ function kitTools(deps: DesignToolDeps, kits: DesignKitToolDeps, threadId: strin
         } catch (err) {
           return { text: err instanceof Error ? err.message : String(err), isError: true };
         }
+        if (deps.takeImage && !deps.takeImage(threadId)) return { text: `${args.component.trim()}:${imageBudgetNote("Read the part with design_kit_inspect")}` };
         try {
           const shot = await deps.screenshot(deps.url(threadId, rel), { width: clamp(args.width, 320, 2560, 1280), height: 720, fullPage: true });
           const what = Object.keys(props).length ? ` with ${Object.entries(props).map(([k, v]) => `${k}=${v}`).join(" ")}` : "";
@@ -374,7 +427,7 @@ function kitTools(deps: DesignToolDeps, kits: DesignKitToolDeps, threadId: strin
     define({
       name: DESIGN_TOKENS_APPLY_TOOL,
       description:
-        "Rebrand a page by token values alone: one call is one undo step, and no component or layout changes. tokens: custom property names from system/tokens.css mapped to new values. Names it doesn't have are refused, so read it first. To see a reference image's colours, use your image tool on refs/.",
+        "Rebrand a page by token values alone: one call is one undo step, and no component or layout changes. The values go on that page's <html>, never into system/, so write the page first. tokens: custom property names from system/tokens.css mapped to new values. Names it doesn't have are refused, so read it first. To see a reference image's colours, use your image tool on refs/.",
       input: {
         tokens: z.object({}).catchall(z.string()).describe('For example {"--color-primary": "#4f46e5", "--radius-md": "10px"}'),
         path: z.string().optional().describe("Page inside the design folder; default index.html"),

@@ -122,6 +122,13 @@ describe("runReport", () => {
     ]);
     expect(r.screenshot).toBeNull();
   });
+
+  it("keeps the checks when the pane can't be captured, and says why", async () => {
+    const b = { ...fakeBackend({ url: "http://x/", checks: [{ pass: true, actual: "Saved" }] }), screenshot: async () => Promise.reject(new Error("The browser pane is hidden in the app")) };
+    const r = await runReport(b, [{ text: "Saved" }], { screenshot: true, target: "visible pane" });
+    expect(r.checks[0]!.pass).toBe(true);
+    expect(r.screenshot).toBe("none (The browser pane is hidden in the app)");
+  });
 });
 
 describe("browser_report tool", () => {

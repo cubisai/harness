@@ -3,6 +3,7 @@ import type { HarnessTool, ToolContext, ToolOutput } from "../agents/types";
 import { asBackend, WAIT_MAX_MS, type BrowserBackend, type WaitFor } from "./backend";
 import type { BrowserController } from "./controller";
 import { formatReport, runReport, type Assertion } from "./report";
+import { imageBudgetNote } from "../image-budget";
 
 async function safely(fn: () => Promise<ToolOutput>): Promise<ToolOutput> {
   try {
@@ -86,7 +87,10 @@ function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
  * changes mid-conversation; the first call opens the pane for the user.
  * A headless backend (agent-browser) runs the same tools in its own session.
  */
-export function browserTools(target: BrowserBackend | BrowserController, opts: { busy?: (threadId: string) => boolean } = {}): HarnessTool[] {
+export function browserTools(
+  target: BrowserBackend | BrowserController,
+  opts: { busy?: (threadId: string) => boolean; takeImage?: (threadId: string) => boolean } = {},
+): HarnessTool[] {
   const browser = asBackend(target);
   const lock = new TargetLock(opts.busy);
   /** A page-changing tool: opened if needed, then queued on the target and owned by the calling thread. */
@@ -216,9 +220,10 @@ export function browserTools(target: BrowserBackend | BrowserController, opts: {
       input: { look: z.boolean().optional().describe("Return the image to you as well as saving it") },
       autoAllow: true,
       effect: "read",
-      run: ({ look }) =>
+      run: ({ look }, ctx) =>
         gated(browser, async () => {
           const { path, png } = await browser.screenshot();
+          if (look && ctx?.threadId && opts.takeImage && !opts.takeImage(ctx.threadId)) return { text: `Saved ${path}.${imageBudgetNote("Read the page with browser_snapshot")}` };
           return { text: `Saved ${path}`, imagePng: look ? png.toString("base64") : undefined };
         }),
     }),

@@ -84,6 +84,24 @@ describe("document tools", () => {
     expect(refused.text).toMatch(/placeholder text: "Summary: TODO"/);
   });
 
+  it("leaves page 1 off once the thread's image budget is spent", async () => {
+    const folder = tempDir();
+    writeFileSync(join(folder, "letter.html"), "<p>x</p>");
+    const deps: DocumentToolDeps = {
+      folder: () => folder,
+      scriptsDir: "/skills",
+      packagesRoot: "/app",
+      pdfTemplate: join(folder, "letter.html"),
+      printPdf: async () => ({ pages: 1, text: "Hello report", png: Buffer.from("png") }),
+      takeImage: () => false,
+    };
+    const build = documentTools(deps, "t1").find((t) => t.name === "document_build")!;
+    const out = await build.run({ input: "letter.html" });
+    expect(out.imagePng).toBeUndefined();
+    expect(out.isError).toBeFalsy();
+    expect(out.text).toMatch(/^OK: letter\.pdf — 1 page\. No image this time/);
+  });
+
   it("starts a PDF from the template without overwriting, and other formats with the script's init", async () => {
     const { folder, calls, tools } = setup();
     expect((await tools.document_template!.run({ format: "pdf", path: "letter.html" })).text).toMatch(/^Wrote letter\.html/);

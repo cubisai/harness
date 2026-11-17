@@ -176,3 +176,23 @@ export function siblingUrl(pageUrl: string, pageRel: string, rel: string): strin
 
 /** The shortcut modifier as the platform writes it: `⌘` on a Mac, `Ctrl+` elsewhere. */
 export const MOD_KEY = typeof navigator !== "undefined" && !/mac/i.test(navigator.platform) ? "Ctrl+" : "⌘";
+
+/** The family System mode registers a kit font under, so it can't change the app's own faces of the same name. */
+export const kitFontAlias = (family: string): string => `CubiQ Kit ${family}`;
+
+/**
+ * A `font-family` stack with each family the kit loads led by its private alias: `Inter, sans-serif` with Inter loaded
+ * reads `"CubiQ Kit Inter", Inter, sans-serif`. Families it doesn't load are left alone.
+ */
+export function kitFontStack(stack: string, loaded: ReadonlySet<string>): string {
+  if (loaded.size === 0) return stack;
+  // Family names match without regard to case, as in CSS.
+  const byLower = new Map([...loaded].map((f) => [f.toLowerCase(), f]));
+  return stack
+    .split(",")
+    .map((part) => {
+      const face = byLower.get(part.trim().replace(/^(["'])(.*)\1$/, "$2").trim().toLowerCase());
+      return face ? `"${kitFontAlias(face)}", ${part.trim()}` : part.trim();
+    })
+    .join(", ");
+}
