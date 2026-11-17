@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createTurnWatchdog, STALL_NOTICE_MS, STALL_STOP_MS, type TurnWatchdog } from "./watchdog";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
+import { PERMISSION_MODES } from "../shared/types";
 import type {
   AgentInfo,
   ArtifactContent,
@@ -403,6 +404,8 @@ export class Service {
    */
   updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>): Thread {
     const current = this.store.getThread(id);
+    // A stored mode the UI doesn't know blanks the whole window, so an unknown one never gets in.
+    if (patch.permissionMode !== undefined && !PERMISSION_MODES.includes(patch.permissionMode)) throw new Error(`Unknown permission mode: ${String(patch.permissionMode)}`);
     if (patch.agent && patch.agent !== current.agent) {
       if (this.running.has(id)) throw new Error("Stop the running turn before switching agents.");
       const { agent, ...rest } = patch;

@@ -106,6 +106,12 @@ describe("Service.send", () => {
     await expect(service.send({ threadId: thread.id, text: "again" })).resolves.toBeUndefined();
   });
 
+  it("refuses an unknown permission mode instead of storing it", () => {
+    const { service, thread } = setup(async () => {});
+    expect(() => service.updateThread(thread.id, { permissionMode: "auto" as never })).toThrow("Unknown permission mode: auto");
+    expect(service.updateThread(thread.id, { permissionMode: "full" }).permissionMode).toBe("full");
+  });
+
   it("passes the thread's context window to the driver, and a model change clears it", async () => {
     const seen: (number | null | undefined)[] = [];
     const { service, thread } = setup(async (input) => {

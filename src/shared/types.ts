@@ -61,6 +61,7 @@ export interface Project {
 }
 
 export type PermissionMode = "ask" | "auto-edit" | "plan" | "full";
+export const PERMISSION_MODES: readonly PermissionMode[] = ["ask", "auto-edit", "plan", "full"];
 
 export type Theme = "system" | "light" | "dark";
 /** How much the UI animates. `prefers-reduced-motion: reduce` always wins and means instant. */
