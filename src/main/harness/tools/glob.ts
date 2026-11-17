@@ -2,7 +2,7 @@
 // folders) and match relative paths against a glob pattern.
 
 import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { resolvePath } from "./paths";
 import { intAny, strAny, ToolError, type NativeTool } from "./types";
 
@@ -62,6 +62,27 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${globSource(glob)}$`);
 }
 
+const GLOB_CHARS = /[*?{]/;
+
+/**
+ * A pattern that can't match a path relative to the search folder (absolute,
+ * like "/repo/src/*.ts" or "C:\\repo\\*.ts", or climbing out with "../"):
+ * its literal leading folders become the folder to search and the rest stays
+ * the glob. Undefined for an ordinary relative pattern.
+ */
+export function splitPattern(pattern: string): { dir: string; glob: string } | undefined {
+  const winDrive = /^[A-Za-z]:[\\/]/.test(pattern);
+  if (!isAbsolute(pattern) && !winDrive && !/^\.\.(?:[\\/]|$)/.test(pattern)) return undefined;
+  // On Windows (or a drive path) backslashes are separators; elsewhere a glob has no escapes, so "/" is the only one.
+  const norm = winDrive || process.platform === "win32" ? pattern.replace(/\\/g, "/") : pattern;
+  const parts = norm.split("/");
+  let cut = parts.findIndex((seg) => GLOB_CHARS.test(seg));
+  // All literal: a file path, so search its folder for its name.
+  if (cut === -1) cut = parts.length - 1;
+  const dir = parts.slice(0, cut).join("/") || (norm.startsWith("/") ? "/" : ".");
+  return { dir: winDrive && cut === 1 ? `${dir}/` : dir, glob: parts.slice(cut).join("/") };
+}
+
 /**
  * Every file under `root` (recursive, "/" separators in `rel`), skipping the
  * vendor/build folders and never following symlinked directories; stops when
@@ -116,7 +137,7 @@ export const globTool: NativeTool = {
   name: "glob",
   displayName: "Glob",
   description:
-    "Find files by glob pattern. Matches the pattern against paths relative to the search directory: \"*.ts\" is top-level only while \"**/*.ts\" descends into subdirectories, and \"{a,b}\" lists alternatives. Skips common vendor and build folders (node_modules, .git, dist, build, out, target, .next and the like). Returns the newest matches first, one path per line. Use it to discover files before reading them.",
+    "Find files by glob pattern. Matches the pattern against paths relative to the search directory: \"*.ts\" is top-level only while \"**/*.ts\" descends into subdirectories, and \"{a,b}\" lists alternatives; an absolute pattern searches from its own folder. Skips common vendor and build folders (node_modules, .git, dist, build, out, target, .next and the like). Returns the newest matches first, one path per line, each one you can pass to read as is. Use it to discover files before reading them.",
   parameters: {
     type: "object",
     properties: {
@@ -133,9 +154,14 @@ export const globTool: NativeTool = {
   },
   async run(args, ctx) {
     const pattern = strAny(args, ["pattern", "glob"], true);
-    const dir = resolvePath(ctx.cwd, strAny(args, ["path", "dir", "directory"]) ?? ".");
+    const split = splitPattern(pattern);
+    const base = resolvePath(ctx.cwd, strAny(args, ["path", "dir", "directory"]) ?? ".");
+    const dir = split ? resolvePath(base.abs, split.dir) : base;
     const limit = intAny(args, ["limit"]);
-    const re = globToRegExp(pattern);
+    const re = globToRegExp(split ? split.glob : pattern);
+    // Paths come back the way read resolves them: relative to the thread's folder, or absolute outside it.
+    const atCwd = dir.abs === resolvePath(ctx.cwd, ".").abs;
+    const shown = (rel: string): string => (atCwd ? rel : resolvePath(ctx.cwd, join(dir.abs, rel)).shown);
     const matches: { rel: string; mtimeMs: number }[] = [];
     // A script without a limit gets an error past the cap anyway: stop walking there, before any stat.
     const refuseAt = ctx.script && limit === undefined ? SCRIPT_MAX_MATCHES : Infinity;
@@ -160,12 +186,12 @@ export const globTool: NativeTool = {
     const display = { summary: pattern };
     matches.sort((a, b) => b.mtimeMs - a.mtimeMs);
     if (ctx.script) {
-      const paths = matches.slice(0, limit ?? SCRIPT_MAX_MATCHES).map((m) => m.rel);
+      const paths = matches.slice(0, limit ?? SCRIPT_MAX_MATCHES).map((m) => shown(m.rel));
       return { text: paths.join("\n"), data: paths, display };
     }
     if (matches.length === 0) return { text: `No files match ${pattern}`, display };
     const cap = limit !== undefined ? Math.max(1, limit) : MAX_MATCHES;
-    let text = matches.slice(0, cap).map((m) => m.rel).join("\n");
+    let text = matches.slice(0, cap).map((m) => shown(m.rel)).join("\n");
     if (matches.length > cap) text += `\n[${matches.length - cap} more; narrow the pattern]`;
     return { text, display };
   },
