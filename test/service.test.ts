@@ -1164,6 +1164,27 @@ describe("the evidence gate", () => {
     await service.send({ threadId: thread.id, text: "go" });
     expect(notices(store, thread.id)).toEqual(["Worth a second look: Says tests or checks pass, but none ran this turn."]);
   });
+
+  it("flags a pass claim when the check tool failed or an Edit ran after the last passing check", async () => {
+    const failed = setupRepo(async (input) => {
+      input.onEvent({ kind: "tool-use", toolUseId: "r1", name: "Run", summary: "npm test", payload: { command: "npm test" } });
+      input.onEvent({ kind: "tool-result", toolUseId: "r1", isError: true, summary: "exit 1", payload: { exitCode: 1 } });
+      say(input, "All tests pass.");
+    });
+    await failed.service.send({ threadId: failed.thread.id, text: "fix add" });
+    expect(notices(failed.store, failed.thread.id)).toEqual(["Worth a second look: Says tests or checks pass, but the last check failed."]);
+
+    const stale = setupRepo(async (input) => {
+      input.onEvent({ kind: "tool-use", toolUseId: "r1", name: "Run", summary: "npm test", payload: { command: "npm test" } });
+      input.onEvent({ kind: "tool-result", toolUseId: "r1", isError: false, summary: "ok" });
+      writeFileSync(join(input.cwd, "src", "math.ts"), "export const add = (a: number, b: number) => a + b;\n");
+      input.onEvent({ kind: "tool-use", toolUseId: "e1", name: "Edit", summary: "src/math.ts" });
+      input.onEvent({ kind: "tool-result", toolUseId: "e1", isError: false, summary: "+1", payload: { diff: [{ path: join(input.cwd, "src", "math.ts"), unified: "@@ -1 +1 @@\n+export const add = (a: number, b: number) => a + b;" }] } });
+      say(input, "All tests pass.");
+    });
+    await stale.service.send({ threadId: stale.thread.id, text: "fix add" });
+    expect(notices(stale.store, stale.thread.id)).toEqual(["Worth a second look: Says tests or checks pass, but files were edited after the last check."]);
+  });
 });
 
 describe("titleFrom", () => {

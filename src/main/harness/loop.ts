@@ -254,10 +254,12 @@ export async function runLoop(input: LoopInput): Promise<LoopResult> {
       return { stop: reason === "refusal" ? "refusal" : "done", usage, last, steps: step + 1 };
     }
 
-    for (const c of calls) {
-      if (byName.get(c.name)?.definition.name === "bash" && typeof c.input.command === "string") bashCommands.push(c.input.command);
-    }
     const results = await runCalls(input, calls, byName, recent, fails, nudge);
+    for (let k = 0; k < calls.length; k++) {
+      const c = calls[k]!;
+      const r = results[k];
+      if (!r?.isError && byName.get(c.name)?.definition.name === "bash" && typeof c.input.command === "string") bashCommands.push(c.input.command);
+    }
     append({ role: "tool", results });
     if (input.signal.aborted) return { stop: "stopped", usage, last, steps: step + 1 };
   }

@@ -40,12 +40,6 @@ function estimateMessage(m: LlmMessage): number {
   return n;
 }
 
-function estimateMessages(ms: LlmMessage[]): number {
-  let n = 0;
-  for (const m of ms) n += estimateMessage(m);
-  return n;
-}
-
 /** True when the message is a user turn opening with the compaction summary. */
 export function isSummaryMessage(m: LlmMessage): boolean {
   if (m.role !== "user") return false;
@@ -77,9 +71,15 @@ export function splitForCompaction(
   const candidates = startsAtSummary && boundaries.length > 1 ? boundaries.filter((i) => i !== 0) : boundaries;
 
   let start = -1;
+  let suffixTokens = 0;
+  let cursor = messages.length;
   for (let k = candidates.length - 1; k >= 0; k--) {
     const i = candidates[k]!;
-    if (estimateMessages(messages.slice(i)) >= keepTokens) {
+    while (cursor > i) {
+      cursor--;
+      suffixTokens += estimateMessage(messages[cursor]!);
+    }
+    if (suffixTokens >= keepTokens) {
       start = i;
       break;
     }
@@ -203,8 +203,33 @@ export function summaryPrompt(
   const maxTokens = opts?.maxTokens;
   let dropped = 0;
   if (typeof maxTokens === "number") {
+    const suffixChars = new Array<number>(blocks.length + 1).fill(0);
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const len = blocks[i]!.length;
+      const tail = suffixChars[i + 1]!;
+      suffixChars[i] = len === 0 ? tail : tail === 0 ? len : len + 1 + tail;
+    }
+    const firstLen = updating ? (blocks[0]?.length ?? 0) : 0;
+    const joinedLength = (d: number): number => {
+      const restLen = suffixChars[updating ? d + 1 : d] ?? 0;
+      let total = 0;
+      let parts = 0;
+      if (firstLen > 0) {
+        total += firstLen;
+        parts++;
+      }
+      if (d > 0) {
+        total += OMITTED.length;
+        parts++;
+      }
+      if (restLen > 0) {
+        total += restLen;
+        parts++;
+      }
+      return parts > 1 ? total + (parts - 1) : total;
+    };
     const maxDropped = updating ? Math.max(0, blocks.length - 1) : blocks.length;
-    while (dropped < maxDropped && tokens(transcriptText(dropped)) > maxTokens) dropped++;
+    while (dropped < maxDropped && Math.ceil(joinedLength(dropped) / 4) > maxTokens) dropped++;
   }
   const transcript = transcriptText(dropped);
 

@@ -10,6 +10,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import type { McpServerEntry, MissCause, Usage } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 
@@ -32,14 +33,25 @@ function sortKeys(value: unknown): unknown {
 
 /** What the harness hands an agent that shapes its cached prefix. */
 export interface PinnedToolSet {
-  tools: readonly { name: string; description: string; input: string[] }[];
+  tools: readonly { name: string; description: string; input: string[]; schema: string }[];
   servers: readonly string[];
+}
+
+const schemaCache = new WeakMap<HarnessTool["input"], string>();
+
+function inputSchemaOf(input: HarnessTool["input"]): string {
+  const cached = schemaCache.get(input);
+  if (cached !== undefined) return cached;
+  const { $schema: _schema, ...schema } = z.toJSONSchema(z.object(input), { io: "input", unrepresentable: "any" }) as Record<string, unknown>;
+  const serialized = stableStringify(schema);
+  schemaCache.set(input, serialized);
+  return serialized;
 }
 
 /** The pinned set for a turn: harness tools by name, enabled MCP servers as stable JSON. Frozen. */
 export function toolSetOf(tools: HarnessTool[], servers: McpServerEntry[]): PinnedToolSet {
   const pinnedTools = tools
-    .map((t) => ({ name: t.name, description: t.description, input: Object.keys(t.input).sort() }))
+    .map((t) => ({ name: t.name, description: t.description, input: Object.keys(t.input).sort(), schema: inputSchemaOf(t.input) }))
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const pinnedServers = servers
     .filter((s) => s.enabled)

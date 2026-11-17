@@ -110,6 +110,7 @@ export function startAutomations(o: { store: Store; service: Service; broadcast:
       return t.id;
     },
     send: (threadId, text) => sendAndWait(o.service, o.store, threadId, text),
+    interrupt: (threadId) => o.service.interrupt(threadId),
     totals: (threadId) => {
       const t = o.store.threadTotals(threadId);
       return { costUsd: t.costUsd, inputTokens: t.inputTokens, outputTokens: t.outputTokens };

@@ -283,6 +283,88 @@ describe("AutomationRunner.drain", () => {
     expect(db.cursor("a1", "git").bookmark).toBe("sha");
   });
 
+  it("interrupts an in-flight turn mid-run when totals exceed budgetUsd and skips empty delivery", async () => {
+    const now = 1_000;
+    const { db } = open(() => now);
+    db.create(base({ id: "a1", budgetUsd: 0.2 }));
+    const source: Source = { id: "git", async read() { return { items: ["one"], next: "sha" }; } };
+    const dest = fakeDestination();
+    const interrupted: string[] = [];
+    let currentCost = 0.05;
+    let releaseSend: (() => void) | null = null;
+    const runner = new AutomationRunner(
+      makeDeps(db, {
+        now: () => now,
+        sourcesFor: () => ["git"],
+        sources: new Map([["git", source]]),
+        destination: dest,
+        totals: () => ({ costUsd: currentCost, inputTokens: 500, outputTokens: 200 }),
+        interrupt: (tid) => {
+          interrupted.push(tid);
+          releaseSend?.();
+        },
+        send: async () => {
+          await new Promise<void>((r) => {
+            releaseSend = r;
+            setTimeout(() => {
+              currentCost = 0.35;
+            }, 5);
+          });
+          throw new Error("Interrupted by user");
+        },
+      }),
+    );
+
+    const run = runner.runNow("a1")!;
+    await runner.drain();
+
+    expect(interrupted).toEqual(["thread-1"]);
+    expect(db.run(run.id)).toMatchObject({ status: "paused-budget", costUsd: 0.35 });
+    expect(dest.payloads).toEqual([]);
+    expect(db.cursor("a1", "git").bookmark).toBeNull();
+  });
+
+  it("pauses subsequent scheduled ticks after paused-budget until config is updated, and never treats null costUsd as over budget", async () => {
+    let now = 1_000;
+    const { db } = open(() => now);
+    db.create(base({ id: "a1", budgetUsd: 0.1 }));
+    db.create(base({ id: "a2", budgetUsd: 0.1 }));
+    const dest = fakeDestination();
+    const runner = new AutomationRunner(
+      makeDeps(db, {
+        now: () => now,
+        destination: dest,
+        createThread: async (a) => `thread-${a.id}`,
+        totals: (tid) => (tid === "thread-a1" ? { costUsd: 0.25, inputTokens: 10, outputTokens: 5 } : { costUsd: null, inputTokens: 10, outputTokens: 5 }),
+      }),
+    );
+
+    now = 300_000;
+    expect(runner.tick(now)).toBe(2);
+    await runner.drain();
+
+    expect(db.runs("a1")[0]!.status).toBe("paused-budget");
+    // Unknown cost (costUsd: null) never masquerades as exceeding a dollar cap.
+    expect(db.runs("a2")[0]!.status).toBe("succeeded");
+    expect(dest.payloads).toHaveLength(2);
+
+    // Next interval: a1 is parked at paused-budget so tick() skips it; a2 runs normally.
+    now = 600_000;
+    expect(runner.tick(now)).toBe(1);
+    await runner.drain();
+    expect(db.runs("a1")).toHaveLength(1);
+    expect(db.runs("a2")).toHaveLength(2);
+    expect(dest.payloads).toHaveLength(3);
+
+    // Raising the budget bumps configVersion, resuming scheduled runs without duplicate delivery of the old run.
+    db.update("a1", { budgetUsd: 1.0 });
+    now = 900_000;
+    expect(runner.tick(now)).toBe(2);
+    await runner.drain();
+    expect(db.runs("a1")[0]!.status).toBe("succeeded");
+    expect(dest.payloads.filter((p) => p.automationId === "a1")).toHaveLength(2);
+  });
+
   it("waits for an interactive turn and leaves the queue for the next drain", async () => {
     const now = 1_000;
     const { db } = open(() => now);

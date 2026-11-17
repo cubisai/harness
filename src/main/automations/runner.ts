@@ -12,6 +12,8 @@ export interface RunnerDeps {
   createThread(a: Automation): Promise<string>;
   /** Start a turn; resolves with the final answer at turn end, rejects on turn error. */
   send(threadId: string, text: string): Promise<{ text: string }>;
+  /** Stop an in-flight turn when a mid-run budget check trips. */
+  interrupt?(threadId: string): void;
   totals(threadId: string): { costUsd: number | null; inputTokens: number; outputTokens: number };
   /** A user's own turn is running, so background runs wait for it. */
   interactiveBusy(): boolean;
@@ -129,6 +131,8 @@ export class AutomationRunner {
     for (const a of store.list()) {
       if (!a.enabled) continue;
       try {
+        const latest = store.runs(a.id, 1)[0];
+        if (latest?.status === "paused-budget" && latest.configVersion === a.configVersion) continue;
         const last = store.lastScheduled(a.id) ?? a.createdAt;
         for (const t of dueTimes(a.schedule, last, now, a.missed, a.anchor)) {
           const run = store.claimRun(a.id, runKey(a.id, t), t);
@@ -189,6 +193,10 @@ export class AutomationRunner {
       store.finishRun(id, { status: "cancelled" });
       return;
     }
+    if (!manual && store.runs(a.id, 20).some((r) => r.id !== id && r.status === "paused-budget" && r.configVersion === a.configVersion)) {
+      store.finishRun(id, { status: "cancelled" });
+      return;
+    }
     let threadId: string | null = null;
     try {
       const sections: string[] = [];
@@ -220,8 +228,18 @@ export class AutomationRunner {
       threadId = tid;
       store.startRun(run.id, tid, this.deps.leaseMs);
 
+      let budgetStopped = false;
+      const checkMidBudget = () => {
+        if (budgetStopped || a.budgetUsd === null) return;
+        const live = this.totalsOrNull(tid);
+        if (live?.costUsd !== null && live?.costUsd !== undefined && live.costUsd > a.budgetUsd) {
+          budgetStopped = true;
+          this.deps.interrupt?.(tid);
+        }
+      };
       const timer = setInterval(() => {
         store.renewLease(run.id, this.deps.leaseMs);
+        checkMidBudget();
         const wait = this.deps.waitingInput(tid);
         const status = store.run(run.id)?.status;
         if (wait && status === "running") store.setStatus(run.id, "waiting-input");
@@ -231,14 +249,22 @@ export class AutomationRunner {
       let text = "";
       try {
         text = (await this.deps.send(tid, prompt)).text;
+      } catch (err) {
+        if (!budgetStopped) throw err;
       } finally {
         clearInterval(timer);
       }
       if (store.run(run.id)?.status === "waiting-input") store.setStatus(run.id, "running");
 
       const totals = this.deps.totals(tid);
-      const overBudget = a.budgetUsd !== null && totals.costUsd !== null && totals.costUsd > a.budgetUsd;
+      const overBudget = budgetStopped || (a.budgetUsd !== null && totals.costUsd !== null && totals.costUsd > a.budgetUsd);
       let status: RunStatus = overBudget ? "paused-budget" : "succeeded";
+
+      if (budgetStopped && !text.trim()) {
+        const finished = store.finishRun(run.id, { status: "paused-budget", costUsd: totals.costUsd, inputTokens: totals.inputTokens, outputTokens: totals.outputTokens, result: "" });
+        this.notify(finished, a);
+        return;
+      }
 
       const key = `${run.runKey}:${this.deps.destination.id}`;
       store.checkpoint(run.id, { text, advances } satisfies Checkpoint);

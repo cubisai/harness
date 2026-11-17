@@ -78,7 +78,7 @@ import {
 import { Approvals } from "./approvals";
 import { artifactDiff, listArtifacts, opensByItself, readArtifact, recordPlan, recordPseudo, recordTurnArtifacts, snapshotDeliverables, type ArtifactDeps, type DeliverableSnapshot } from "./artifacts";
 import { runCheck, tailOf } from "./check";
-import { evidenceFlags, isTestPath, markerCounts, newMarkers, addedLines as diffAddedLines } from "./evidence";
+import { evidenceFlags, isCheckCommand, isCheckTool, isTestPath, markerCounts, newMarkers, addedLines as diffAddedLines, type EvidenceStep } from "./evidence";
 import type { Store } from "./db";
 import { isChatDir, isChatsRoot } from "./chats";
 import { addedSinceHead, branchLabel, createWorktree, currentBranch, dirtyPaths, hasGitDir, headSha, isTracked, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
@@ -922,8 +922,10 @@ export class Service {
       // The agent reported an edit this turn: a tool-result for an Edit tool-use, or a path git changed.
       const editIds = new Set<string>();
       let edited = false;
-      // What the evidence gate reads: the turn's commands and its edits' diffs.
+      // What the evidence gate reads: the turn's commands, ordered ledger steps and its edits' diffs.
       const commands: string[] = [];
+      const evidenceSteps: EvidenceStep[] = [];
+      const checkStepOf = new Map<string, Extract<EvidenceStep, { kind: "check" }>>();
       const editDiffs: { path: string; unified: string }[] = [];
       // What the scorecard reads besides: failing commands, tools used, denials and the turn's size.
       const commandOf = new Map<string, string>();
@@ -1012,16 +1014,37 @@ export class Service {
           if (event.kind === "tool-use" && canonicalTool(event.name) === "Edit") editIds.add(event.toolUseId);
           if (event.kind === "tool-result" && !event.isError && editIds.has(event.toolUseId)) {
             edited = true;
-            editDiffs.push(...diffsOf(event.payload));
+            const diffs = diffsOf(event.payload);
+            editDiffs.push(...diffs);
+            evidenceSteps.push({ kind: "edit", ...(diffs[0]?.path ? { path: diffs[0].path } : {}) });
           }
           if (event.kind === "tool-use") {
             const command = (event.payload as { command?: unknown } | undefined)?.command;
-            if (typeof command === "string") commands.push(command);
+            if (typeof command === "string") {
+              commands.push(command);
+              if (isCheckCommand(command)) {
+                const step: Extract<EvidenceStep, { kind: "check" }> = { kind: "check", command, tool: event.name, ok: true, cwd };
+                evidenceSteps.push(step);
+                checkStepOf.set(event.toolUseId, step);
+              }
+            } else if (isCheckTool(event.name)) {
+              const step: Extract<EvidenceStep, { kind: "check" }> = { kind: "check", tool: event.name, ok: true, cwd };
+              evidenceSteps.push(step);
+              checkStepOf.set(event.toolUseId, step);
+            }
             // Every turn's tool names: the issue check skips a turn that filed one, with or without self-improve.
             toolNames.push(event.name);
             if (learner) {
               toolCalls++;
               if (typeof command === "string") commandOf.set(event.toolUseId, command);
+            }
+          }
+          if (event.kind === "tool-result") {
+            const checkStep = checkStepOf.get(event.toolUseId);
+            if (checkStep) {
+              const exitCode = (event.payload as { exitCode?: unknown } | undefined)?.exitCode;
+              if (typeof exitCode === "number") checkStep.exitCode = exitCode;
+              if (event.isError || (typeof exitCode === "number" && exitCode !== 0)) checkStep.ok = false;
             }
           }
           if (learner && event.kind === "tool-result" && event.isError) {
@@ -1188,7 +1211,19 @@ export class Service {
         try {
           const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
           const answer = last && last.event.kind === "assistant-text" ? last.event.text : "";
-          const flags = await turnEvidence(cwd, { before, after, testsBefore, editDiffs, commands, tools: toolNames, answer, request: req.text, checkPassed });
+          const flags = await turnEvidence(cwd, {
+            before,
+            after,
+            testsBefore,
+            editDiffs,
+            commands,
+            tools: toolNames,
+            steps: evidenceSteps,
+            answer,
+            request: req.text,
+            checkPassed,
+            checkFailed: checkRow !== null && !checkRow.ok,
+          });
           evidence = flags;
           if (flags.length) this.emit(thread.id, { kind: "notice", text: `Worth a second look: ${flags.join(" ")}`, evidence: flags });
         } catch {
@@ -2754,9 +2789,11 @@ async function turnEvidence(
     editDiffs: { path: string; unified: string }[];
     commands: string[];
     tools: string[];
+    steps?: readonly EvidenceStep[];
     answer: string;
     request: string;
     checkPassed: boolean;
+    checkFailed?: boolean;
   },
 ): Promise<string[]> {
   const rel = (p: string) => (isAbsolute(p) ? relative(cwd, p) : p).replace(/\\/g, "/");
@@ -2782,7 +2819,18 @@ async function turnEvidence(
     const labels = lines ? newMarkers(new Map(), markerCounts(lines)) : newMarkers(t.testsBefore.get(p) ?? new Map(), markerCounts(await addedSinceHead(cwd, p)));
     if (labels.length) weakened.push({ path: p, labels });
   }
-  return evidenceFlags({ editedTests, deletedTests, weakened, request: t.request, answer: t.answer, commands: t.commands, tools: t.tools, checkPassed: t.checkPassed });
+  return evidenceFlags({
+    editedTests,
+    deletedTests,
+    weakened,
+    request: t.request,
+    answer: t.answer,
+    commands: t.commands,
+    tools: t.tools,
+    ...(t.steps ? { steps: t.steps } : {}),
+    checkPassed: t.checkPassed,
+    ...(t.checkFailed ? { checkFailed: true } : {}),
+  });
 }
 
 /** Whether two sets hold the same members. */
