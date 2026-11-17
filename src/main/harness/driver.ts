@@ -273,6 +273,7 @@ async function runTurn(
     memory,
     contextFiles: files,
     date: new Date(`${meta.startedOn}T00:00:00Z`),
+    shells: input.tools.some((t) => t.name === "shell_start"),
   });
   // Code mode: one fixed line on when a run_code script beats the shell.
   if (codeMode !== "off") system.push(CODE_HINT);

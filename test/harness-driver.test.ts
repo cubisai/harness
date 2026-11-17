@@ -198,6 +198,16 @@ describe("provider driver", () => {
     expect(t.requests[1]!.messages.at(-1)).toMatchObject({ role: "tool", results: [{ isError: true, text: expect.stringContaining("Plan mode") }] });
   });
 
+  it("tells the model to start servers with shell_start only when the thread has it", async () => {
+    const start: HarnessTool = { name: "shell_start", description: "Start a process", input: { command: z.string() }, autoAllow: false, run: async () => ({ text: "started" }) };
+    const withShells = setup([[{ type: "text", text: "ok" }]], { tools: [start] });
+    await withShells.driver.runTurn(withShells.input("hi"));
+    expect(withShells.requests[0]!.system[0]).toContain("with shell_start, never");
+    const plain = setup([[{ type: "text", text: "ok" }]]);
+    await plain.driver.runTurn(plain.input("hi"));
+    expect(plain.requests[0]!.system[0]).toContain('Long-running servers need "&"');
+  });
+
   it("offers the app's tools with JSON schemas and validates their arguments", async () => {
     const ran: unknown[] = [];
     const browser: HarnessTool = { name: "browser_open", description: "Open a URL", input: { url: z.string() }, autoAllow: true, run: async (a) => (ran.push(a), { text: "opened" }) };

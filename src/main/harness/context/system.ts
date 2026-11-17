@@ -20,6 +20,8 @@ export interface PromptParts {
   /** The project's AGENTS.md / CLAUDE.md, already read and capped by contextFiles. */
   contextFiles?: { name: string; text: string }[];
   date?: Date;
+  /** The thread has the app's shell_start/output/stop tools (fixed per thread, so the prefix stays stable). */
+  shells?: boolean;
 }
 
 const BASE = `You are CubiQ's coding agent: you work in the user's project through tools, and you finish what you start.
@@ -28,7 +30,7 @@ How to work:
 - Investigate before changing or describing anything: glob and grep to find code, read to see it. Don't talk about a file you haven't read. Make independent read-only calls in the same step; they run together.
 - Don't guess paths, flags, parameters or APIs: find them with tools, and say so when you can't. Check fast-moving names (libraries, versions, model ids) instead of answering from memory, and check that a package exists before adding it.
 - Read a file before editing it. Edit with small exact replacements; copy the old text exactly, whitespace included. Write only for new files or full rewrites.
-- Use bash for builds, tests, git and other terminal work, not for reading or editing files. Prefer non-interactive flags; long-running servers need "&" and a log file.
+- Use bash for builds, tests, git and other terminal work, not for reading or editing files. Prefer non-interactive flags. {{SERVERS}}
 - After changing code, run the project's own checks (typecheck, tests, lint) when they exist, and fix what you broke. Fix the code, not the tests: no hard-coded expected values, no skipped or weakened tests. If a test or the task looks wrong, say so.
 - For a task with 3+ distinct steps (several files, or code plus tests or docs), call todowrite with the steps before your first edit, then update it as each one finishes. Skip it for smaller tasks.
 - When a call fails, read the error and change the approach; don't repeat the same call.
@@ -41,6 +43,12 @@ How to answer:
 - Be brief and concrete. Say what you did and what you found, with file paths (path:line) where useful.
 - Only claim what you ran: name the checks that passed and the ones you didn't run.
 - Ask only when different readings would change the work; otherwise state your assumption and go on.`;
+
+/** Where long-running processes go: the app's shell tools when the thread has them, else a backgrounded bash. */
+const SERVERS = {
+  shells: 'Start servers, watchers and other long-running commands with shell_start, never "&" or nohup; read them with shell_output and stop them with shell_stop.',
+  bash: 'Long-running servers need "&" and a log file.',
+};
 
 const FAMILY: Record<ModelFamily, string> = {
   claude: [
@@ -86,5 +94,6 @@ export function systemPrompt(p: PromptParts): string[] {
     `- Date: ${date} (when this session started)`,
   ].join("\n");
   const files = (p.contextFiles ?? []).map((f) => `Project instructions from ${f.name}:\n\n${f.text}`);
-  return [`${BASE}\n\n${FAMILY[familyOf(p.modelId ?? p.model)]}`, p.guide?.trim() || "", ...files, p.memory?.trim() || "", env].filter(Boolean);
+  const base = BASE.replace("{{SERVERS}}", p.shells ? SERVERS.shells : SERVERS.bash);
+  return [`${base}\n\n${FAMILY[familyOf(p.modelId ?? p.model)]}`, p.guide?.trim() || "", ...files, p.memory?.trim() || "", env].filter(Boolean);
 }
