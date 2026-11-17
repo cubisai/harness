@@ -1,5 +1,6 @@
 import { type ReactNode, useMemo } from "react";
 import { validateUiDetailed } from "./validate";
+import type { UiSpec } from "./types";
 import { Calculator } from "./components/Calculator";
 import { Cards } from "./components/Cards";
 import { Chart } from "./components/Chart";
@@ -29,6 +30,16 @@ export function UiBlock({ name, body, fallback }: { name: string; body: string; 
     );
   }
   const { spec, notes } = verdict;
+  const view = <UiSpecView spec={spec} />;
+  return (
+    <div className="ui-block" data-ui={spec.name} data-ui-notes={notes.length ? notes.join("; ") : undefined}>
+      {view}
+    </div>
+  );
+}
+
+/** One validated catalog spec as its component (no frame): UiBlock and script widgets share it. */
+export function UiSpecView({ spec }: { spec: UiSpec }) {
   let view: ReactNode = null;
   switch (spec.name) {
     case "checklist":
@@ -59,9 +70,5 @@ export function UiBlock({ name, body, fallback }: { name: string; body: string; 
       view = <Cards spec={spec} />;
       break;
   }
-  return (
-    <div className="ui-block" data-ui={spec.name} data-ui-notes={notes.length ? notes.join("; ") : undefined}>
-      {view}
-    </div>
-  );
+  return <>{view}</>;
 }

@@ -1,5 +1,5 @@
 import { type ReactNode, useMemo } from "react";
-import { prettyTool } from "../../../shared/tools";
+import { toolLabel } from "../../../shared/tools";
 import type { ExpertDef } from "../../../shared/experts";
 import type { StoredEvent, ThreadEvent } from "../../../shared/types";
 import { useSmoothText } from "../hooks/useSmoothText";
@@ -158,7 +158,7 @@ function Peek({ steps, results, root, now }: { steps: (StoredEvent & { event: To
         return (
           <div className="peek-step" key={seq}>
             <span className={`dot ${r ? (r.isError ? "error" : "done") : "pending"}`} />
-            <span className="name">{prettyTool(event.name)}</span>
+            <span className="name">{toolLabel(event.name, event.payload)}</span>
             <span className="summary">{root ? relative(event.summary, root) : event.summary}</span>
           </div>
         );

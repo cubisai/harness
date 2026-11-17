@@ -761,6 +761,7 @@ async function main(): Promise<void> {
     },
     parentOf: (id, code) => service.scriptParent(id, code),
     emit: (id, event) => service.emitFromTool(id, event),
+    uiBlocks: () => settings.get().uiBlocks === true,
     turnSignal: (id) => service.turnSignal(id),
     outputDir: join(userData, "harness-output"),
     guardScript,
@@ -1041,6 +1042,7 @@ async function main(): Promise<void> {
       return list.length ? skillTool(() => list) : null;
     },
     codeMode: codeModeOf,
+    uiBlocks: () => settings.get().uiBlocks === true,
   });
   const syncProviderAgents = () => service.syncDrivers(PROVIDER_AGENT_PREFIX, providerAgents.list());
   syncProviderAgents();

@@ -8,6 +8,7 @@ import { bm25Rank } from "../../search/bm25";
 import type { LoopTool } from "../loop";
 import { bound } from "./bound";
 import { toTsDeclaration } from "./ts-decl";
+import { validateWidget, WIDGET_KINDS, WIDGETS_PER_RUN, widgetSummary, type WidgetSpec } from "../../../shared/genui/widget";
 
 /** Tools a script may never call: no nested agents, plans or questions from code. */
 const EXCLUDED = new Set(["run_code", "task", "propose_plan", "ask_user"]);
@@ -54,7 +55,18 @@ export interface CodeToolOptions {
   memoryBytes?: number;
   /** Values kept across scripts in one session, as JSON text; a script's writes commit only when it succeeds. */
   state?: Map<string, string>;
+  /** Draws what a successful script `show()`ed for the user (inline UI on); absent = scripts have no `show`. Called once per run, before it returns. */
+  show?: (widgets: ShownWidget[], callId: string) => void | Promise<void>;
 }
+
+/** One widget a script showed: its checked spec, and whether the script called its data complete. */
+export interface ShownWidget {
+  spec: WidgetSpec;
+  complete: boolean;
+}
+
+/** The run_code description's `show` sentence, present only when scripts can show widgets. */
+export const SHOW_NOTE = `\`show(kind, props)\` draws your data for the user right in the chat (kind: ${WIDGET_KINDS.join(", ")}; table props: { title?, rows: object[] or array[], columns?: (string | { key, label?, type?: "text"|"number"|"currency"|"percent", unit? })[], complete?: false when partial }, up to 2000 rows): the user sees the real values, so don't retype them in your reply, say what they mean.`;
 
 /** A tool's one required string parameter, which a bare string argument fills; undefined when it has none or several. */
 function mainArg(tool: LoopTool): string | undefined {
@@ -86,7 +98,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
   return {
     definition: {
       name: "run_code",
-      description: CODE_DESCRIPTION,
+      description: o.show ? `${CODE_DESCRIPTION} ${SHOW_NOTE}` : CODE_DESCRIPTION,
       parameters: {
         type: "object",
         properties: { code: { type: "string", description: "The JavaScript to run, as the body of an async function." } },
@@ -138,7 +150,9 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         const staged = new Map<string, string>(o.state);
         // The keys this run wrote: a commit applies only these, so a concurrent script's writes survive.
         const written = new Set<string>();
-        disposeInstall = install(context, live, o, logs, call.id, runAbort.signal, staged, written, pending);
+        // What the script show()s; drawn only when the run succeeds, like its store writes.
+        const shown: ShownWidget[] = [];
+        disposeInstall = install(context, live, o, logs, call.id, runAbort.signal, staged, written, pending, shown);
 
         // "script.js" names the file in error stacks; the wrapper adds one line, so user line 1 is file line 2.
         const evaluated = context.evalCode(`(async () => {\n${code}\n})()`, "script.js");
@@ -181,6 +195,14 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         }
         if (o.state) for (const key of written) o.state.set(key, staged.get(key)!);
         let text = [...logs.shown(), `=> ${rendered}`].join("\n");
+        if (shown.length && o.show) {
+          try {
+            await o.show(shown, call.id);
+            text += `\n\nShown to the user: ${shown.map((w) => widgetSummary(w.spec) + (w.complete ? "" : " (partial)")).join("; ")}. They see these values drawn: don't repeat them.`;
+          } catch {
+            text += "\n\nThe show() widgets couldn't be drawn; give the user the key values yourself.";
+          }
+        }
         if (wasUndefined && logs.length === 0) text += "\n\nThe script returned undefined and printed nothing: return a value (or console.log it) so there is something to read.";
         return { text: bound(text, { outputDir: o.outputDir, callId: call.id }) };
       } catch (err) {
@@ -202,7 +224,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
 const STOPPED = "Interrupted by the user.";
 const timingOut = (timeoutMs: number): string => `Stopped after ${Math.round(timeoutMs / 1000)}s: the time limit was reached.`;
 
-/** The globals a script sees: `tools` (plus `tools.readMany`), `ALL_TOOLS`, `searchTools`, `describeTool`, `store`, `load`, `path` and `console`. */
+/** The globals a script sees: `tools` (plus `tools.readMany`), `ALL_TOOLS`, `searchTools`, `describeTool`, `store`, `load`, `path`, `console`, and `show` when inline UI is on. */
 function install(
   context: QuickJSContext,
   runtime: QuickJSRuntime,
@@ -213,6 +235,7 @@ function install(
   staged: Map<string, string>,
   written: Set<string>,
   pending: Set<QuickJSDeferredPromise>,
+  shown: ShownWidget[],
 ): () => void {
   // QuickJS's own JSON.parse, kept for the context's life: arrays and objects
   // cross the WASM boundary once, as text, instead of a handle per element or
@@ -310,6 +333,20 @@ function install(
   });
   context.setProp(context.global, "load", load);
   load.dispose();
+
+  if (o.show) {
+    const show = context.newFunction("show", (kindHandle, propsHandle) => {
+      if (shown.length >= WIDGETS_PER_RUN) return fail(`show(): at most ${WIDGETS_PER_RUN} widgets per script.`);
+      const kind = kindHandle ? context.dump(kindHandle) : undefined;
+      const props = propsHandle ? context.dump(propsHandle) : undefined;
+      const checked = validateWidget(kind, props);
+      if (!checked.spec) return fail(`show(${typeof kind === "string" ? JSON.stringify(kind) : ""}): ${checked.reason}.`);
+      const complete = !(props && typeof props === "object" && (props as { complete?: unknown }).complete === false);
+      shown.push({ spec: checked.spec, complete });
+    });
+    context.setProp(context.global, "show", show);
+    show.dispose();
+  }
 
   /** A host promise for the script to await: `work` settles it with a plain value or an error message. */
   const defer = (work: () => Promise<{ value?: unknown; error?: string }>): QuickJSHandle => {

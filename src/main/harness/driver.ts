@@ -29,7 +29,8 @@ import { contextFiles } from "./context/files";
 import { pruneToolOutputs, retentionFor } from "./context/prune";
 import { nativeTools, shellFor, todosOf, type NativeTool, type ToolContext } from "./tools";
 import { bound } from "./tools/bound";
-import { createCodeTool } from "./tools/code";
+import { createCodeTool, type ShownWidget } from "./tools/code";
+import { scriptEnvelope } from "../../shared/genui/widget";
 import { createCodeBroker } from "./tools/code-broker";
 import { resolvePath } from "./tools/paths";
 import { parsePatch } from "./tools/apply-patch";
@@ -57,6 +58,8 @@ export interface ProviderDriverDeps {
   skills?(cwd: string, design: boolean, threadId?: string): HarnessTool | null;
   /** The thread's code mode: "on" offers the `run_code` sandbox tool. */
   codeMode?: (threadId: string) => CodeMode;
+  /** Inline UI on: run_code scripts may `show()` tables and stats to the user. */
+  uiBlocks?: () => boolean;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
   /** Tests. */
@@ -408,6 +411,7 @@ async function runTurn(
           outputDir: deps.outputDir,
           state: codeState,
           broker: createCodeBroker({ tools: () => scriptable, emit: (e) => input.onEvent(e), authorize: (tool, args, summary) => authorize(tool, args, summary), outputDir: deps.outputDir }),
+          ...(deps.uiBlocks?.() ? { show: (widgets: ShownWidget[], callId: string) => widgets.forEach((w, i) => input.onEvent({ kind: "widget", envelope: scriptEnvelope(w.spec, callId, i, w.complete) })) } : {}),
         })
       : null;
   const scriptable: LoopTool[] = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : []), ...(planLoop ? [planLoop] : []), ...(askLoop ? [askLoop] : []), taskLoop, ...(codeLoop ? [codeLoop] : [])].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);

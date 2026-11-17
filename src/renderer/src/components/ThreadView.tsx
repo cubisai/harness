@@ -5,7 +5,8 @@ import { artifactKind, isPreviewable, PLAN_ARTIFACT, TEAM_ARTIFACT_PREFIX, witho
 import { skillsOf } from "../../../shared/skill-list";
 import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
 import type { TurnScore } from "../../../shared/learn";
-import { prettyTool, type RunResult } from "../../../shared/tools";
+import { WidgetView } from "../genui/WidgetView";
+import { prettyTool, toolLabel, type RunResult } from "../../../shared/tools";
 import { anchorDelta, anchorFor, collapseTarget, stillPinned, trimmedReserve, type ScrollAnchor } from "../disclosure";
 import { displayOrder } from "../event-order";
 import { type FileRef, parseFileRef } from "../fileref";
@@ -849,6 +850,12 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
       );
     case "tool-result":
       return null; // shown on its tool row
+    case "widget":
+      return (
+        <div className="msg-assistant">
+          <WidgetView envelope={e.envelope} />
+        </div>
+      );
     case "turn-end":
       return (
         <div className="turn-meta">
@@ -1028,7 +1035,7 @@ export function ToolRow(props: {
     <details className="tool" open={open} onToggle={(e) => onToggle(e.currentTarget.open)}>
       <summary className="tool-row" title={result?.summary ?? tool.summary}>
         <span className={`dot ${state}`} />
-        <span className="name">{prettyTool(tool.name)}</span>
+        <span className="name">{toolLabel(tool.name, tool.payload)}</span>
         {fileRef ? (
           <button
             className="summary file-link"

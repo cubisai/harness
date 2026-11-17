@@ -1,6 +1,7 @@
 // The contract between the main process and the renderer. Everything that
 // crosses the preload bridge is one of these types.
 
+import type { WidgetEnvelope } from "./genui/widget";
 import type { PrototypeTier } from "./tiers";
 import type { DesignDirection } from "./direction";
 import type { ExpertDef, ExpertImportResult } from "./experts";
@@ -740,6 +741,8 @@ export type ThreadEvent = (
   | { kind: "handoff"; phase: "seeded" | "reply" | "signal"; text: string; from?: string; to?: string; tokens?: number; tier?: number }
   /** The project's check command after a turn that changed files; ok null = still running. */
   | { kind: "check"; command: string; ok: boolean | null; exitCode: number | null; timedOut: boolean; durationMs: number; tail: string; round: number }
+  /** A table, stat or chart a run_code script showed the user from its own data (`show()`); never sent back to a model. */
+  | { kind: "widget"; envelope: WidgetEnvelope }
 ) &
   EventIds;
 

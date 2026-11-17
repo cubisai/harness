@@ -3949,6 +3949,8 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .ui-note { margin-top: 6px; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
 /* A ui fence that couldn't be drawn: why, above the fence shown as code. */
 .ui-fallback-note { margin: 0 0 4px; font-size: 12px; line-height: 1.5; color: var(--text-tertiary); }
+/* A script widget's source line, under its block. */
+.ui-source { margin-top: 8px; font-size: 12px; line-height: 1.5; color: var(--text-tertiary); }
 
 .ui-check { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 13px; line-height: 1.5; color: var(--text); cursor: pointer; }
 .ui-check input { flex-shrink: 0; width: 14px; height: 14px; margin: 3px 0 0; accent-color: var(--primary); }
@@ -3983,6 +3985,8 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .ui-timeline-detail { margin-top: 4px; font-size: 12.5px; line-height: 1.6; color: var(--text-secondary); }
 
 .ui-chart { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+/* The reply's own ul padding (see .msg-assistant ul) would indent the bars; keep them flush. */
+.msg-assistant .ui-chart { margin: 0; padding-left: 0; }
 .ui-chart li { display: grid; grid-template-columns: minmax(0, 30%) 1fr auto; align-items: center; gap: 8px; font-size: 12.5px; }
 .ui-chart-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .ui-chart-track { height: 8px; border-radius: var(--radius-s); background: var(--bg-subtle); overflow: hidden; }
@@ -4040,6 +4044,12 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 th[aria-sort="ascending"] .smart-th::after { content: " ↑"; color: var(--text-tertiary); }
 th[aria-sort="descending"] .smart-th::after { content: " ↓"; color: var(--text-tertiary); }
 .smart-table-empty { color: var(--text-tertiary); font-size: 12.5px; }
+/* A script's table sits in its block like a compare block: full width, row rules only, numbers in tabular figures; wide tables scroll inside the block. */
+.ui-block[data-ui="table"] .smart-table { margin: 0; overflow-x: auto; }
+.msg-assistant .ui-block[data-ui="table"] table { width: 100%; margin: 0; border-collapse: collapse; }
+.msg-assistant .ui-block[data-ui="table"] th, .msg-assistant .ui-block[data-ui="table"] td { padding: 6px 8px; vertical-align: top; border: 0; border-bottom: 1px solid var(--hairline); font-variant-numeric: tabular-nums; }
+.msg-assistant .ui-block[data-ui="table"] th { font-size: 11.5px; font-weight: 500; color: var(--text-tertiary); }
+.msg-assistant .ui-block[data-ui="table"] tr:last-child td { border-bottom: 0; }
 /* The reply's own ul padding (see .msg-assistant ul) would indent the list; the scoped pair keeps it flush. */
 .md-tasks, .msg-assistant .md-tasks { list-style: none; padding-left: 0; margin: 0 0 12px; }
 .md-task { cursor: default; }

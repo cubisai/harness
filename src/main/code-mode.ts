@@ -11,7 +11,8 @@ import type { CodeMode, ThreadEvent } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { appLoopTool } from "./harness/driver";
 import type { LoopTool } from "./harness/loop";
-import { CODE_DESCRIPTION, createCodeTool } from "./harness/tools/code";
+import { CODE_DESCRIPTION, createCodeTool, SHOW_NOTE, type ShownWidget } from "./harness/tools/code";
+import { scriptEnvelope } from "../shared/genui/widget";
 import { createCodeBroker } from "./harness/tools/code-broker";
 import { globTool } from "./harness/tools/glob";
 import { grepTool } from "./harness/tools/grep";
@@ -61,6 +62,8 @@ export interface CodeServerDeps {
   outputDir: string;
   guardScript: string;
   parentWaitMs?: number;
+  /** Inline UI on: scripts may `show()` tables and stats to the user. Read once per thread, with its tool, so the tool list stays fixed. */
+  uiBlocks?: () => boolean;
 }
 
 /** A native tool run for a script, in the thread's folder. */
@@ -101,7 +104,7 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
     ];
   };
 
-  const run = async (threadId: string, code: string, signal: AbortSignal | undefined, parentId?: string): Promise<{ text: string; isError?: boolean }> => {
+  const run = async (threadId: string, code: string, signal: AbortSignal | undefined, parentId: string | undefined, canShow: boolean): Promise<{ text: string; isError?: boolean }> => {
     const cwd = deps.cwdOf(threadId);
     if (!cwd) return { text: "This thread's folder is gone, so run_code can't run here.", isError: true };
     const turn = deps.turnSignal?.(threadId);
@@ -120,6 +123,15 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
       outputDir: deps.outputDir,
       state,
       broker: createCodeBroker({ tools: () => available, emit: (e) => deps.emit(threadId, e), outputDir: deps.outputDir, parentOf: () => parent() }),
+      ...(canShow
+        ? {
+            show: async (widgets: ShownWidget[], callId: string) => {
+              // The widget belongs to the agent's run_code row; without one (it never showed), the sandbox's own id.
+              const owner = (await parent()) ?? callId;
+              widgets.forEach((w, i) => deps.emit(threadId, { kind: "widget", envelope: scriptEnvelope(w.spec, owner, i, w.complete) }));
+            },
+          }
+        : {}),
     });
     const result = await sandbox.run({ code }, { id: `code-${randomUUID().slice(0, 8)}`, signal: combined, onOutput: () => {} });
     return { text: result.text, ...(result.isError ? { isError: true } : {}) };
@@ -129,13 +141,14 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
     tool(threadId) {
       let tool = tools.get(threadId);
       if (!tool) {
+        const canShow = deps.uiBlocks?.() === true;
         tool = {
           name: CODE_TOOL,
-          description: CODE_MODE_DESCRIPTION,
+          description: canShow ? `${CODE_MODE_DESCRIPTION} ${SHOW_NOTE}` : CODE_MODE_DESCRIPTION,
           input: { code: z.string().describe("The JavaScript to run, as the body of an async function.") },
           autoAllow: true,
           effect: "read",
-          run: ({ code }, ctx) => run(threadId, code, ctx?.signal, ctx?.parentId),
+          run: ({ code }, ctx) => run(threadId, code, ctx?.signal, ctx?.parentId, canShow),
         } satisfies HarnessTool<{ code: z.ZodString }> as unknown as HarnessTool;
         tools.set(threadId, tool);
       }
