@@ -68,7 +68,13 @@ async function copyTable(header: string[], rows: Cell[][]): Promise<void> {
   }
 }
 
-/** The first column (index ≥ 1, so labels stay on the left) whose every cell is a non-negative number, or null. */
+/** A number cell's unit marks: its currency symbol and a trailing %, so "$12" and "€12" (or "12%" and "12") never share a chart. */
+function cellUnit(cell: string): string {
+  const text = cell.trim().replace(/^(\*\*|\*|`)+/, "").replace(/(\*\*|\*|`)+$/, "").trim();
+  return `${/[$€£¥]/.exec(text)?.[0] ?? ""}${text.endsWith("%") ? "%" : ""}`;
+}
+
+/** The first column (index ≥ 1, so labels stay on the left) whose every cell is a non-negative number in one unit, or null. */
 export function chartColumn(rows: string[][]): number | null {
   if (rows.length < 2) return null;
   const width = Math.max(...rows.map((row) => row.length));
@@ -77,10 +83,13 @@ export function chartColumn(rows: string[][]): number | null {
       const value = cellNumber(row[col] ?? "");
       return value !== null && value >= 0;
     });
-    if (numeric) return col;
+    if (numeric && new Set(rows.map((row) => cellUnit(row[col] ?? ""))).size === 1) return col;
   }
   return null;
 }
+
+/** Rows a table shows at once; past it, Previous/Next pages through the rest (filter, sort, chart and copy still see every row). */
+export const PAGE_ROWS = 50;
 
 /** Sort two cells: numerically when both read as numbers, else naturally, case-insensitively. */
 function compareCells(a: string, b: string): number {
@@ -129,6 +138,7 @@ export function SmartTable({
   const [sort, setSort] = useState<{ col: number; dir: "asc" | "desc" } | null>(null);
   const [view, setView] = useState<"table" | "chart">("table");
   const [copied, setCopied] = useState(false);
+  const [page, setPage] = useState(0);
 
   const typed = raw !== undefined && raw.length === rows.length;
   const chartCol = typed ? typedChartColumn(raw, numeric ?? []) : chartColumn(rows);
@@ -142,6 +152,10 @@ export function SmartTable({
       )
     : matched;
   const sorted = order.map((i) => rows[i]!);
+  // A filter or sort that leaves fewer pages lands on the last one there is.
+  const pages = Math.max(1, Math.ceil(order.length / PAGE_ROWS));
+  const at = Math.min(page, pages - 1);
+  const shown = order.slice(at * PAGE_ROWS, (at + 1) * PAGE_ROWS);
   const value = (i: number, col: number): number => (typed ? (raw[i]![col] as number) : (cellNumber(rows[i]![col] ?? "") ?? 0));
 
   /** asc → desc → the agent's own order. */
@@ -184,7 +198,7 @@ export function SmartTable({
         <>
           <div className="ui-title">{header[chartCol]}</div>
           <ChartBars
-            series={order.map((i) => ({ label: rows[i]![0] ?? "", value: value(i, chartCol) }))}
+            series={shown.map((i) => ({ label: rows[i]![0] ?? "", value: value(i, chartCol) }))}
             label={header[chartCol] ?? "Chart"}
           />
         </>
@@ -205,9 +219,9 @@ export function SmartTable({
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row, j) => (
-              <tr key={j}>
-                {row.map((cell, k) => (
+            {shown.map((i) => (
+              <tr key={i}>
+                {rows[i]!.map((cell, k) => (
                   <td key={k} style={align[k] ? { textAlign: align[k]! } : undefined}>
                     {renderCell(cell)}
                   </td>
@@ -224,6 +238,19 @@ export function SmartTable({
           </tbody>
         </table>
       )}
+      {pages > 1 ? (
+        <div className="smart-table-pager">
+          <button type="button" className="code-copy" disabled={at === 0} onClick={() => setPage(at - 1)}>
+            Previous
+          </button>
+          <span aria-live="polite">
+            {(at * PAGE_ROWS + 1).toLocaleString()}–{Math.min((at + 1) * PAGE_ROWS, order.length).toLocaleString()} of {order.length.toLocaleString()}
+          </span>
+          <button type="button" className="code-copy" disabled={at === pages - 1} onClick={() => setPage(at + 1)}>
+            Next
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

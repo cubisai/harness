@@ -132,6 +132,12 @@ describe("run_code show()", () => {
     const failed = await runCode(sandbox(calls), 'show("stat", { stats: [{ label: "a", value: "1" }] }); throw new Error("later");');
     expect(failed.isError).toBe(true);
     expect(calls).toHaveLength(0);
+    // The model must not tell the user a widget is there when its script failed.
+    expect(failed.text).toContain("Nothing was shown to the user");
+    expect(bad.text).not.toContain("Nothing was shown");
+    // A wrong shape names the right one.
+    const shape = await runCode(sandbox(calls), 'show("stat", { label: "Errors", value: 4 });');
+    expect(shape.text).toContain('show("stat"): no stats. Expected: show("stat", { title?, stats: [{ label, value, delta?, better?: "up"|"down" }] }).');
   });
 
   it("caps widgets per script", async () => {

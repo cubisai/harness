@@ -125,6 +125,9 @@ function statTile(row: string): Record<string, unknown> {
   const cells = splitCells(row);
   const tile: Record<string, unknown> = { label: cells[0] ?? "", value: cells[1] ?? "" };
   if (cells[2]) tile.delta = cells[2];
+  // A 4th cell says which way is good: "better: up", "up", "higher is better", "down"…
+  const better = /\b(up|higher)\b/i.test(cells[3] ?? "") ? "up" : /\b(down|lower)\b/i.test(cells[3] ?? "") ? "down" : null;
+  if (better) tile.better = better;
   return tile;
 }
 

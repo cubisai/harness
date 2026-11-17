@@ -48,8 +48,8 @@ export type FormField = { id: string; label: string; type: "text" | "number" | "
 /** A small form; Submit sends one line, `Form "<title>": id=value, …`. */
 export type FormSpec = { name: "form"; title?: string; fields: FormField[] };
 
-/** Big-number tiles. `delta` is free text such as "+12%". */
-export type StatSpec = { name: "stat"; title?: string; stats: { label: string; value: string; delta?: string }[] };
+/** Big-number tiles. `delta` is free text such as "+12%"; `better` says which way is good (absent: the change isn't judged). */
+export type StatSpec = { name: "stat"; title?: string; stats: { label: string; value: string; delta?: string; better?: "up" | "down" }[] };
 
 /**
  * A list of rows in one card. `lead` is an icon word (mapped locally), an

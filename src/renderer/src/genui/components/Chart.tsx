@@ -32,7 +32,7 @@ export function ChartBars({ series, unit, label }: { series: { label: string; va
               </>
             )}
           </div>
-          <span className="ui-chart-value">
+          <span className="ui-chart-value" title={String(entry.value)}>
             {format(entry.value)}
             {unit ? ` ${unit}` : ""}
           </span>

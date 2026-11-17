@@ -4022,8 +4022,9 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .ui-stat-label { font-size: 11.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-stat-value { margin-top: 2px; font: 600 14px var(--mono); font-variant-numeric: tabular-nums; color: var(--text); overflow-wrap: anywhere; }
 .ui-stat-delta { margin-top: 2px; font: 11.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
-.ui-stat-delta.up { color: var(--success); }
-.ui-stat-delta.down { color: var(--danger); }
+/* Coloured only when the block says which way is better (`better`); otherwise the change stays neutral. */
+.ui-stat-delta.good { color: var(--success); }
+.ui-stat-delta.bad { color: var(--danger); }
 /* Copy / Use in reply: revealed on hover or keyboard focus (DESIGN §8). */
 /* Top right like a code block's Copy, so the hidden pair takes no room. */
 .ui-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; padding-left: 4px; background: var(--bg); opacity: 0; transition: opacity 120ms var(--ease); }
@@ -4044,6 +4045,9 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 th[aria-sort="ascending"] .smart-th::after { content: " ↑"; color: var(--text-tertiary); }
 th[aria-sort="descending"] .smart-th::after { content: " ↓"; color: var(--text-tertiary); }
 .smart-table-empty { color: var(--text-tertiary); font-size: 12.5px; }
+.smart-table-pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 6px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.smart-table-pager .code-copy:disabled { opacity: 0.4; cursor: default; }
+.smart-table-pager .code-copy:disabled:hover { background: transparent; color: var(--text-tertiary); }
 /* A script's table sits in its block like a compare block: full width, row rules only, numbers in tabular figures; wide tables scroll inside the block. */
 .ui-block[data-ui="table"] .smart-table { margin: 0; overflow-x: auto; }
 .msg-assistant .ui-block[data-ui="table"] table { width: 100%; margin: 0; border-collapse: collapse; }

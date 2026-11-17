@@ -341,6 +341,7 @@ function validateStat(o: Record<string, unknown>): StatSpec | null {
     const stat: StatSpec["stats"][number] = { label: name, value };
     const delta = label(entry.delta);
     if (delta !== null) stat.delta = delta;
+    if (entry.better === "up" || entry.better === "down") stat.better = entry.better;
     stats.push(stat);
   }
   const spec: StatSpec = { name: "stat", stats };

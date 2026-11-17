@@ -8,7 +8,7 @@ import { bm25Rank } from "../../search/bm25";
 import type { LoopTool } from "../loop";
 import { bound } from "./bound";
 import { toTsDeclaration } from "./ts-decl";
-import { validateWidget, WIDGET_KINDS, WIDGETS_PER_RUN, widgetSummary, type WidgetSpec } from "../../../shared/genui/widget";
+import { validateWidget, WIDGET_KINDS, WIDGET_SHAPES, WIDGETS_PER_RUN, widgetSummary, type WidgetKind, type WidgetSpec } from "../../../shared/genui/widget";
 
 /** Tools a script may never call: no nested agents, plans or questions from code. */
 const EXCLUDED = new Set(["run_code", "task", "propose_plan", "ask_user"]);
@@ -115,6 +115,11 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
       const code = typeof args.code === "string" ? args.code : "";
       const logs = new LogBuffer();
       const spill = { outputDir: o.outputDir, callId: call.id };
+      // What the script show()s; drawn only when the run succeeds, like its store writes.
+      const shown: ShownWidget[] = [];
+      // A failed run's widgets are dropped: say so, or the model tells the user a table is there that isn't.
+      const failed = (message: string, logs_: LogBuffer, spill_: typeof spill): string =>
+        failure(message, logs_, spill_) + (shown.length ? `\nNothing was shown to the user: a failed script's show() calls are dropped. Show them again from a script that succeeds.` : "");
       let stopReason: "timeout" | "abort" | null = null;
       let runtime: QuickJSRuntime | null = null;
       let context: QuickJSContext | null = null;
@@ -150,8 +155,6 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         const staged = new Map<string, string>(o.state);
         // The keys this run wrote: a commit applies only these, so a concurrent script's writes survive.
         const written = new Set<string>();
-        // What the script show()s; drawn only when the run succeeds, like its store writes.
-        const shown: ShownWidget[] = [];
         disposeInstall = install(context, live, o, logs, call.id, runAbort.signal, staged, written, pending, shown);
 
         // "script.js" names the file in error stacks; the wrapper adds one line, so user line 1 is file line 2.
@@ -159,7 +162,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         if (isFail(evaluated)) {
           const message = explain(errorText(context, evaluated.error), o);
           evaluated.error.dispose();
-          return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs, spill), isError: true };
+          return { text: failed(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs, spill), isError: true };
         }
         const promise = evaluated.value;
         let settled: Awaited<ReturnType<QuickJSContext["resolvePromise"]>> | null = null;
@@ -174,12 +177,12 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
           promise.dispose();
         }
         if (settled === null) {
-          return { text: failure(stopReason === "abort" ? STOPPED : timingOut(timeoutMs), logs, spill), isError: true };
+          return { text: failed(stopReason === "abort" ? STOPPED : timingOut(timeoutMs), logs, spill), isError: true };
         }
         if (isFail(settled)) {
           const message = explain(errorText(context, settled.error), o);
           settled.error.dispose();
-          return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs, spill), isError: true };
+          return { text: failed(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs, spill), isError: true };
         }
         const wasUndefined = context.typeof(settled.value) === "undefined";
         const rendered = render(context, settled.value);
@@ -190,7 +193,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
           const drained = await Promise.race([Promise.allSettled([...pending].map((d) => d.settled)).then(() => true), stop.promise.then(() => false)]);
           if (!drained) {
             const why = stopReason === "abort" ? STOPPED : timingOut(timeoutMs);
-            return { text: failure(`${why} The script returned with ${left} tool call${left === 1 ? "" : "s"} it never awaited still running; they were stopped. Await every tool call.`, logs, spill), isError: true };
+            return { text: failed(`${why} The script returned with ${left} tool call${left === 1 ? "" : "s"} it never awaited still running; they were stopped. Await every tool call.`, logs, spill), isError: true };
           }
         }
         if (o.state) for (const key of written) o.state.set(key, staged.get(key)!);
@@ -207,7 +210,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         return { text: bound(text, { outputDir: o.outputDir, callId: call.id }) };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs, spill), isError: true };
+        return { text: failed(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs, spill), isError: true };
       } finally {
         stop.done();
         runAbort.abort();
@@ -340,7 +343,10 @@ function install(
       const kind = kindHandle ? context.dump(kindHandle) : undefined;
       const props = propsHandle ? context.dump(propsHandle) : undefined;
       const checked = validateWidget(kind, props);
-      if (!checked.spec) return fail(`show(${typeof kind === "string" ? JSON.stringify(kind) : ""}): ${checked.reason}.`);
+      if (!checked.spec) {
+        const shape = typeof kind === "string" ? WIDGET_SHAPES[kind as WidgetKind] : undefined;
+        return fail(`show(${typeof kind === "string" ? JSON.stringify(kind) : ""}): ${checked.reason}.${shape ? ` Expected: show(${JSON.stringify(kind)}, ${shape}).` : ""}`);
+      }
       const complete = !(props && typeof props === "object" && (props as { complete?: unknown }).complete === false);
       shown.push({ spec: checked.spec, complete });
     });

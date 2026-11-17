@@ -36,7 +36,8 @@ export function DataTable({ spec }: { spec: TableSpec }) {
       {spec.title ? <div className="ui-title">{spec.title}</div> : null}
       <SmartTable
         header={spec.columns.map(headerOf)}
-        align={spec.columns.map((c) => (NUMERIC.has(c.type) ? "right" : null))}
+        // The first column names the row, so it reads left even when it holds numbers (an index, a year).
+        align={spec.columns.map((c, j) => (j > 0 && NUMERIC.has(c.type) ? "right" : null))}
         rows={rows}
         raw={spec.rows}
         numeric={spec.columns.map((c) => NUMERIC.has(c.type))}

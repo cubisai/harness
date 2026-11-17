@@ -55,9 +55,13 @@ describe("interactive UI blocks", () => {
     expect(form).toContain('type="number"');
     expect(form).toContain('class="ui-toggle"');
     expect(form).toContain(">Send</button>");
-    const stat = render(fence("stat", "Users | 12,400 | +8%\nChurn | 2.1% | -0.3pt"));
-    expect(stat).toContain('class="ui-stat-delta up"');
-    expect(stat).toContain('class="ui-stat-delta down"');
+    // A change is coloured only when the block says which way is better (user decision 2026-11-17).
+    const neutral = render(fence("stat", "Users | 12,400 | +8%\nChurn | 2.1% | -0.3pt"));
+    expect(neutral).toContain('<div class="ui-stat-delta">+8%</div>');
+    expect(neutral).toContain('<div class="ui-stat-delta">-0.3pt</div>');
+    const judged = render(fence("stat", "Users | 12,400 | +8% | better: up\nChurn | 2.1% | +0.3pt | lower is better"));
+    expect(judged).toContain('class="ui-stat-delta good"');
+    expect(judged).toContain('class="ui-stat-delta bad"');
   });
 
   it("sends a form as one compact line", () => {

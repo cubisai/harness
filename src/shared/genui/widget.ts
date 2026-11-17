@@ -27,6 +27,17 @@ export type WidgetSpec = UiSpec | TableSpec;
 export const WIDGET_KINDS = ["table", "stat", "chart", "compare", "cards", "checklist", "timeline"] as const;
 export type WidgetKind = (typeof WIDGET_KINDS)[number];
 
+/** Each kind's props, for a script's error message (kept out of the tool description: it costs nothing until a script gets one wrong). */
+export const WIDGET_SHAPES: Record<WidgetKind, string> = {
+  table: '{ title?, rows: object[] | array[], columns?: (string | { key, label?, type?: "text"|"number"|"currency"|"percent", unit? })[], complete? }',
+  stat: '{ title?, stats: [{ label, value, delta?, better?: "up"|"down" }] }',
+  chart: '{ title?, kind: "bars", series: [{ label, value: number }], unit? }',
+  compare: "{ title?, headers: string[], rows: (string|number)[][], highlight?: rowIndex }",
+  cards: "{ title?, items: [{ title, text?, lead?, link?: https URL }] }",
+  checklist: "{ title?, items: [{ text, done? }], note? }",
+  timeline: "{ title?, steps: [{ title, time?, detail? }] }",
+};
+
 export type WidgetProvenance = { kind: "computed"; tool: "run_code"; observedAt: number; /** False when the script said its data is partial. */ complete: boolean };
 
 export interface WidgetEnvelope {
