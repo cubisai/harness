@@ -3947,6 +3947,8 @@ select option, select optgroup { background-color: var(--bg-elevated); color: va
 .ui-title { font-size: 13px; font-weight: 600; line-height: 1.5; color: var(--text); margin: 0 0 8px; }
 .ui-meta { margin-top: 8px; font: 12.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
 .ui-note { margin-top: 6px; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
+/* A ui fence that couldn't be drawn: why, above the fence shown as code. */
+.ui-fallback-note { margin: 0 0 4px; font-size: 12px; line-height: 1.5; color: var(--text-tertiary); }
 
 .ui-check { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 13px; line-height: 1.5; color: var(--text); cursor: pointer; }
 .ui-check input { flex-shrink: 0; width: 14px; height: 14px; margin: 3px 0 0; accent-color: var(--primary); }
