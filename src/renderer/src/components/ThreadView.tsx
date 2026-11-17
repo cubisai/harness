@@ -24,6 +24,7 @@ import { SubagentCard } from "./SubagentCard";
 import { useDismissedPlans } from "./TodoDock";
 import { activityOf, WaitingLine } from "./WaitingLine";
 import { useSmoothText } from "../hooks/useSmoothText";
+import { UiAnswersProvider, UiOriginProvider } from "../genui/origin";
 import { createSegmenter, type Segment, type TurnChanges, workDuration, workSummary } from "../turns";
 import { computeWindow, ESTIMATE_PX, WINDOW_MIN_SEGMENTS } from "../windowing";
 
@@ -459,6 +460,7 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
       }}
     >
       <div className="thread-inner" ref={inner}>
+        <UiAnswersProvider threadId={threadId} events={events}>
         {history?.hasMore && <EarlierMessages loading={history.loadingOlder} onLoad={loadEarlier} />}
         {expertId && events.length === 0 && <ExpertIntro expertId={expertId} />}
         {windowing ? (
@@ -479,6 +481,7 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
             <SegmentRow key={segmentKey(seg)} seg={seg} results={results} children={children} running={running} threadId={threadId} last={i === lastTurnEnd} />
           ))
         )}
+        </UiAnswersProvider>
         {reasoningMode === "text" &&
           reasoningItems.map((item, i) => (
             <LiveReasoning key={item.key} text={item.text} newest={i === reasoningItems.length - 1 && textItems.length === 0} />
@@ -563,7 +566,9 @@ function WorkGroup({ seg, results, children, running, threadId }: { seg: Extract
   const rows = seg.items.map((e) =>
     e.event.kind === "assistant-text" ? (
       <div className="work-note" key={e.seq}>
-        <Markdown text={e.event.text} onFile={openRef} />
+        <UiOriginProvider seq={e.seq}>
+          <Markdown text={e.event.text} onFile={openRef} />
+        </UiOriginProvider>
       </div>
     ) : (
       <EventRow key={e.seq} stored={e} results={results} children={children} running={running} threadId={threadId} />
@@ -822,7 +827,9 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
     case "assistant-text":
       return (
         <div className="msg-assistant">
-          <Markdown text={e.text} onFile={openRef} />
+          <UiOriginProvider seq={stored.seq}>
+            <Markdown text={e.text} onFile={openRef} />
+          </UiOriginProvider>
         </div>
       );
     case "thinking":

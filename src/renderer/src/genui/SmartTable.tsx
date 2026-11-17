@@ -22,12 +22,14 @@ export function cellNumber(cell: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-/** The table as RFC 4180 CSV: a header row then each row, newline-separated. */
+/** The table as RFC 4180 CSV: a header row then each row, newline-separated; formula-like cells are neutralised. */
 export function tableCsv(header: string[], rows: string[][]): string {
   return [header, ...rows].map((row) => row.map(csvField).join(",")).join("\n");
 }
 
-function csvField(field: string): string {
+function csvField(raw: string): string {
+  // A cell a spreadsheet would run as a formula (=, +, -, @, tab, CR first) gets a leading ' (OWASP CSV injection); a plain number like -3 stays as it is.
+  const field = /^[=+\-@\t\r]/.test(raw) && !/^[+-]?\d+(\.\d+)?$/.test(raw.trim()) ? `'${raw}` : raw;
   return /[",\n\r]/.test(field) ? `"${field.replace(/"/g, '""')}"` : field;
 }
 

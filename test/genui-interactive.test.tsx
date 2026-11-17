@@ -66,18 +66,18 @@ describe("interactive UI blocks", () => {
     expect(statMarkdown({ name: "stat", stats: [{ label: "Users", value: "12k", delta: "+8%" }] })).toBe("- Users: **12k** (+8%)");
   });
 
-  it("sends a reply in the open thread, queueing it while a turn runs", () => {
+  it("sends a reply in the open thread, queueing it while a turn runs", async () => {
     const send = vi.fn(async () => true);
     const enqueue = vi.fn();
     useStore.setState({ selectedThreadId: null, send, enqueue, running: {} });
-    expect(sendUiReply("Pro")).toBe(false);
+    expect(await sendUiReply("Pro")).toBe(false);
     useStore.setState({ selectedThreadId: "t1" });
-    expect(sendUiReply("Pro")).toBe(true);
-    expect(send).toHaveBeenCalledWith("Pro");
+    expect(await sendUiReply("Pro")).toBe(true);
+    expect(send).toHaveBeenCalledWith("Pro", undefined, "t1");
     useStore.setState({ running: { t1: true } });
-    sendUiReply("Team");
+    await sendUiReply("Team");
     expect(enqueue).toHaveBeenCalledWith("t1", "Team");
-    expect(sendUiReply("   ")).toBe(false);
+    expect(await sendUiReply("   ")).toBe(false);
   });
 });
 

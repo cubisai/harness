@@ -10,6 +10,8 @@ export const UI_BODY_MAX = 8_000;
 export const UI_ITEMS_MAX = 50;
 /** Strings longer than this are clipped (with "…"). */
 export const UI_TEXT_MAX = 500;
+/** Longest value a tap or select sends: those are never clipped, so a longer one makes the block fall back to code. */
+export const UI_ACTION_MAX = 2_000;
 
 export const UI_NAMES = ["checklist", "calculator", "compare", "timeline", "chart", "choices", "form", "stat", "cards"] as const;
 export type UiName = (typeof UI_NAMES)[number];

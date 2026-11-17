@@ -1,6 +1,6 @@
 import { evaluateFormula, formulaIds } from "./formula";
 import { parseUiLines } from "./lines";
-import { CARDS_MAX, CHOICES_MAX, FORM_FIELDS_MAX, STATS_MAX, UI_BODY_MAX, UI_ITEMS_MAX, UI_NAMES, UI_TEXT_MAX } from "./types";
+import { CARDS_MAX, CHOICES_MAX, FORM_FIELDS_MAX, STATS_MAX, UI_ACTION_MAX, UI_BODY_MAX, UI_ITEMS_MAX, UI_NAMES, UI_TEXT_MAX } from "./types";
 import type { CalculatorInput, CalculatorSpec, CardItem, CardsSpec, ChartSpec, ChecklistSpec, ChoicesSpec, CompareSpec, FormField, FormSpec, StatSpec, TimelineSpec, UiName, UiSpec } from "./types";
 
 /** Most columns a compare block may have. */
@@ -217,6 +217,12 @@ function label(v: unknown): string | null {
   return s !== null && s.trim() !== "" ? s.trim() : null;
 }
 
+/** What a tap or select sends, exactly as written (trimmed): never clipped; too long or blank → null. Long text is ellipsed only on screen. */
+function actionValue(v: unknown): string | null {
+  const s = typeof v === "number" && Number.isFinite(v) ? String(v) : typeof v === "string" ? v.trim() : null;
+  return s !== null && s !== "" && s.length <= UI_ACTION_MAX ? s : null;
+}
+
 /** An https URL, or undefined. */
 function httpsUrl(v: unknown): string | undefined {
   if (typeof v !== "string" || v.length > UI_TEXT_MAX) return undefined;
@@ -232,9 +238,10 @@ function validateChoices(o: Record<string, unknown>): ChoicesSpec | null {
   if (!raw) return null;
   const options: string[] = [];
   for (const entry of raw) {
-    const option = label(entry);
+    const option = actionValue(entry);
     if (option === null) return null;
-    options.push(option);
+    // A repeated option is one button: two would light up together when tapped.
+    if (!options.includes(option)) options.push(option);
   }
   const spec: ChoicesSpec = { name: "choices", options };
   const title = optText(o, "title");
@@ -263,10 +270,11 @@ function validateForm(o: Record<string, unknown>): FormSpec | null {
       if (!opts || opts.length < 2) return null;
       const options: string[] = [];
       for (const opt of opts) {
-        const value = label(opt);
+        const value = actionValue(opt);
         if (value === null) return null;
-        options.push(value);
+        if (!options.includes(value)) options.push(value);
       }
+      if (options.length < 2) return null;
       field.options = options;
     }
     fields.push(field);

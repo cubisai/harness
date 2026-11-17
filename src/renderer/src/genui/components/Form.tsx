@@ -1,5 +1,7 @@
 import { useId, useState } from "react";
 import { Select } from "../../components/Select";
+import { useStore } from "../../store";
+import { useUiOrigin } from "../origin";
 import { sendUiReply } from "../reply";
 import type { FormField, FormSpec } from "../types";
 
@@ -19,22 +21,39 @@ function initial(field: FormField): string {
   return "";
 }
 
-/** A small form; Submit sends one compact line as the user's message, then the form locks. */
+/**
+ * A small form; Submit sends one compact line as the user's message in the
+ * reply's own thread, then the form locks. It stays locked once any user
+ * message follows the reply (read from the transcript), so a remount can't
+ * send it twice.
+ */
 export function Form({ spec }: { spec: FormSpec }) {
   const base = useId();
+  const origin = useUiOrigin();
+  const prefix = formReply(spec, {}).split(":")[0]!;
+  const queued = useStore((s) => (origin ? Boolean(s.outbox[origin.threadId]?.some((m) => m.text.startsWith(prefix))) : false));
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(spec.fields.map((f) => [f.id, initial(f)])));
-  const [sent, setSent] = useState(false);
+  const [sentHere, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const answer = origin?.answer ?? null;
+  // Sent: this form's line went out (here, queued or in the transcript). Any other later message also locks it.
+  const sentForm = sentHere || queued || Boolean(answer?.startsWith(prefix));
+  const sent = sentForm || answer !== null;
   const set = (id: string, value: string) => setValues((v) => ({ ...v, [id]: value }));
   return (
     <form
       className="ui-form"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        if (!sent && sendUiReply(formReply(spec, values))) setSent(true);
+        if (sent || sending) return;
+        setSending(true);
+        const ok = await sendUiReply(formReply(spec, values), origin?.threadId);
+        setSending(false);
+        if (ok) setSent(true);
       }}
     >
       {spec.title ? <div className="ui-title">{spec.title}</div> : null}
-      <fieldset disabled={sent}>
+      <fieldset disabled={sent || sending}>
         {spec.fields.map((f) => {
           const id = `${base}-${f.id}`;
           return (
@@ -45,7 +64,7 @@ export function Form({ spec }: { spec: FormSpec }) {
               {f.type === "toggle" ? (
                 <input id={id} type="checkbox" className="ui-toggle" checked={values[f.id] === "yes"} onChange={(e) => set(f.id, e.target.checked ? "yes" : "no")} />
               ) : f.type === "select" ? (
-                <Select id={id} value={values[f.id] ?? ""} options={(f.options ?? []).map((o) => ({ value: o, label: o }))} onChange={(v) => set(f.id, v)} ariaLabel={f.label} disabled={sent} />
+                <Select id={id} value={values[f.id] ?? ""} options={(f.options ?? []).map((o) => ({ value: o, label: o }))} onChange={(v) => set(f.id, v)} ariaLabel={f.label} disabled={sent || sending} />
               ) : (
                 <input id={id} type={f.type === "number" ? "number" : "text"} value={values[f.id]} onChange={(e) => set(f.id, e.target.value)} />
               )}
@@ -54,7 +73,7 @@ export function Form({ spec }: { spec: FormSpec }) {
         })}
         <div className="ui-form-actions">
           <button type="submit" className="ui-submit">
-            {sent ? "Sent" : "Send"}
+            {sentForm ? "Sent" : "Send"}
           </button>
         </div>
       </fieldset>
