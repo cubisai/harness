@@ -163,6 +163,7 @@ const api: UnskilledApi = {
   designKitDoc: (threadId) => ipcRenderer.invoke("design:kit-doc", threadId),
   designKitSample: (threadId, request) => ipcRenderer.invoke("design:kit-sample", threadId, request),
   designKitGallery: (threadId, request) => ipcRenderer.invoke("design:kit-gallery", threadId, request),
+  designSystemFonts: (threadId) => ipcRenderer.invoke("design:system-fonts", threadId),
   designPropAll: (threadId, rel, ui, name, value, dryRun) => ipcRenderer.invoke("design:prop-all", threadId, rel, ui, name, value, dryRun),
   designKitEdit: (threadId, edit) => ipcRenderer.invoke("design:kit-edit", threadId, edit),
   designKitDraftSave: (threadId) => ipcRenderer.invoke("design:kit-draft-save", threadId),

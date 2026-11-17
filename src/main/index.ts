@@ -1311,6 +1311,7 @@ async function main(): Promise<void> {
   designHandle("design:kit-doc", (threadId: string) => service.kits.doc(threadId));
   designHandle("design:kit-sample", (threadId: string, request: unknown) => service.kits.sample(threadId, readKitSample(request)));
   designHandle("design:kit-gallery", (threadId: string, request: unknown) => service.kits.gallery(threadId, readKitGallery(request)));
+  designHandle("design:system-fonts", (threadId: string) => service.kits.fonts(threadId));
   designHandle("design:prop-all", (threadId: string, rel: unknown, ui: unknown, name: unknown, value: unknown, dryRun: unknown) => {
     if (typeof rel !== "string" || typeof ui !== "string" || !/^[a-z0-9-]{1,64}$/.test(ui) || typeof name !== "string" || !/^data-[a-z0-9-]{1,64}$/.test(name)) throw new Error("Bad prop.");
     if (value !== null && (typeof value !== "string" || value.length > 200)) throw new Error("Bad prop value.");

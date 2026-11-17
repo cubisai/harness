@@ -9,7 +9,7 @@ import { ColorSwatch } from "./ColorSwatch";
 import { contrastRatio, paintedHexColor, type Rgb } from "./contrast";
 import { SystemPanel } from "./SystemPanel";
 import { typeScale } from "./text-styles";
-import { FOUNDATIONS, RAMP_STEPS, colorRoles, foundationGroups, ramp, resolveVars, schemeValues, siblingUrl, tokenMatches, MOD_KEY, type ColorRole, type Foundation, type RoleSwatch } from "./system-mode";
+import { FOUNDATIONS, RAMP_STEPS, colorRoles, foundationGroups, kitFontAlias, kitFontStack, ramp, resolveVars, schemeValues, siblingUrl, tokenMatches, MOD_KEY, type ColorRole, type Foundation, type RoleSwatch } from "./system-mode";
 
 type Page = { kind: "foundation"; id: Foundation } | { kind: "part"; ui: string } | { kind: "gallery" };
 type PartTab = "variants" | "playground" | "usage";
@@ -357,7 +357,7 @@ function FoundationPage({
           {label} <span className="lib-title-meta">{tokens.length}</span>
         </h1>
         {id === "colors" && roles.length > 0 && <ColorsView roles={roles} bg={resolveVars(values["--color-bg"] ?? "transparent", values)} />}
-        {id === "typography" && <TypeView values={values} />}
+        {id === "typography" && <TypeView threadId={threadId} reloadKey={reloadKey} values={values} />}
         {tokens.length === 0 ? (
           <p className="lib-empty">{query ? "No token here matches the search." : `This kit has no ${label.toLowerCase()} tokens.`}</p>
         ) : (
@@ -458,7 +458,43 @@ function ColorsView({ roles, bg }: { roles: ColorRole[]; bg: string }) {
   );
 }
 
-function TypeView({ values }: { values: Record<string, string> }) {
+// The kit faces System mode has added to the app's document; replaced on each load, so only one kit's are ever in it.
+let kitFaces: FontFace[] = [];
+
+/** Load the thread's kit fonts (from its `system/fonts/`) into the app, under private names; the families now drawn. */
+function useKitFonts(threadId: string, reloadKey: string): ReadonlySet<string> {
+  const [families, setFamilies] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    let live = true;
+    void api()
+      .designSystemFonts(threadId)
+      .then(async (list) => {
+        const faces = list.map((f) => {
+          const descriptors: FontFaceDescriptors = { display: "swap" };
+          if (f.weight) descriptors.weight = f.weight;
+          if (f.style) descriptors.style = f.style;
+          if (f.unicodeRange) descriptors.unicodeRange = f.unicodeRange;
+          return { family: f.family, face: new FontFace(kitFontAlias(f.family), new Uint8Array(f.data), descriptors) };
+        });
+        const ok = await Promise.all(faces.map(({ face }) => face.load().then(() => true, () => false)));
+        if (!live) return;
+        for (const face of kitFaces) document.fonts.delete(face);
+        kitFaces = faces.filter((_, i) => ok[i]).map(({ face }) => face);
+        for (const face of kitFaces) document.fonts.add(face);
+        setFamilies(new Set(faces.filter((_, i) => ok[i]).map(({ family }) => family)));
+      })
+      // Without its files the page falls back to the stack's other fonts, as before.
+      .catch(() => live && setFamilies(new Set()));
+    return () => {
+      live = false;
+    };
+  }, [threadId, reloadKey]);
+  return families;
+}
+
+function TypeView({ threadId, reloadKey, values }: { threadId: string; reloadKey: string; values: Record<string, string> }) {
+  const loaded = useKitFonts(threadId, reloadKey);
+  const family = (stack: string): string => kitFontStack(resolveVars(stack, values), loaded);
   const steps = typeScale(values).slice().reverse();
   const families = (["--font-display", "--font-sans", "--font-mono"] as const).filter((n) => values[n]);
   return (
@@ -467,7 +503,7 @@ function TypeView({ values }: { values: Record<string, string> }) {
         <div className="lib-families">
           {families.map((n) => (
             <div className="lib-family" key={n}>
-              <span className="lib-family-sample" style={{ fontFamily: resolveVars(values[n]!, values) }}>
+              <span className="lib-family-sample" style={{ fontFamily: family(values[n]!) }}>
                 Aa
               </span>
               <span className="lib-family-name">{n.replace(/^--font-/, "")}</span>
@@ -485,7 +521,7 @@ function TypeView({ values }: { values: Record<string, string> }) {
               <span>{s.label}</span>
               <span className="lib-scale-px">{s.meta}</span>
             </span>
-            <span className="lib-scale-sample" style={{ fontSize: Math.min(s.px, 48), lineHeight: s.px > 48 ? 1.15 : values[`--leading-${s.id}`] ?? "normal", fontFamily: resolveVars(values[s.px >= 24 ? "--font-display" : "--font-sans"] ?? "inherit", values) }}>
+            <span className="lib-scale-sample" style={{ fontSize: Math.min(s.px, 48), lineHeight: s.px > 48 ? 1.15 : values[`--leading-${s.id}`] ?? "normal", fontFamily: family(values[s.px >= 24 ? "--font-display" : "--font-sans"] ?? "inherit") }}>
               The quick brown fox
             </span>
           </div>

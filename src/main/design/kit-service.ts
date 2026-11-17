@@ -3,7 +3,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { designDirName } from "../../shared/design";
 import { parseReferenceSystemId, referenceSystemId } from "../../shared/direction";
 import type { DesignKitOption, DesignMutation } from "../../shared/design-mutation";
-import type { DesignIntent, DesignKitDoc, DesignKitEdit, DesignKitGroup, DesignKitPart, DesignKitSampleRequest, DesignMigrationPreview, DesignReach, DesignThemeCard, LiveUpdate, Thread } from "../../shared/types";
+import type { DesignFontFace, DesignIntent, DesignKitDoc, DesignKitEdit, DesignKitGroup, DesignKitPart, DesignKitSampleRequest, DesignMigrationPreview, DesignReach, DesignThemeCard, LiveUpdate, Thread } from "../../shared/types";
 import { addComposition, applyKitEdit, isStatefulPart, kitGallery, type GalleryEntry, compositionWarnings, diffManifests, freeFolder, manifestIn, partCounts, partSample, partsUsingToken, projectKitFolders, projectSystemsDir, saveKitDraft, saveSystemCopy, seedKitDraft, forkKitSystem } from "./kit-library";
 import { migratePage, parseMigrations, setPropEverywhere, type MigrationPlan } from "./kit-migrate";
 import { groundPage, groundingSummary, tokenNamesIn } from "./grounding";
@@ -11,6 +11,7 @@ import { validateKitDir, type KitManifest } from "./kit-schema";
 import type { LintFinding } from "./lint";
 import { listDesignPages } from "./pages";
 import { listDesignSystems, listKitSystems, materializeSystem, type DesignSystemInfo } from "./systems";
+import { systemFontFaces } from "./font-faces";
 import { parseTokens } from "./tokens";
 
 /** What the kit features need from the app; injected so they run in plain Node. */
@@ -593,6 +594,13 @@ export class DesignKitService {
    * Draw the thread's kit as a gallery page in the design folder: every part and block grouped by category, or only `uis`
    * (in the kit's order). `single` draws the first of them filling the frame, for the preview beside Insert and Swap.
    */
+  /** The font faces in the thread's `system/` CSS, read from its `fonts/`; [] without a design folder. */
+  fonts(threadId: string): DesignFontFace[] {
+    this.deps.getThread(threadId);
+    const root = this.deps.designRoot(threadId);
+    return root ? systemFontFaces(join(root, "system")) : [];
+  }
+
   gallery(threadId: string, request: { uis?: string[]; single?: boolean } = {}): string {
     const thread = this.deps.getThread(threadId);
     const root = this.deps.designRoot(threadId);

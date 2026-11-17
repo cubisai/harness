@@ -1044,6 +1044,16 @@ export interface DesignKitPart {
   usage: { count: number; files: number };
 }
 
+/** A font face a design's `system/` CSS loads from its `fonts/`, with the file's bytes, for System mode's Typography page. */
+export interface DesignFontFace {
+  family: string;
+  file: string;
+  weight?: string;
+  style?: string;
+  unicodeRange?: string;
+  data: Uint8Array;
+}
+
 /** The kit behind a design thread, for System mode. */
 export interface DesignKitDoc {
   /** Null on a flat style: it has tokens but no components. */
@@ -1619,6 +1629,8 @@ export interface UnskilledApi {
   designKitSample(threadId: string, request: DesignKitSampleRequest): Promise<string>;
   /** The kit drawn as a gallery page (all parts and blocks, or only `uis`; `single` = one entry filling the frame); its path in the design folder. */
   designKitGallery(threadId: string, request: { uis?: string[]; single?: boolean }): Promise<string>;
+  /** The font faces the thread's `system/` CSS declares, so System mode can draw type in the kit's own fonts. */
+  designSystemFonts(threadId: string): Promise<DesignFontFace[]>;
   /** `Apply to all`: set prop `name` (a `data-*` attribute) on every `ui` part of every page in the design; `dryRun` only counts. */
   designPropAll(threadId: string, rel: string, ui: string, name: string, value: string | null, dryRun?: boolean): Promise<{ count: number; pages: number }>;
   designKitEdit(threadId: string, edit: DesignKitEdit): Promise<{ doc: DesignKitDoc; thread: Thread }>;
