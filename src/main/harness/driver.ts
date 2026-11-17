@@ -625,6 +625,7 @@ export function appLoopTool(tool: HarnessTool, input: Pick<TurnInput, "projectId
   }
   return {
     definition: { name: tool.name, description: tool.description, parameters },
+    ...(tool.returns ? { returns: tool.returns } : {}),
     displayName: tool.name,
     // Safe tools run in any mode; the rest ask in "ask" mode, like an edit.
     access: tool.autoAllow ? "read" : "edit",
@@ -641,7 +642,7 @@ export function appLoopTool(tool: HarnessTool, input: Pick<TurnInput, "projectId
       const out = await tool.run(parsed.data as never, { ...(input.projectId ? { projectId: input.projectId } : {}), threadId: input.threadId, signal: call.signal });
       // A skill's body is instructions, not output: it reaches the model whole. Anything else is bounded like a native tool's result.
       const text = tool.name === "skill" ? out.text : bound(out.text, { outputDir, callId: call.id });
-      return { text, ...(out.isError ? { isError: true } : {}), ...(out.imagePng ? { imagePng: out.imagePng } : {}) };
+      return { text, ...(out.isError ? { isError: true } : {}), ...(out.imagePng ? { imagePng: out.imagePng } : {}), ...(call.script && out.data !== undefined ? { data: out.data } : {}) };
     },
   };
 }

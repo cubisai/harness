@@ -518,8 +518,11 @@ function explain(message: string, o: CodeToolOptions): string {
     return `${message}. The sandbox has no require, import, module or fs: read files with tools.read (a folder lists), search with tools.grep and tools.glob.`;
   }
   if (!/not a function/.test(message)) return message;
-  const names = o.tools().map((t) => t.definition.name).filter((n) => !EXCLUDED.has(n));
-  return `${message}. A script's tools are: ${names.join(", ")}. Read files with tools.read (a folder lists), search with tools.grep and tools.glob; edits, shell commands and tools that change state (such as design_set_direction) are not available in a script: call those directly as tool calls, not through run_code.`;
+  const exposed = o.tools().filter((t) => !EXCLUDED.has(t.definition.name));
+  const names = exposed.map((t) => t.definition.name);
+  const readOnly = !exposed.some((t) => t.access === "edit" || t.access === "shell");
+  const tail = readOnly ? " Edits, shell commands and tools that change state (such as design_set_direction) are not available in a script: call those directly as tool calls, not through run_code." : "";
+  return `${message}. A script's tools are: ${names.join(", ")}. Read files with tools.read (a folder lists), search with tools.grep and tools.glob.${tail}`;
 }
 
 /** Console output before an error still reaches the model, with the error after it. */

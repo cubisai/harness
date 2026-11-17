@@ -23,6 +23,9 @@ export const CODE_TOOL = "run_code";
 /** Tools a script never gets, even when they only read: no nested scripts or questions. */
 const NEVER = new Set([CODE_TOOL, "ask_user"]);
 
+/** App tools a read-only script also skips: search_tools only finds tools for call_mcp_tool, which such a script can't call. */
+const SCRIPT_SKIP = new Set(["search_tools"]);
+
 /** The native tools' exact argument names, which models otherwise guess from their own tools (`filePath`). */
 const SCRIPT_EXAMPLES = "Arguments: `await tools.read({ path: \"src/a.ts\", offset: 1, limit: 200 })`, `await tools.readMany([\"src/a.ts\", \"src/b.ts\"])`, `await tools.grep({ pattern: \"TODO\", path: \"src\", glob: \"*.ts\", limit: 200, context: 2 })`, `await tools.glob({ pattern: \"**/*.md\", limit: 200 })`; read returns the file's text (or, for a folder, its entries, with folders ending in \"/\"), glob and grep return arrays (an empty one when nothing matches), and `path` has POSIX string helpers (`join`, `dirname`, `basename`, `extname`, `normalize`).";
 
@@ -93,7 +96,7 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
     const ids = { threadId, ...(projectId ? { projectId } : {}) };
     return [
       ...[readTool, globTool, grepTool].map((t) => scriptTool(t, ctxFor)),
-      ...deps.appTools(threadId).filter(readsOnly).map((t) => appLoopTool(t, ids, deps.outputDir)),
+      ...deps.appTools(threadId).filter((t) => readsOnly(t) && !SCRIPT_SKIP.has(t.name)).map((t) => appLoopTool(t, ids, deps.outputDir)),
     ];
   };
 

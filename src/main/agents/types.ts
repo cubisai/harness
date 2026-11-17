@@ -13,6 +13,8 @@ export interface ToolOutput {
   /** A PNG the model should see, base64. */
   imagePng?: string;
   isError?: boolean;
+  /** For a run_code script's call: the value its `await` gets instead of `text` (an MCP tool's structuredContent). */
+  data?: unknown;
 }
 
 /** Who is calling a harness tool, when the transport knows (the HTTP tool server does). */
@@ -39,6 +41,8 @@ export interface HarnessTool<Shape extends ZodRawShape = ZodRawShape> {
   autoAllow: boolean;
   /** What running it does, for scheduling (not permission): "read" calls may overlap; "mutate" calls run alone, in order. Absent: the legacy rule (autoAllow runs like a read). */
   effect?: "read" | "mutate";
+  /** The TypeScript type a script's call resolves to (code mode); absent = string. */
+  returns?: string;
   run(args: z.infer<z.ZodObject<Shape>>, ctx?: ToolContext): Promise<ToolOutput>;
   /** The call's one-line summary for its row, when the main argument alone doesn't say it (browser_call). */
   summarize?(args: Record<string, unknown>): string;

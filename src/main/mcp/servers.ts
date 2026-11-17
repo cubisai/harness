@@ -420,6 +420,7 @@ export interface McpToolInfo {
   name: string;
   description: string;
   inputSchema: unknown;
+  outputSchema?: unknown;
 }
 
 /** A pid is still running (signal 0 only probes). */
@@ -443,7 +444,7 @@ export async function listServerTools(spec: McpServerSpec, timeoutMs = 20_000): 
   try {
     await Promise.race([client.connect(transport), timeout]);
     const { tools } = await Promise.race([client.listTools(), timeout]);
-    return { ok: true, tools: tools.map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema })) };
+    return { ok: true, tools: tools.map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema, ...(t.outputSchema ? { outputSchema: t.outputSchema } : {}) })) };
   } catch (err) {
     return { ok: false, tools: [], error: err instanceof Error ? err.message : String(err) };
   } finally {
