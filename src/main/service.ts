@@ -799,6 +799,16 @@ export class Service {
     return this.running.has(threadId);
   }
 
+  /**
+   * turn:send's error path: clear the window's running mark for a send that failed, unless the
+   * thread really is running or queued. A refused duplicate send must not hide a live turn, its
+   * approval cards and its queue (the window would show an idle thread the main process still runs).
+   */
+  settleFailedSend(threadId: string): void {
+    if (this.running.has(threadId) || this.waiting.some((w) => w.threadId === threadId)) return;
+    this.broadcast({ type: "running", threadId, running: false });
+  }
+
   private emit(threadId: string, event: ThreadEvent, provenance: Provenance | null = null): StoredEvent {
     // The one dedupe point for every agent: an unchanged resend of this turn's list isn't stored again.
     if (event.kind === "plan") {

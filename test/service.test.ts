@@ -42,6 +42,26 @@ function setup(script: (input: TurnInput) => Promise<void>) {
   return { store, service, driver, updates, thread };
 }
 
+describe("Service.settleFailedSend", () => {
+  it("a refused duplicate send leaves a live turn running in the window; a failed send of an idle thread clears it", async () => {
+    let release!: () => void;
+    const { service, thread, updates } = setup(() => new Promise<void>((r) => (release = r)));
+    const first = service.send({ threadId: thread.id, text: "a" });
+    await vi.waitFor(() => expect(service.isRunning(thread.id)).toBe(true));
+    await expect(service.send({ threadId: thread.id, text: "b" })).rejects.toThrow("already running");
+    const runningUpdates = () => updates.filter((u) => u.type === "running") as { running: boolean }[];
+    const before = runningUpdates().length;
+    service.settleFailedSend(thread.id);
+    expect(runningUpdates()).toHaveLength(before);
+    release();
+    await first;
+    const after = runningUpdates().length;
+    service.settleFailedSend(thread.id);
+    expect(runningUpdates()).toHaveLength(after + 1);
+    expect(runningUpdates().at(-1)!.running).toBe(false);
+  });
+});
+
 describe("Service.send", () => {
   it("stores the turn, names the thread, and remembers the session", async () => {
     const { store, service, thread, updates } = setup(async (input) => {

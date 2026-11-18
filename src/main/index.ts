@@ -2270,7 +2270,7 @@ async function main(): Promise<void> {
   ipcMain.handle("turn:send", (_e, req: SendRequest) => {
     // Resolve once the turn has started; progress arrives as updates.
     service.send(req).catch((err: unknown) => {
-      broadcast({ type: "running", threadId: req.threadId, running: false });
+      service.settleFailedSend(req.threadId);
       console.error(redactSecrets(err instanceof Error ? (err.stack ?? err.message) : String(err), knownSecrets()));
     });
   });
