@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isChatsRoot } from "../chats";
 import { describeSpec } from "../mcp/servers";
 import type { ExtensionInstallView, ExtensionProposalView, McpServerEntry, Project } from "../../shared/types";
-import { computeProposalDigest, requiredVarsOf, type StoredProposal, validateProposal } from "./manifest";
+import { computeProposalDigest, type ProposalScope, requiredVarsOf, type StoredProposal, validateProposal } from "./manifest";
 import { encodeScope, type ExtensionStore, type InstalledFile } from "./store";
 
 const CHANGED_AFTER_REVIEW = "Proposal changed after review; create a new proposal.";
@@ -14,6 +14,8 @@ export interface ExtensionInstallDeps {
   extensions: ExtensionStore;
   projectOf: (projectId: string) => Project | null;
   allProjects: () => Project[];
+  /** The thread's project id (Chats threads included; the Chats root is filtered out here). */
+  threadProjectId: (threadId: string) => string | null;
   chatsRoot: string | null;
   skillDirs: (projectPath: string | null) => { projectCubiq: string; harness: string };
   bundledSkillNames: () => string[];
@@ -83,8 +85,17 @@ export class ExtensionService {
     return this.toView(proposal);
   }
 
+  /** The thread's own project folder, if it has a real one (not the Chats root, not gone). */
+  private threadProject(threadId: string): Project | null {
+    const id = this.deps.threadProjectId(threadId);
+    const project = id ? this.deps.projectOf(id) : null;
+    return project && !isChatsRoot(project.path, this.deps.chatsRoot) ? project : null;
+  }
+
   private toView(proposal: StoredProposal): ExtensionProposalView {
     const project = proposal.scope.kind === "project" ? this.deps.projectOf(proposal.scope.projectId) : null;
+    const home = this.threadProject(proposal.threadId);
+    const projectChoice = home ? { id: home.id, name: home.name } : null;
     const install = this.deps.extensions.installs(proposal.scope).find((i) => i.proposalId === proposal.id);
     const retryable = proposal.status === "failed" && !(proposal.error ?? "").includes("changed after review");
 
@@ -96,6 +107,7 @@ export class ExtensionService {
         threadId: proposal.threadId,
         scope: proposal.scope,
         projectName: project?.name ?? null,
+        projectChoice,
         status: proposal.status,
         ...(proposal.error ? { error: proposal.error } : {}),
         createdAt: proposal.createdAt,
@@ -117,6 +129,7 @@ export class ExtensionService {
       threadId: proposal.threadId,
       scope: proposal.scope,
       projectName: project?.name ?? null,
+      projectChoice,
       status: proposal.status,
       ...(proposal.error ? { error: proposal.error } : {}),
       createdAt: proposal.createdAt,
@@ -147,14 +160,38 @@ export class ExtensionService {
     return next;
   }
 
-  install(id: string): Promise<ExtensionProposalView> {
+  install(id: string, scope?: "project" | "global"): Promise<ExtensionProposalView> {
     const existing = this.inflightInstalls.get(id);
     if (existing) return existing;
-    const promise = this.runInstall(id).finally(() => {
+    const promise = (scope ? this.rescope(id, scope) : Promise.resolve()).then(() => this.runInstall(id)).finally(() => {
       if (this.inflightInstalls.get(id) === promise) this.inflightInstalls.delete(id);
     });
     this.inflightInstalls.set(id, promise);
     return promise;
+  }
+
+  /**
+   * The user picked another scope on the card. Only a proposal still waiting (staged, or failed but retryable)
+   * moves, and only after its draft still matches the digest it was reviewed under; the digest is then re-bound to
+   * the new scope, so the reviewed content and where it lands are both what the user approved.
+   */
+  private async rescope(id: string, kind: "project" | "global"): Promise<void> {
+    const p = this.deps.extensions.get(id);
+    if (!p || p.scope.kind === kind) return;
+    if (p.status !== "staged" && p.status !== "failed") return;
+    let scope: ProposalScope = { kind: "global" };
+    if (kind === "project") {
+      const home = this.threadProject(p.threadId);
+      if (!home) throw new Error("This thread has no project folder; install it globally.");
+      scope = { kind: "project", projectId: home.id };
+    }
+    const reserved = p.draft.kind === "skill" ? this.deps.bundledSkillNames() : [];
+    const before = validateProposal(p.draft, { scope: p.scope, reservedNames: reserved });
+    // Left in place: runInstall's own digest check fails it the usual way.
+    if (!before.ok || computeProposalDigest(p.scope, before.proposal.draft) !== p.digest) return;
+    const after = validateProposal(p.draft, { scope, reservedNames: reserved });
+    if (!after.ok) throw new Error(after.errors.join("\n"));
+    this.deps.extensions.rescope(id, scope, computeProposalDigest(scope, after.proposal.draft));
   }
 
   private async runInstall(id: string): Promise<ExtensionProposalView> {

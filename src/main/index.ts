@@ -1779,6 +1779,13 @@ async function main(): Promise<void> {
       }
     },
     allProjects: () => store.listProjects(),
+    threadProjectId: (threadId) => {
+      try {
+        return store.getThread(threadId).projectId;
+      } catch {
+        return null;
+      }
+    },
     chatsRoot: chats,
     skillDirs: (projectPath) => skills.dirs(projectPath),
     bundledSkillNames: () => discoverSkills({ origin: "bundled", dir: skills.dirs(null).bundled }).map((s) => s.name),
@@ -1801,10 +1808,11 @@ async function main(): Promise<void> {
   ipcMain.handle("mcp:save", (_e, entry: McpServerEntry, previousName?: string, projectId?: string | null) => saveMcpEntry(entry, previousName, projectId));
   ipcMain.handle("mcp:remove", (_e, name: string, projectId?: string | null) => removeMcpEntry(name, projectId));
   ipcMain.handle("extensions:get", (_e, id: string) => (typeof id === "string" ? extensionService.getProposalView(id) : null));
-  ipcMain.handle("extensions:install", (e, id: string) => {
+  ipcMain.handle("extensions:install", (e, id: string, scope?: unknown) => {
     assertMainWindow(e);
     if (typeof id !== "string") throw new Error("Invalid proposal id.");
-    return extensionService.install(id);
+    if (scope !== undefined && scope !== "project" && scope !== "global") throw new Error("Invalid scope.");
+    return extensionService.install(id, scope);
   });
   ipcMain.handle("extensions:reject", (e, id: string) => {
     assertMainWindow(e);

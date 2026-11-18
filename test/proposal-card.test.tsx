@@ -10,6 +10,7 @@ const skill = (extra: Partial<ExtensionProposalView> = {}): ExtensionProposalVie
   threadId: "t1",
   scope: { kind: "project", projectId: "p1" },
   projectName: "acme-web",
+  projectChoice: null,
   status: "staged",
   createdAt: 0,
   updatedAt: 0,
@@ -68,6 +69,20 @@ describe("ProposalCardView", () => {
     expect(html).toContain("name: conventional-commits");
     expect(html).toContain("Read the diff.");
     expect(html).not.toContain("<p>---");
+  });
+
+  it("with a project to choose, the user picks Install to Project or Global; finished cards show the chip only", () => {
+    const withChoice = skill({ projectChoice: { id: "p1", name: "acme-web" } });
+    const html = render(withChoice, { scopePick: "global", onScopePick: noop });
+    expect(html).toContain('aria-label="Install to"');
+    expect(buttons(html)).toEqual(["Preview SKILL.md", "Project: acme-web", "Global", "Reject", "Install"]);
+    expect(html).toMatch(/class="on" aria-pressed="true"[^>]*>Global</);
+    expect(html).not.toContain("proposal-chip\">Project: acme-web");
+    const installed = render(skill({ projectChoice: { id: "p1", name: "acme-web" }, status: "installed", installId: "i1" }), { scopePick: "project", onScopePick: noop });
+    expect(installed).not.toContain("Install to");
+    expect(installed).toContain("Project: acme-web");
+    // A Chats thread has no project: no picker, Global chip.
+    expect(render(connector("http"), { onScopePick: noop })).not.toContain("Install to");
   });
 
   it("a stdio connector shows the exact command, the local-program line and the variables it needs", () => {

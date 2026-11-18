@@ -4260,3 +4260,9 @@ th[aria-sort="descending"] .smart-th::after { content: " ↓"; color: var(--text
 
 .proposal-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; min-width: 0; }
 .proposal-foot .button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* The scope picker sits left in the foot; Reject/Install stay right. Long project names truncate, the title has them. */
+.proposal-scope { display: flex; align-items: center; gap: 6px; margin-right: auto; min-width: 0; max-width: 100%; }
+.proposal-scope-label { font-size: 11.5px; color: var(--text-secondary); flex: none; }
+.proposal-scope .segmented { min-width: 0; max-width: 100%; }
+.proposal-scope .segmented button { min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.proposal-scope .segmented button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }

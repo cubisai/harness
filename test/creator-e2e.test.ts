@@ -101,6 +101,13 @@ function setup(turn: (input: TurnInput, tools: HarnessTool[]) => Promise<void>) 
       }
     },
     allProjects: () => store.listProjects(),
+    threadProjectId: (tid) => {
+      try {
+        return store.getThread(tid).projectId;
+      } catch {
+        return null;
+      }
+    },
     chatsRoot: cRoot,
     skillDirs: (p) => skills.dirs(p),
     bundledSkillNames: () => discoverSkills({ origin: "bundled", dir: bundledDir }).map((s) => s.name),

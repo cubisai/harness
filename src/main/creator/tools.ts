@@ -196,7 +196,7 @@ export function creatorTools(deps: CreatorToolsDeps, threadId: string): HarnessT
             kind: stored.draft.kind,
             name: stored.draft.name,
             scope: stored.scope,
-            message: "Proposal staged for user review. Wait for the user to install or reject it; do not claim it is installed yet.",
+            message: "Proposal staged for user review. The user picks where it installs (this project or global) and installs or rejects it; do not claim it is installed yet.",
           }),
         };
       },

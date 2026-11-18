@@ -120,6 +120,14 @@ export class ExtensionStore {
     return this.get(id);
   }
 
+  /** The user moved a reviewed proposal to another scope: the digest is re-bound to it. */
+  rescope(id: string, scope: ProposalScope, digest: string): StoredProposal | null {
+    this.db
+      .prepare("UPDATE extension_proposals SET scope = ?, digest = ?, updated_at = ? WHERE id = ? AND status IN ('staged', 'failed')")
+      .run(encodeScope(scope), digest, Date.now(), id);
+    return this.get(id);
+  }
+
   forThread(threadId: string): StoredProposal[] {
     return (
       this.db

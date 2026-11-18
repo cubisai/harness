@@ -133,7 +133,7 @@ export function installMock(): void {
   if (scene === "creator") {
     const t1 = threads.p1?.find((x) => x.id === "t1");
     if (t1) Object.assign(t1, { title: "Make a commit message skill", preset: "creator" });
-    const base = { threadId: "t1", projectName: "acme-web", createdAt: now, updatedAt: now };
+    const base = { threadId: "t1", projectName: "acme-web", projectChoice: { id: "p1", name: "acme-web" }, createdAt: now, updatedAt: now };
     const proposals: ExtensionProposalView[] = [
       {
         ...base,
@@ -633,10 +633,11 @@ export function installMock(): void {
       return mcp;
     },
     getExtensionProposal: async (id) => mockProposals.get(id) ?? null,
-    installExtension: async (id) => {
+    installExtension: async (id, pick) => {
       const p = mockProposals.get(id);
       if (!p) throw new Error("Extension proposal not found.");
-      const updated: ExtensionProposalView = { ...p, status: "installed", installId: `inst-${id}`, updatedAt: Date.now(), error: undefined, retryable: false };
+      const scope: ExtensionProposalView["scope"] = pick === "global" ? { kind: "global" } : pick === "project" && p.projectChoice ? { kind: "project", projectId: p.projectChoice.id } : p.scope;
+      const updated: ExtensionProposalView = { ...p, scope, status: "installed", installId: `inst-${id}`, updatedAt: Date.now(), error: undefined, retryable: false };
       mockProposals.set(id, updated);
       mockInstalls.set(updated.installId!, {
         id: updated.installId!,

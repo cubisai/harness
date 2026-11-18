@@ -24,6 +24,8 @@ export function ProposalCard({ proposalId, threadId }: { proposalId: string; thr
   const [busy, setBusy] = useState<"install" | "reject" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  // Where Install puts it: the user's pick, starting from the scope the agent proposed.
+  const [pick, setPick] = useState<"project" | "global" | null>(null);
   const inFlightRef = useRef(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const refocusRef = useRef(false);
@@ -44,6 +46,7 @@ export function ProposalCard({ proposalId, threadId }: { proposalId: string; thr
     let cancelled = false;
     setProposal(undefined);
     setActionError(null);
+    setPick(null);
     seenNoticesRef.current = null;
     void api()
       .getExtensionProposal(proposalId)
@@ -95,7 +98,7 @@ export function ProposalCard({ proposalId, threadId }: { proposalId: string; thr
     setBusy("install");
     setActionError(null);
     try {
-      const updated = await api().installExtension(proposal.id);
+      const updated = await api().installExtension(proposal.id, pick ?? proposal.scope.kind);
       setProposal(updated);
       if (updated.status === "installed" && updated.draft.kind === "skill") {
         void api()
@@ -140,6 +143,8 @@ export function ProposalCard({ proposalId, threadId }: { proposalId: string; thr
       onTogglePreview={() => setPreviewOpen((v) => !v)}
       onInstall={handleInstall}
       onReject={handleReject}
+      scopePick={pick ?? proposal.scope.kind}
+      onScopePick={setPick}
     />
   );
 }
@@ -152,13 +157,20 @@ export interface ProposalCardViewProps {
   onTogglePreview(): void;
   onInstall(): void;
   onReject(): void;
+  /** The scope Install uses, shown as a picker while the proposal waits and the thread has a project. */
+  scopePick?: "project" | "global";
+  onScopePick?(scope: "project" | "global"): void;
   ref?: Ref<HTMLDivElement>;
 }
 
 /** The card itself, stateless: every status renders from props (tests render it directly). */
-export function ProposalCardView({ proposal, busy, actionError, previewOpen, onTogglePreview, onInstall, onReject, ref }: ProposalCardViewProps) {
+export function ProposalCardView({ proposal, busy, actionError, previewOpen, onTogglePreview, onInstall, onReject, scopePick, onScopePick, ref }: ProposalCardViewProps) {
   const { draft, scope, status } = proposal;
   const scopeLabel = scope.kind === "project" ? `Project${proposal.projectName ? `: ${proposal.projectName}` : ""}` : "Global";
+  const waiting = status === "staged" || (status === "failed" && proposal.retryable !== false);
+  // The picker replaces the head's scope chip while the user can still choose; Chats threads have only Global.
+  const choice = waiting && onScopePick ? proposal.projectChoice : null;
+  const picked = scopePick ?? scope.kind;
   const KindIcon = draft.kind === "skill" ? Puzzle : Plug;
   const kindLabel = draft.kind === "skill" ? "Skill" : "Connector";
   const libraryTarget = draft.kind === "skill" ? "skills" : "connectors";
@@ -172,7 +184,7 @@ export function ProposalCardView({ proposal, busy, actionError, previewOpen, onT
         </span>
         <span className="proposal-name">{draft.name}</span>
         <span className="proposal-chip">{kindLabel}</span>
-        <span className="proposal-chip">{scopeLabel}</span>
+        {!choice && <span className="proposal-chip">{scopeLabel}</span>}
         {status !== "staged" && (
           <span className={`proposal-status ${status}`}>
             {status === "installed" ? "Installed" : status === "rejected" ? "Rejected" : "Failed"}
@@ -244,6 +256,19 @@ export function ProposalCardView({ proposal, busy, actionError, previewOpen, onT
       </div>
 
       <div className="proposal-foot">
+        {choice && (
+          <div className="proposal-scope">
+            <span className="proposal-scope-label">Install to</span>
+            <div className="segmented compact" role="group" aria-label="Install to">
+              <button type="button" className={picked === "project" ? "on" : ""} aria-pressed={picked === "project"} disabled={busy !== null} title={choice.name} onClick={() => onScopePick?.("project")}>
+                {`Project: ${choice.name}`}
+              </button>
+              <button type="button" className={picked === "global" ? "on" : ""} aria-pressed={picked === "global"} disabled={busy !== null} title="Every project" onClick={() => onScopePick?.("global")}>
+                Global
+              </button>
+            </div>
+          </div>
+        )}
         {status === "staged" && (
           <>
             <button type="button" className="button ghost" disabled={busy !== null} onClick={onReject}>

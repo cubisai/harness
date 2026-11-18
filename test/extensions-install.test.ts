@@ -85,6 +85,13 @@ function setupEnv() {
       }
     },
     allProjects: () => store.listProjects(),
+    threadProjectId: (tid) => {
+      try {
+        return store.getThread(tid).projectId;
+      } catch {
+        return null;
+      }
+    },
     chatsRoot: cRoot,
     skillDirs: (p) => skills.dirs(p),
     bundledSkillNames: () => discoverSkills({ origin: "bundled", dir: bundledDir }).map((s) => s.name),
@@ -221,6 +228,36 @@ describe("Extension install / reject / uninstall (B7)", () => {
 
     expect(env.service.installs().map((i) => i.name).sort()).toEqual(["global-skill", "linear", "proj-mcp"]);
     expect(env.service.installs(null).map((i) => i.name).sort()).toEqual(["global-skill", "linear"]);
+  });
+
+  it("installs where the user picks on the card: a project proposal globally, a global one into the thread's project", async () => {
+    const env = setupEnv();
+    const toGlobal = stageSkill(env, "project", "moved-out");
+    expect(env.service.getProposalView(toGlobal.id)!.projectChoice).toEqual({ id: env.project.id, name: env.project.name });
+    const v1 = await env.service.install(toGlobal.id, "global");
+    expect(v1.status).toBe("installed");
+    expect(v1.scope).toEqual({ kind: "global" });
+    expect(existsSync(join(env.harnessDir, "moved-out", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(env.projectDir, ".cubiq", "skills", "moved-out"))).toBe(false);
+
+    const toProject = stageConnector(env, "global", "moved-in");
+    const v2 = await env.service.install(toProject.id, "project");
+    expect(v2.status).toBe("installed");
+    expect(env.mcpScopes.project(env.project.id).list().map((s) => s.name)).toContain("moved-in");
+    expect(env.mcpStore.list().map((s) => s.name)).not.toContain("moved-in");
+    // Same scope as proposed: nothing re-bound.
+    const same = stageSkill(env, "global", "kept");
+    expect((await env.service.install(same.id, "global")).status).toBe("installed");
+  });
+
+  it("a scope change still refuses a draft edited after review", async () => {
+    const env = setupEnv();
+    const prop = stageSkill(env, "project", "tampered");
+    env.store.sql.prepare("UPDATE extension_proposals SET draft = replace(draft, 'Keep PRs crisp.', 'Do something else.') WHERE id = ?").run(prop.id);
+    const view = await env.service.install(prop.id, "global");
+    expect(view.status).toBe("failed");
+    expect(view.error).toContain("changed after review");
+    expect(existsSync(join(env.harnessDir, "tampered"))).toBe(false);
   });
 
   it("refuses to overwrite existing skills or connectors and allows Retry after collision clears", async () => {

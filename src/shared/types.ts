@@ -1379,6 +1379,8 @@ export interface ExtensionProposalView {
   threadId: string;
   scope: ProposalScope;
   projectName: string | null;
+  /** The thread's own project, when it has one: the card offers it next to Global. */
+  projectChoice: { id: string; name: string } | null;
   status: ProposalStatus;
   error?: string;
   createdAt: number;
@@ -1583,7 +1585,8 @@ export interface UnskilledApi {
   saveMcpServer(entry: McpServerEntry, previousName?: string, projectId?: string | null): Promise<McpOverview>;
   removeMcpServer(name: string, projectId?: string | null): Promise<McpOverview>;
   getExtensionProposal(id: string): Promise<ExtensionProposalView | null>;
-  installExtension(id: string): Promise<ExtensionProposalView>;
+  /** `scope` is the user's pick on the card; omitted, the proposal's own scope is kept. */
+  installExtension(id: string, scope?: "project" | "global"): Promise<ExtensionProposalView>;
   rejectExtension(id: string): Promise<ExtensionProposalView>;
   listExtensionInstalls(projectId?: string | null): Promise<ExtensionInstallView[]>;
   uninstallExtension(installId: string): Promise<void>;
