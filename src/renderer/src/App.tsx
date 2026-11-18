@@ -126,8 +126,8 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [newThread, showInspector, interrupt, running]);
 
-  // The browser works without a project; Changes and Files need one.
-  const inspectorVisible = inspectorOpen && (project || inspectorTab === "browser");
+  // The browser and an app work without a project; Changes and Files need one.
+  const inspectorVisible = inspectorOpen && (project || inspectorTab === "browser" || inspectorTab === "app");
   const layout = useStore((s) => s.paneLayout);
   const designThread = Boolean(thread && threadKind(thread) === "design");
   const pane = usePaneLayout(Boolean(inspectorVisible), designThread ? DESIGN_FLOOR : undefined);

@@ -1,6 +1,7 @@
 import type { ExpertDef } from "../../shared/experts";
 import type { AutomationNotice } from "../../shared/automations";
 import { create } from "zustand";
+import type { AppInfo } from "../../shared/types";
 import type {
   BackgroundShell,
   ArtifactFile,
@@ -58,8 +59,8 @@ export interface DesignSelection {
   names?: string[];
 }
 
-/** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. */
-export type InspectorTab = "changes" | "browser" | "files" | "artifact";
+/** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact; App runs a Creator app. */
+export type InspectorTab = "changes" | "browser" | "files" | "artifact" | "app";
 
 export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents" | "memory" | "automations" | "learned";
 
@@ -342,6 +343,13 @@ interface State {
   /** Show a thread file in the panel (path relative to the thread's folder, or absolute inside it). */
   openArtifact(path: string, threadId?: string): void;
   closeArtifact(): void;
+  /** Installed Creator apps for the selected project (and global ones), as last listed. */
+  apps: AppInfo[];
+  loadApps(): Promise<void>;
+  /** The Creator app shown in the panel's App tab; it stays open across threads. */
+  appOpen: AppInfo | null;
+  openApp(app: AppInfo): void;
+  closeApp(): void;
   toggleTerminal(): void;
   /** Add the current terminal to `terminals` if missing, so its shell is mounted. */
   ensureTerminal(): void;
@@ -739,6 +747,8 @@ export const useStore = create<State>((set, get) => ({
   inspectorOpen: false,
   inspectorTab: "changes",
   artifact: null,
+  apps: [],
+  appOpen: null,
   artifactFiles: {},
   turnScores: {},
   browserMounted: false,
@@ -1527,6 +1537,28 @@ export const useStore = create<State>((set, get) => ({
       .listArtifacts(id)
       .then((files) => set((x) => ({ artifactFiles: { ...x.artifactFiles, [id]: files } })))
       .catch(() => {});
+  },
+
+  async loadApps() {
+    const projectId = get().selectedProjectId;
+    try {
+      const apps = await api().listApps(projectId);
+      // A reply for a project the user already left is dropped.
+      if (get().selectedProjectId === projectId) set({ apps });
+    } catch {
+      // The list stays as it was.
+    }
+  },
+
+  openApp(app) {
+    const s = get();
+    const opens = !s.inspectorOpen;
+    set({ appOpen: app, inspectorOpen: true, inspectorTab: "app" });
+    if (opens && s.paneLayout.inspectorCollapsed) s.setPaneLayout({ inspectorCollapsed: false }, true);
+  },
+
+  closeApp() {
+    set((s) => ({ appOpen: null, ...(s.inspectorTab === "app" ? { inspectorTab: "changes" as const, inspectorOpen: false } : {}) }));
   },
 
   closeArtifact() {

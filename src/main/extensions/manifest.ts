@@ -145,12 +145,18 @@ function validateAndNormalizeSkillMd(content: string, expectedName: string, desc
 }
 
 function validateRelativeSkillPath(rawPath: unknown, errors: string[]): string | null {
+  return validateRelativeFilePath(rawPath, SKILL_ALLOWED_EXTENSIONS, "skill", errors);
+}
+
+/** A bundle file path (skill or app): relative, forward slashes, no dot segments or dotfiles, an allowed extension. */
+export function validateRelativeFilePath(rawPath: unknown, allowed: ReadonlySet<string>, kind: "skill" | "app", errors: string[]): string | null {
+  const Kind = kind === "skill" ? "Skill" : "App";
   if (typeof rawPath !== "string" || !rawPath.trim()) {
-    errors.push("Every skill file needs a non-empty relative path.");
+    errors.push(`Every ${kind} file needs a non-empty relative path.`);
     return null;
   }
   if (rawPath.includes("\0")) {
-    errors.push("Skill file paths must not contain NUL bytes.");
+    errors.push(`${Kind} file paths must not contain NUL bytes.`);
     return null;
   }
   if (rawPath.includes("\\")) {
@@ -173,9 +179,9 @@ function validateRelativeSkillPath(rawPath: unknown, errors: string[]): string |
     }
   }
   const ext = extname(segments[segments.length - 1]!).toLowerCase();
-  if (!SKILL_ALLOWED_EXTENSIONS.has(ext)) {
+  if (!allowed.has(ext)) {
     errors.push(
-      `Disallowed file extension in "${rawPath}": allowed extensions are ${[...SKILL_ALLOWED_EXTENSIONS].join(", ")}.`,
+      `Disallowed file extension in "${rawPath}": allowed extensions are ${[...allowed].join(", ")}.`,
     );
     return null;
   }

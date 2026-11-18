@@ -4,6 +4,7 @@ import { IconChat, IconChevron, IconCompose, IconFolder, IconGear, IconLibrary, 
 import { api } from "../api";
 import { elapsed, inboxModel, shortTime, waitingThreads } from "../sections";
 import { ThreadRow, type ThreadStatus } from "./ThreadRow";
+import { appIcon } from "./AppPane";
 import { useStore } from "../store";
 import { InboxBell } from "./MessageCenter";
 import { SidebarToggle } from "./PaneRail";
@@ -236,6 +237,14 @@ export function Sidebar() {
   const finished = useStore((s) => s.finished);
   const turnStartedAt = useStore((s) => s.turnStartedAt);
   const selectedProjectId = useStore((s) => s.selectedProjectId);
+  const apps = useStore((s) => s.apps);
+  const appOpen = useStore((s) => s.appOpen);
+  const openApp = useStore((s) => s.openApp);
+  const inspectorTab = useStore((s) => s.inspectorTab);
+  const inspectorOpen = useStore((s) => s.inspectorOpen);
+  useEffect(() => {
+    void useStore.getState().loadApps();
+  }, [selectedProjectId]);
   const selectedThreadId = useStore((s) => s.selectedThreadId);
   const readyVersion = useStore((s) => s.appUpdate?.ready);
   const agents = useStore((s) => s.agents);
@@ -390,6 +399,29 @@ export function Sidebar() {
           <section className="inbox-section" aria-label="Pinned">
             <div className="section-label">Pinned</div>
             {model.pinned.map((t) => row(t))}
+          </section>
+        )}
+        {apps.length > 0 && (
+          <section className="inbox-section" aria-label="Apps">
+            <div className="section-label">Apps</div>
+            {apps.map((a) => {
+              const Icon = appIcon(a.icon);
+              const open = appOpen?.key === a.key && inspectorTab === "app" && inspectorOpen;
+              return (
+                <button
+                  key={a.key}
+                  type="button"
+                  className={`nav-row app-row${open ? " current" : ""}`}
+                  aria-current={open ? "true" : undefined}
+                  disabled={Boolean(a.error)}
+                  title={a.error ?? `${a.description}${a.scope === "global" ? " (global)" : ""}`}
+                  onClick={() => openApp(a)}
+                >
+                  <Icon size={16} strokeWidth={1.75} aria-hidden />
+                  <span>{a.title}</span>
+                </button>
+              );
+            })}
           </section>
         )}
         {projects.length > 0 && (

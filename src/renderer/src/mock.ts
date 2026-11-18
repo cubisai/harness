@@ -1,6 +1,7 @@
 import type { AgentCatalogEntry, DesignSystemDoc, ExtensionInstallView, ExtensionProposalView, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, MemoryScope, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
 import type { AutomationTemplate, AutomationView, Schedule } from "../../shared/automations";
 import type { ExpertDef } from "../../shared/experts";
+import type { AppInfo } from "../../shared/types";
 
 /**
  * A fake backend for `bun run preview:ui`: the real renderer in a plain
@@ -20,6 +21,11 @@ export function installMock(): void {
   const emit = (u: LiveUpdate) => listeners.forEach((l) => l(u));
   const openTerminals = new Set<string>();
   const mockProposals = new Map<string, ExtensionProposalView>();
+  // The dashboard template as an installed app; vite.preview.config.ts serves it under /__app/ with the bridge.
+  const mockApps: AppInfo[] = [
+    { key: "p~p1~sales-dashboard", name: "sales-dashboard", scope: "project", projectId: "p1", title: "Sales", description: "Revenue, orders and top products for a chosen period.", icon: "chart-bar", grants: [{ server: "shop", tools: ["sales_summary"] }], path: "/Users/you/acme-web/.cubiq/apps/sales-dashboard", url: "/__app/dashboard/index.html" },
+  ];
+  const mockAppStore = new Map<string, unknown>();
   const mockInstalls = new Map<string, ExtensionInstallView>();
   let settings: SettingsView = {
     theme: "system",
@@ -658,6 +664,34 @@ export function installMock(): void {
       return updated;
     },
     listExtensionInstalls: async () => [...mockInstalls.values()],
+    listApps: async () => (scene === "creator" || scene === "app" ? mockApps : []),
+    callApp: async (_key, _projectId, server, tool, args) => {
+      if (server !== "shop" || tool !== "sales_summary") return { ok: false, error: `"${server}.${tool}" is not in this app's grants (app.json).` };
+      const days = Math.min(90, Math.max(1, Number(args.days) || 7));
+      const start = Date.UTC(2026, 10, 18) - (days - 1) * 86_400_000;
+      const rows = Array.from({ length: days }, (_, i) => {
+        const orders = 18 + ((i * 7) % 13) + (i % 7 === 5 ? 9 : 0);
+        return { date: new Date(start + i * 86_400_000).toISOString().slice(5, 10), orders, revenue: orders * (41 + ((i * 11) % 17)) };
+      });
+      const sum = rows.reduce((t, r) => t + r.revenue, 0);
+      const n = rows.reduce((t, r) => t + r.orders, 0);
+      return {
+        ok: true,
+        result: {
+          currency: "USD",
+          days: rows,
+          previous: { revenue: Math.round(sum * 0.91), orders: Math.round(n * 0.95) },
+          topProducts: [
+            { name: "Cold brew 1L", units: Math.round(n * 0.31), revenue: Math.round(sum * 0.27) },
+            { name: "House blend 250g", units: Math.round(n * 0.22), revenue: Math.round(sum * 0.24) },
+            { name: "Oat latte", units: Math.round(n * 0.4), revenue: Math.round(sum * 0.19) },
+            { name: "Ceramic cup", units: Math.round(n * 0.05), revenue: Math.round(sum * 0.08) },
+          ],
+        },
+      };
+    },
+    appStoreGet: async (key, name) => mockAppStore.get(`${key}:${name}`) ?? null,
+    appStoreSet: async (key, name, value) => (mockAppStore.set(`${key}:${name}`, value), { ok: true, result: null }),
     uninstallExtension: async (installId) => {
       mockInstalls.delete(installId);
     },

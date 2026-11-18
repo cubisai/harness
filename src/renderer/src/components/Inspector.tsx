@@ -8,11 +8,13 @@ import { BrowserPanel } from "./BrowserPanel";
 import { FilesPanel } from "./FilesPanel";
 import { OpenIn } from "./OpenIn";
 import { DiffPanel } from "./DiffPanel";
+import { AppPane } from "./AppPane";
 
-/** The right-hand panel: Changes, Browser, Files, and the File an agent wrote. The browser stays mounted once opened, so its page survives tab switches. */
+/** The right-hand panel: Changes, Browser, Files, the File an agent wrote, and an open Creator app. The browser and the app stay mounted once opened, so their pages survive tab switches. */
 export function Inspector({ projectId }: { projectId: string | null }) {
   const tab = useStore((s) => s.inspectorTab);
   const artifact = useStore((s) => s.artifact);
+  const appOpen = useStore((s) => s.appOpen);
   const browserMounted = useStore((s) => s.browserMounted);
   const showInspector = useStore((s) => s.showInspector);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -30,6 +32,11 @@ export function Inspector({ projectId }: { projectId: string | null }) {
           {projectId && (
             <button role="tab" aria-selected={tab === "files"} aria-controls="inspector-files" className={tab === "files" ? "on" : ""} onClick={() => tab !== "files" && showInspector("files")}>
               Files
+            </button>
+          )}
+          {appOpen && (
+            <button role="tab" aria-selected={tab === "app"} aria-controls="inspector-app" className={`inspector-app-tab${tab === "app" ? " on" : ""}`} title={appOpen.title} onClick={() => tab !== "app" && showInspector("app")}>
+              {appOpen.title}
             </button>
           )}
           {artifact && (
@@ -58,6 +65,11 @@ export function Inspector({ projectId }: { projectId: string | null }) {
       <div className="inspector-body" id="inspector-files" role="tabpanel" hidden={tab !== "files"}>
         {tab === "files" && projectId && <FilesPanel projectId={projectId} refreshKey={refreshKey} />}
       </div>
+      {appOpen && (
+        <div className="inspector-body app-body" id="inspector-app" role="tabpanel" hidden={tab !== "app"}>
+          <AppPane app={appOpen} />
+        </div>
+      )}
       {artifact && tab === "artifact" && (
         <div className="inspector-body artifact-body" id="inspector-artifact" role="tabpanel">
           <ArtifactTab threadId={artifact.threadId} path={artifact.path} />

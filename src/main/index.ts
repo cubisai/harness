@@ -112,7 +112,11 @@ import { BUILT_IN_SERVER, isRemote, McpScopes, McpServerStore, McpToolsCache, mi
 import { cleanName } from "../shared/mcp-add";
 import { expandEnvRefs } from "./mcp/vault";
 import { McpVault } from "./mcp/vault";
-import { MCP_ROUTER_MIN_TOOLS, McpClientPool, routerTools } from "./mcp/router";
+import { callServerTool, MCP_ROUTER_MIN_TOOLS, McpClientPool, routerTools } from "./mcp/router";
+import { appBridgeScript } from "./apps/bridge";
+import { AppCalls } from "./apps/calls";
+import { AppRegistry } from "./apps/registry";
+import { APP_SCHEME, serveApp } from "./apps/serve";
 import { providerWarning } from "../shared/provider-rules";
 import { Updater, type UpdaterBackend } from "./updater";
 import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
@@ -259,6 +263,8 @@ async function main(): Promise<void> {
     { scheme: DESIGN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
     // cubiq-style:// serves the style picker's previews: a style's tokens, fonts and the shared specimen (no scripts, no network).
     { scheme: STYLE_PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    // cubiq-app:// serves an installed Creator app to its sandboxed frame: that app's files only, no network.
+    { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
     // cubiq-doc:// serves a thread's folder to the hidden window that prints its HTML documents (no scripts, no network).
     { scheme: DOC_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   ]);
@@ -1820,6 +1826,48 @@ async function main(): Promise<void> {
     return extensionService.reject(id);
   });
   ipcMain.handle("extensions:installs", (_e, projectId?: string | null) => extensionService.installs(projectId));
+
+  // Creator apps: installed folders served over cubiq-app://, their bridge calls checked here against app.json grants.
+  const realProjectPath = (projectId: string): string | null => {
+    try {
+      const p = store.getProject(projectId);
+      return isChatsRoot(p.path, chats) ? null : p.path;
+    } catch {
+      return null;
+    }
+  };
+  const appRegistry = new AppRegistry({ globalDir: join(userData, "apps"), projectPath: realProjectPath });
+  const appCalls = new AppCalls({
+    registry: appRegistry,
+    dataDir: join(userData, "app-data"),
+    call: (projectId, server, tool, args, before) =>
+      callServerTool({ servers: (pid) => mcpScopes.effective(pid ?? null), listings: mcpTools, pool: mcpPool }, projectId, server, tool, args, undefined, before),
+  });
+  const appBridgeJs = appBridgeScript();
+  protocol.handle(APP_SCHEME, (req) => serveApp(req.url, { appRoot: (key) => appRegistry.root(key), bridge: appBridgeJs }));
+  const str = (v: unknown, max = 200): string => {
+    if (typeof v !== "string" || !v || v.length > max) throw new Error("Invalid argument.");
+    return v;
+  };
+  const projectArg = (v: unknown): string | null => (v === null || v === undefined ? null : realProjectPath(str(v)) ? (v as string) : null);
+  ipcMain.handle("apps:list", (e, projectId?: string | null) => {
+    assertMainWindow(e);
+    return appRegistry.list(projectArg(projectId));
+  });
+  ipcMain.handle("apps:call", (e, key: unknown, projectId: unknown, server: unknown, tool: unknown, args: unknown, approval: unknown) => {
+    assertMainWindow(e);
+    const a = args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
+    const ap = approval && typeof approval === "object" ? (approval as { token?: unknown; remember?: unknown }) : null;
+    return appCalls.call(str(key), projectArg(projectId), str(server), str(tool, 128), a, ap && typeof ap.token === "string" ? { token: ap.token, remember: ap.remember === true } : undefined);
+  });
+  ipcMain.handle("apps:store-get", (e, key: unknown, name: unknown) => {
+    assertMainWindow(e);
+    return appCalls.storeGet(str(key), str(name));
+  });
+  ipcMain.handle("apps:store-set", (e, key: unknown, name: unknown, value: unknown) => {
+    assertMainWindow(e);
+    return appCalls.storeSet(str(key), str(name), value);
+  });
   ipcMain.handle("extensions:uninstall", (e, installId: string) => {
     assertMainWindow(e);
     if (typeof installId !== "string") throw new Error("Invalid install id.");

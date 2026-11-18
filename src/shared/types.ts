@@ -1390,6 +1390,30 @@ export interface ExtensionProposalView {
   draft: ExtensionSkillSummary | ExtensionConnectorSummary;
 }
 
+/** An installed Creator app, as the sidebar and Library list it. */
+export interface AppInfo {
+  /** The frame key (`g~name` or `p~<projectId>~name`). */
+  key: string;
+  name: string;
+  scope: "global" | "project";
+  projectId?: string;
+  title: string;
+  description: string;
+  icon?: string;
+  grants: { server: string; tools: string[] }[];
+  path: string;
+  /** The entry page's `cubiq-app://` URL. */
+  url: string;
+  /** Why it can't open (bad or missing app.json). */
+  error?: string;
+}
+
+/** What a frame's bridge request gets back: a result, an error, or a question for the user first. */
+export type AppCallResult =
+  | { ok: true; result: unknown }
+  | { ok: false; error: string }
+  | { ok: false; approval: { token: string; server: string; tool: string; args: string } };
+
 export interface ExtensionInstallView {
   id: string;
   proposalId: string;
@@ -1589,6 +1613,12 @@ export interface UnskilledApi {
   installExtension(id: string, scope?: "project" | "global"): Promise<ExtensionProposalView>;
   rejectExtension(id: string): Promise<ExtensionProposalView>;
   listExtensionInstalls(projectId?: string | null): Promise<ExtensionInstallView[]>;
+  /** Installed Creator apps for a project (its own, then global ones it doesn't shadow), or global only. */
+  listApps(projectId: string | null): Promise<AppInfo[]>;
+  /** A bridge call from an app's frame; `approval` resends a call the user said yes to. */
+  callApp(key: string, projectId: string | null, server: string, tool: string, args: Record<string, unknown>, approval?: { token: string; remember?: boolean }): Promise<AppCallResult>;
+  appStoreGet(key: string, name: string): Promise<unknown>;
+  appStoreSet(key: string, name: string, value: unknown): Promise<AppCallResult>;
   uninstallExtension(installId: string): Promise<void>;
   setMcpServerEnabled(name: string, enabled: boolean, projectId?: string | null): Promise<McpOverview>;
   testMcpServer(name: string, projectId?: string | null): Promise<McpTestResult>;

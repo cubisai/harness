@@ -259,6 +259,52 @@ const jsonValidator = new AjvJsonSchemaValidator();
 /** How long a router call waits for a server to list its tools; `npx -y …` servers can take several seconds to start. */
 const LIST_TIMEOUT_MS = 15_000;
 
+/**
+ * One MCP tool call by server and tool name, the way call_mcp_tool makes it: the server must be enabled for the
+ * project, the tool listed, the arguments valid for its schema. Creator apps call through here too.
+ */
+export async function callServerTool(
+  deps: { servers: (projectId: string | undefined) => McpServerEntry[]; listings: Pick<McpToolsCache, "refresh" | "peek">; pool: Pick<McpClientPool, "callTool"> },
+  projectId: string | undefined,
+  server: string,
+  tool: string,
+  args: Record<string, unknown>,
+  signal?: AbortSignal,
+  /** Runs once the tool is found and its arguments check out, before the call; a returned reason stops it. */
+  before?: (found: McpToolInfo) => Promise<string | null>,
+): Promise<{ text: string; isError: boolean; data?: unknown; readOnly?: true }> {
+  const enabled = deps.servers(projectId).filter((s) => s.enabled === true);
+  const target = enabled.find((s) => s.name === server);
+  if (!target) {
+    const names = enabled.map((s) => s.name);
+    return { text: `Unknown MCP server "${server}". Available: ${names.length ? names.join(", ") : "none"}.`, isError: true };
+  }
+  await deps.listings.refresh([target], LIST_TIMEOUT_MS);
+  const listing = deps.listings.peek(target.spec);
+  // A server that didn't list isn't missing the tool: say what went wrong instead.
+  if (listing && !listing.ok) return { text: `Couldn't reach MCP server "${server}": ${(listing.error ?? "it didn't answer").replace(/\.$/, "")}.`, isError: true };
+  const tools = listing?.ok ? listing.tools : [];
+  const found = tools.find((t) => t.name === tool);
+  if (!found) {
+    const closest = rankTools(tools.map((t) => ({ server, tool: t })), tool, 10).map((r) => r.tool.name);
+    const hint = closest.length ? ` Closest: ${closest.join(", ")}.` : "";
+    return { text: `Unknown tool "${tool}" on server "${server}".${hint}`, isError: true };
+  }
+  if (found.inputSchema && typeof found.inputSchema === "object") {
+    const validate = jsonValidator.getValidator<Record<string, unknown>>(found.inputSchema as JsonSchemaType);
+    const check = validate(args);
+    if (!check.valid) {
+      return { text: JSON.stringify({ status: "validation_error", server, tool, error: check.errorMessage, expected: found.inputSchema }), isError: true };
+    }
+  }
+  if (before) {
+    const refused = await before(found);
+    if (refused) return { text: refused, isError: true };
+  }
+  const r = await deps.pool.callTool(target.spec, tool, args, signal);
+  return { text: r.text, isError: r.isError, ...(r.data !== undefined ? { data: r.data } : {}), ...(found.readOnly ? { readOnly: true } : {}) };
+}
+
 export function routerTools(
   deps: {
     servers: (projectId: string | undefined) => McpServerEntry[];
@@ -336,33 +382,8 @@ export function routerTools(
     effect: "mutate",
     returns: "unknown",
     run: async ({ server, tool, arguments: rawArgs }, ctx) => {
-      const enabled = deps.servers(ctx?.projectId).filter((s) => s.enabled === true);
-      const target = enabled.find((s) => s.name === server);
-      if (!target) {
-        const names = enabled.map((s) => s.name);
-        return { text: `Unknown MCP server "${server}". Available: ${names.length ? names.join(", ") : "none"}.`, isError: true };
-      }
-      await deps.listings.refresh([target], LIST_TIMEOUT_MS);
-      const listing = deps.listings.peek(target.spec);
-      // A server that didn't list isn't missing the tool: say what went wrong instead.
-      if (listing && !listing.ok) return { text: `Couldn't reach MCP server "${server}": ${(listing.error ?? "it didn't answer").replace(/\.$/, "")}.`, isError: true };
-      const tools = listing?.ok ? listing.tools : [];
-      const found = tools.find((t) => t.name === tool);
-      if (!found) {
-        const closest = rankTools(tools.map((t) => ({ server, tool: t })), tool, 10).map((r) => r.tool.name);
-        const hint = closest.length ? ` Closest: ${closest.join(", ")}.` : "";
-        return { text: `Unknown tool "${tool}" on server "${server}".${hint}`, isError: true };
-      }
-      const args = rawArgs ?? {};
-      if (found.inputSchema && typeof found.inputSchema === "object") {
-        const validate = jsonValidator.getValidator<Record<string, unknown>>(found.inputSchema as JsonSchemaType);
-        const check = validate(args);
-        if (!check.valid) {
-          return { text: JSON.stringify({ status: "validation_error", server, tool, error: check.errorMessage, expected: found.inputSchema }), isError: true };
-        }
-      }
-      const r = await deps.pool.callTool(target.spec, tool, args, ctx?.signal);
-      return { text: r.text, isError: r.isError, ...(r.data !== undefined ? { data: r.data } : {}) };
+      const { readOnly: _r, ...r } = await callServerTool(deps, ctx?.projectId, server, tool, rawArgs ?? {}, ctx?.signal);
+      return r;
     },
   });
 

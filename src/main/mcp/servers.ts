@@ -421,6 +421,8 @@ export interface McpToolInfo {
   description: string;
   inputSchema: unknown;
   outputSchema?: unknown;
+  /** The server marked it read-only (`annotations.readOnlyHint`); only a hint, used to skip asking in Creator apps. */
+  readOnly?: true;
 }
 
 /** A pid is still running (signal 0 only probes). */
@@ -444,7 +446,7 @@ export async function listServerTools(spec: McpServerSpec, timeoutMs = 20_000): 
   try {
     await Promise.race([client.connect(transport), timeout]);
     const { tools } = await Promise.race([client.listTools(), timeout]);
-    return { ok: true, tools: tools.map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema, ...(t.outputSchema ? { outputSchema: t.outputSchema } : {}) })) };
+    return { ok: true, tools: tools.map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema, ...(t.outputSchema ? { outputSchema: t.outputSchema } : {}), ...(t.annotations?.readOnlyHint === true ? { readOnly: true as const } : {}) })) };
   } catch (err) {
     return { ok: false, tools: [], error: err instanceof Error ? err.message : String(err) };
   } finally {

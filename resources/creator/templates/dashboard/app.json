@@ -1,0 +1,9 @@
+{
+  "name": "sales-dashboard",
+  "title": "Sales",
+  "description": "Revenue, orders and top products for a chosen period.",
+  "icon": "chart-bar",
+  "entry": "index.html",
+  "grants": [{ "server": "shop", "tools": ["sales_summary"] }],
+  "cacheSec": 60
+}
