@@ -5,22 +5,27 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { AppInfo } from "../../shared/types";
-import { APP_MANIFEST, type AppManifest, parseAppManifest } from "./manifest";
+import { APP_MANIFEST, APP_MAX_FILE_BYTES, APP_MAX_FILES, type AppManifest, parseAppManifest } from "./manifest";
 import { appUrl } from "./serve";
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PROJECT_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
 
-export type AppKey = { scope: "global"; name: string } | { scope: "project"; projectId: string; name: string };
+export type AppKey =
+  | { scope: "global"; name: string }
+  | { scope: "project"; projectId: string; name: string }
+  /** A Creator thread's work in progress, previewed before it is proposed. */
+  | { scope: "draft"; threadId: string; name: string };
 
 export function encodeAppKey(k: AppKey): string {
-  return k.scope === "global" ? `g~${k.name}` : `p~${k.projectId}~${k.name}`;
+  return k.scope === "global" ? `g~${k.name}` : k.scope === "project" ? `p~${k.projectId}~${k.name}` : `d~${k.threadId}~${k.name}`;
 }
 
 export function decodeAppKey(key: string): AppKey | null {
   const parts = key.split("~");
   if (parts[0] === "g" && parts.length === 2 && NAME_RE.test(parts[1]!)) return { scope: "global", name: parts[1]! };
   if (parts[0] === "p" && parts.length === 3 && PROJECT_ID_RE.test(parts[1]!) && NAME_RE.test(parts[2]!)) return { scope: "project", projectId: parts[1]!, name: parts[2]! };
+  if (parts[0] === "d" && parts.length === 3 && PROJECT_ID_RE.test(parts[1]!) && NAME_RE.test(parts[2]!)) return { scope: "draft", threadId: parts[1]!, name: parts[2]! };
   return null;
 }
 
@@ -29,9 +34,12 @@ export interface AppRegistryDeps {
   globalDir: string;
   /** A real project's folder (not the Chats root), or null. */
   projectPath(projectId: string): string | null;
+  /** A Creator thread's drafts folder (`<thread folder>/.cubiq/app-drafts`), or null when it isn't a Creator thread. */
+  draftsDir?(threadId: string): string | null;
 }
 
 export const projectAppsDir = (projectPath: string): string => join(projectPath, ".cubiq", "apps");
+export const appDraftsDir = (threadFolder: string): string => join(threadFolder, ".cubiq", "app-drafts");
 
 export class AppRegistry {
   private cache = new Map<string, { mtime: number; manifest: AppManifest | null; error: string | null }>();
@@ -40,21 +48,38 @@ export class AppRegistry {
 
   dirOf(k: AppKey): string | null {
     if (k.scope === "global") return join(this.deps.globalDir, k.name);
+    if (k.scope === "draft") {
+      const d = this.deps.draftsDir?.(k.threadId) ?? null;
+      return d ? join(d, k.name) : null;
+    }
     const p = this.deps.projectPath(k.projectId);
     return p ? join(projectAppsDir(p), k.name) : null;
+  }
+
+  /** One app's listing entry (a draft included), or null when the key names nothing. */
+  info(key: string): AppInfo | null {
+    const k = decodeAppKey(key);
+    const dir = k ? this.dirOf(k) : null;
+    if (!k || !dir) return null;
+    return this.entry(k, dir);
+  }
+
+  /** Re-read app.json on the next request even if its mtime looks unchanged (a draft rewritten within the same tick). */
+  forget(dir: string): void {
+    this.cache.delete(dir);
   }
 
   /** The folder a frame key serves, only for an app whose app.json is valid. */
   root(key: string): string | null {
     const k = decodeAppKey(key);
     const dir = k ? this.dirOf(k) : null;
-    return dir && this.read(dir).manifest ? dir : null;
+    return dir && this.read(dir, k!.scope !== "draft").manifest ? dir : null;
   }
 
   manifest(key: string): AppManifest | null {
     const k = decodeAppKey(key);
     const dir = k ? this.dirOf(k) : null;
-    return dir ? this.read(dir).manifest : null;
+    return dir ? this.read(dir, k!.scope !== "draft").manifest : null;
   }
 
   /** Global apps, then the project's own (a project app shadows a global one of the same name). */
@@ -68,22 +93,7 @@ export class AppRegistry {
         return;
       }
       for (const name of names.sort()) {
-        const k = make(name);
-        const dir = join(base, name);
-        const { manifest, error } = this.read(dir);
-        out.push({
-          key: encodeAppKey(k),
-          name,
-          scope: k.scope,
-          ...(k.scope === "project" ? { projectId: k.projectId } : {}),
-          title: manifest?.title ?? name,
-          description: manifest?.description ?? "",
-          ...(manifest?.icon ? { icon: manifest.icon } : {}),
-          grants: manifest?.grants ?? [],
-          path: dir,
-          url: appUrl(encodeAppKey(k), manifest?.entry ?? "index.html"),
-          ...(error ? { error } : {}),
-        });
+        out.push(this.entry(make(name), join(base, name)));
       }
     };
     const projectPath = projectId ? this.deps.projectPath(projectId) : null;
@@ -97,7 +107,25 @@ export class AppRegistry {
     return [...out.slice(before).filter((a) => !own.has(a.name)), ...out.slice(0, before)];
   }
 
-  private read(dir: string): { manifest: AppManifest | null; error: string | null } {
+  private entry(k: AppKey, dir: string): AppInfo {
+    const { manifest, error } = this.read(dir, k.scope !== "draft");
+    return {
+      key: encodeAppKey(k),
+      name: k.name,
+      scope: k.scope,
+      ...(k.scope === "project" ? { projectId: k.projectId } : {}),
+      title: manifest?.title ?? k.name,
+      description: manifest?.description ?? "",
+      ...(manifest?.icon ? { icon: manifest.icon } : {}),
+      grants: manifest?.grants ?? [],
+      path: dir,
+      url: appUrl(encodeAppKey(k), manifest?.entry ?? "index.html"),
+      ...(error ? { error } : {}),
+    };
+  }
+
+  /** A draft is being written while it is shown: its entry page can appear after app.json, so it is never cached. */
+  private read(dir: string, cached = true): { manifest: AppManifest | null; error: string | null } {
     const file = join(dir, APP_MANIFEST);
     let mtime: number;
     try {
@@ -106,7 +134,7 @@ export class AppRegistry {
       this.cache.delete(dir);
       return { manifest: null, error: existsSync(dir) ? "app.json is missing." : "The app folder is gone." };
     }
-    const hit = this.cache.get(dir);
+    const hit = cached ? this.cache.get(dir) : undefined;
     if (hit && hit.mtime === mtime) return hit;
     let entry: { mtime: number; manifest: AppManifest | null; error: string | null };
     try {
@@ -117,9 +145,44 @@ export class AppRegistry {
     } catch (e) {
       entry = { mtime, manifest: null, error: (e as Error).message };
     }
-    this.cache.set(dir, entry);
+    if (cached) this.cache.set(dir, entry);
     return entry;
   }
+}
+
+/**
+ * An app folder's files as a proposal carries them (text, forward-slash paths), for validateApp. Dot entries are
+ * skipped; a symlink or a file that isn't UTF-8 text is an error, never followed or read as bytes.
+ */
+export function readAppFiles(dir: string): { files: { path: string; content: string }[]; errors: string[] } {
+  const files: { path: string; content: string }[] = [];
+  const errors: string[] = [];
+  const walk = (rel: string): void => {
+    for (const d of readdirSync(join(dir, rel), { withFileTypes: true })) {
+      if (d.name.startsWith(".")) continue;
+      const p = rel ? `${rel}/${d.name}` : d.name;
+      if (files.length + errors.length > APP_MAX_FILES) return;
+      if (d.isSymbolicLink()) errors.push(`"${p}" is a symlink; apps hold plain files only.`);
+      else if (d.isDirectory()) walk(p);
+      else if (d.isFile()) {
+        const abs = join(dir, ...p.split("/"));
+        if (statSync(abs).size > APP_MAX_FILE_BYTES) {
+          errors.push(`"${p}" is over ${APP_MAX_FILE_BYTES / 1024} KB.`);
+          continue;
+        }
+        const buf = readFileSync(abs);
+        const content = buf.toString("utf-8");
+        if (content.includes("\uFFFD") || content.includes("\0")) errors.push(`"${p}" is not UTF-8 text.`);
+        else files.push({ path: p, content });
+      }
+    }
+  };
+  try {
+    walk("");
+  } catch (e) {
+    errors.push(`Couldn't read the app folder: ${(e as Error).message}`);
+  }
+  return { files: files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)), errors };
 }
 
 /** Relative file paths under `dir` (forward slashes), skipping dot entries; bounded so a huge folder can't stall. */

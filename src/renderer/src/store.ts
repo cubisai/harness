@@ -348,6 +348,8 @@ interface State {
   loadApps(): Promise<void>;
   /** The Creator app shown in the panel's App tab; it stays open across threads. */
   appOpen: AppInfo | null;
+  /** Per frame key, how many times main said a previewed draft's files changed (the App tab reloads on each). */
+  appReloads: Record<string, number>;
   openApp(app: AppInfo): void;
   closeApp(): void;
   toggleTerminal(): void;
@@ -749,6 +751,7 @@ export const useStore = create<State>((set, get) => ({
   artifact: null,
   apps: [],
   appOpen: null,
+  appReloads: {},
   artifactFiles: {},
   turnScores: {},
   browserMounted: false,
@@ -1765,6 +1768,17 @@ export const useStore = create<State>((set, get) => ({
         return;
       case "projects-changed":
         void api().listProjects().then((projects) => set({ projects }));
+        return;
+      case "apps-changed":
+        void get().loadApps();
+        return;
+      case "app-open":
+        // Only the window showing that Creator thread opens it; elsewhere it would take over the panel.
+        if (get().selectedThreadId === update.threadId) get().openApp(update.app);
+        else if (get().appOpen?.key === update.app.key) set({ appOpen: update.app });
+        return;
+      case "app-reload":
+        set((s) => ({ appReloads: { ...s.appReloads, [update.key]: (s.appReloads[update.key] ?? 0) + 1 } }));
         return;
       case "open-about":
         set({ aboutOpen: true });

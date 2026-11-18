@@ -106,6 +106,7 @@ const api: UnskilledApi = {
   rejectExtension: (id) => ipcRenderer.invoke("extensions:reject", id),
   listExtensionInstalls: (projectId) => ipcRenderer.invoke("extensions:installs", projectId),
   listApps: (projectId) => ipcRenderer.invoke("apps:list", projectId),
+  appInfo: (key) => ipcRenderer.invoke("apps:info", key),
   callApp: (key, projectId, server, tool, args, approval) => ipcRenderer.invoke("apps:call", key, projectId, server, tool, args, approval),
   appStoreGet: (key, name) => ipcRenderer.invoke("apps:store-get", key, name),
   appStoreSet: (key, name, value) => ipcRenderer.invoke("apps:store-set", key, name, value),

@@ -189,6 +189,28 @@ export function installMock(): void {
         installId: "inst-pr4",
         draft: { kind: "connector", name: "linear", type: "http", target: "https://mcp.linear.app/mcp", requiredVars: [] },
       },
+      {
+        ...base,
+        id: "pr5",
+        scope: { kind: "global" },
+        status: "staged",
+        draft: {
+          kind: "app",
+          name: "sales-dashboard",
+          title: "Sales",
+          description: "Revenue and orders.",
+          files: [
+            { path: "app.json", bytes: 210 },
+            { path: "index.html", bytes: 1800 },
+          ],
+          grants: [
+            { server: "shop", tool: "sales_summary", access: "read" },
+            { server: "shop", tool: "refund_order", access: "write" },
+          ],
+          update: false,
+          draftKey: "d~t1~sales-dashboard",
+        },
+      },
     ];
     for (const p of proposals) mockProposals.set(p.id, p);
     events.t1 = [
@@ -199,6 +221,7 @@ export function installMock(): void {
       ev(5, { kind: "assistant-text", text: "An earlier attempt and an existing connector, for reference:" }),
       ev(6, { kind: "extension-proposal", proposalId: "pr3" }),
       ev(7, { kind: "extension-proposal", proposalId: "pr4" }),
+      ev(8, { kind: "extension-proposal", proposalId: "pr5" }),
     ];
   }
 
@@ -665,6 +688,7 @@ export function installMock(): void {
     },
     listExtensionInstalls: async () => [...mockInstalls.values()],
     listApps: async () => (scene === "creator" || scene === "app" ? mockApps : []),
+    appInfo: async (key) => mockApps.find((a) => a.key === key) ?? (key.startsWith("d~") ? { ...mockApps[0]!, key, scope: "draft" as const } : null),
     callApp: async (_key, _projectId, server, tool, args) => {
       if (server !== "shop" || tool !== "sales_summary") return { ok: false, error: `"${server}.${tool}" is not in this app's grants (app.json).` };
       const days = Math.min(90, Math.max(1, Number(args.days) || 7));

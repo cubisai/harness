@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { extname, isAbsolute } from "node:path";
 import type { McpOAuthConfig, McpServerSpec, ProposalScope, ProposalStatus } from "../../shared/types";
 import { stableStringify } from "../cache-policy";
+import { validateApp } from "../apps/manifest";
 
 export const SKILL_MAX_FILES = 32;
 export const SKILL_MAX_TOTAL_BYTES = 1024 * 1024;
@@ -36,11 +37,20 @@ export type ConnectorDraft = {
 
 
 
+/** A Creator app: its files as they were in the thread's draft folder when proposed (app.json included). */
+export type AppDraft = {
+  kind: "app";
+  name: string;
+  files: { path: string; content: string }[];
+};
+
+export type ExtensionDraft = SkillDraft | ConnectorDraft | AppDraft;
+
 export interface StoredProposal {
   id: string;
   threadId: string;
   scope: ProposalScope;
-  draft: SkillDraft | ConnectorDraft;
+  draft: ExtensionDraft;
   digest: string;
   status: ProposalStatus;
   error?: string;
@@ -54,7 +64,7 @@ export interface ValidateProposalContext {
 }
 
 export type ValidateProposalResult =
-  | { ok: true; proposal: { scope: ProposalScope; draft: SkillDraft | ConnectorDraft; digest: string } }
+  | { ok: true; proposal: { scope: ProposalScope; draft: ExtensionDraft; digest: string } }
   | { ok: false; errors: string[] };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -78,16 +88,14 @@ export function requiredVarsOf(spec: McpServerSpec): string[] {
 }
 
 /** Canonicalize a draft (sorting skill files by path) and compute its sha256 digest with scope. */
-export function computeProposalDigest(scope: ProposalScope, draft: SkillDraft | ConnectorDraft): string {
-  const canonicalDraft: SkillDraft | ConnectorDraft =
+export function computeProposalDigest(scope: ProposalScope, draft: ExtensionDraft): string {
+  const byPath = (a: { path: string }, b: { path: string }) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  const canonicalDraft: ExtensionDraft =
     draft.kind === "skill"
-      ? {
-          kind: "skill",
-          name: draft.name,
-          description: draft.description,
-          files: [...draft.files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
-        }
-      : draft;
+      ? { kind: "skill", name: draft.name, description: draft.description, files: [...draft.files].sort(byPath) }
+      : draft.kind === "app"
+        ? { kind: "app", name: draft.name, files: [...draft.files].sort(byPath) }
+        : draft;
   return createHash("sha256")
     .update(stableStringify({ scope, draft: canonicalDraft }))
     .digest("hex");
@@ -194,8 +202,8 @@ export function validateProposal(input: unknown, ctx: ValidateProposalContext): 
   if (!isRecord(input)) return { ok: false, errors: ["Proposal draft must be an object."] };
 
   const kind = input.kind;
-  if (kind !== "skill" && kind !== "connector") {
-    return { ok: false, errors: ['Proposal draft "kind" must be "skill" or "connector".'] };
+  if (kind !== "skill" && kind !== "connector" && kind !== "app") {
+    return { ok: false, errors: ['Proposal draft "kind" must be "skill", "connector" or "app".'] };
   }
 
   const name = typeof input.name === "string" ? input.name : "";
@@ -206,6 +214,14 @@ export function validateProposal(input: unknown, ctx: ValidateProposalContext): 
     if (reserved.has(name.toLowerCase())) {
       errors.push(`Name "${name}" is reserved; pick a different name.`);
     }
+  }
+
+  if (kind === "app") {
+    if (errors.length > 0) return { ok: false, errors };
+    const check = validateApp(name, input.files);
+    if (!check.ok) return { ok: false, errors: check.errors };
+    const draft: AppDraft = { kind: "app", name, files: check.files.map((f) => ({ path: f.path, content: f.content.replace(/\r\n/g, "\n") })) };
+    return { ok: true, proposal: { scope: ctx.scope, draft, digest: computeProposalDigest(ctx.scope, draft) } };
   }
 
   if (kind === "skill") {

@@ -3,9 +3,10 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSy
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isChatsRoot } from "../chats";
 import { describeSpec } from "../mcp/servers";
-import type { ExtensionInstallView, ExtensionProposalView, McpServerEntry, Project } from "../../shared/types";
-import { computeProposalDigest, type ProposalScope, requiredVarsOf, type StoredProposal, validateProposal } from "./manifest";
-import { encodeScope, type ExtensionStore, type InstalledFile } from "./store";
+import type { ExtensionAppSummary, ExtensionInstallView, ExtensionProposalView, McpServerEntry, Project } from "../../shared/types";
+import { parseAppManifest } from "../apps/manifest";
+import { type AppDraft, computeProposalDigest, type ProposalScope, requiredVarsOf, type StoredProposal, validateProposal } from "./manifest";
+import { encodeScope, type ExtensionInstall, type ExtensionStore, type InstalledFile } from "./store";
 
 const CHANGED_AFTER_REVIEW = "Proposal changed after review; create a new proposal.";
 const STAGING_DIR_RE = /^\..+\.staging-[0-9a-f]+$/;
@@ -25,6 +26,12 @@ export interface ExtensionInstallDeps {
   removeMcp: (name: string, projectId: string | null) => Promise<void>;
   mcpFile: (projectId: string | null) => string;
   emitNotice: (threadId: string, text: string) => void;
+  /** Where apps install: `<userData>/apps` (null) or `<project>/.cubiq/apps`. Absent: app proposals can't install. */
+  appsDir?: (projectPath: string | null) => string;
+  /** Whether a connector tool is read-only per its server's listing; "unknown" when it isn't listed (yet). */
+  toolAccess?: (projectId: string | null, server: string, tool: string) => "read" | "write" | "unknown";
+  /** An app was installed, updated or removed (`key`: its frame key, whose data an uninstall drops). */
+  appsChanged?: (change: { key: string; removed: boolean }) => void;
 }
 
 function sha256(content: Buffer | string): string {
@@ -95,7 +102,8 @@ export class ExtensionService {
   private toView(proposal: StoredProposal): ExtensionProposalView {
     const project = proposal.scope.kind === "project" ? this.deps.projectOf(proposal.scope.projectId) : null;
     const home = this.threadProject(proposal.threadId);
-    const projectChoice = home ? { id: home.id, name: home.name } : null;
+    // Apps always install globally, so their card offers no project.
+    const projectChoice = home && proposal.draft.kind !== "app" ? { id: home.id, name: home.name } : null;
     const install = this.deps.extensions.installs(proposal.scope).find((i) => i.proposalId === proposal.id);
     const retryable = proposal.status === "failed" && !(proposal.error ?? "").includes("changed after review");
 
@@ -124,6 +132,24 @@ export class ExtensionService {
       };
     }
 
+    if (proposal.draft.kind === "app") {
+      // Apps install globally; an app staged for a project (before that rule) still shows and installs as global.
+      return {
+        id: proposal.id,
+        threadId: proposal.threadId,
+        scope: proposal.status === "installed" ? proposal.scope : { kind: "global" },
+        projectName: proposal.status === "installed" ? (project?.name ?? null) : null,
+        projectChoice,
+        status: proposal.status,
+        ...(proposal.error ? { error: proposal.error } : {}),
+        createdAt: proposal.createdAt,
+        updatedAt: proposal.updatedAt,
+        ...(install ? { installId: install.id } : {}),
+        retryable,
+        draft: this.appSummary(proposal, proposal.draft),
+      };
+    }
+
     return {
       id: proposal.id,
       threadId: proposal.threadId,
@@ -146,6 +172,41 @@ export class ExtensionService {
     };
   }
 
+  /** The card's view of an app: its grants with their access, and, when it replaces an installed app, what changes per file. */
+  private appSummary(proposal: StoredProposal, draft: AppDraft): ExtensionAppSummary {
+    const manifestFile = draft.files.find((f) => f.path === "app.json");
+    const manifest = manifestFile ? parseAppManifest(manifestFile.content, new Set(draft.files.map((f) => f.path)), draft.name).manifest : null;
+    const pid = proposal.scope.kind === "project" ? proposal.scope.projectId : null;
+    const grants = (manifest?.grants ?? []).flatMap((g) =>
+      g.tools.map((tool) => ({ server: g.server, tool, access: this.deps.toolAccess?.(pid, g.server, tool) ?? ("unknown" as const) })),
+    );
+    // Against the app this would replace (not after it is installed: then the card shows what it installed).
+    const previous = proposal.status === "installed" ? undefined : this.installedApp(proposal.scope, draft.name, proposal.id);
+    const files: ExtensionAppSummary["files"] = draft.files.map((f) => {
+      const bytes = Buffer.byteLength(f.content, "utf-8");
+      if (!previous) return { path: f.path, bytes };
+      const old = previous.files.find((o) => o.path === f.path);
+      return { path: f.path, bytes, ...(old ? (old.sha256 === sha256(f.content) ? {} : { change: "changed" as const }) : { change: "added" as const }) };
+    });
+    if (previous) for (const o of previous.files) if (!draft.files.some((f) => f.path === o.path)) files.push({ path: o.path, bytes: 0, change: "removed" });
+    return {
+      kind: "app",
+      name: draft.name,
+      title: manifest?.title ?? draft.name,
+      description: manifest?.description ?? "",
+      ...(manifest?.icon ? { icon: manifest.icon } : {}),
+      files: files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
+      grants,
+      update: Boolean(previous),
+      draftKey: `d~${proposal.threadId}~${draft.name}`,
+    };
+  }
+
+  /** The install record of an app at this scope, other than one this proposal made. */
+  private installedApp(scope: ProposalScope, name: string, proposalId?: string): ExtensionInstall | undefined {
+    return this.deps.extensions.installs(scope).find((i) => i.kind === "app" && i.name === name && i.proposalId !== proposalId);
+  }
+
   private serialize<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.scopeQueues.get(key) ?? Promise.resolve();
     const next = prev.catch(() => {}).then(fn);
@@ -163,6 +224,8 @@ export class ExtensionService {
   install(id: string, scope?: "project" | "global"): Promise<ExtensionProposalView> {
     const existing = this.inflightInstalls.get(id);
     if (existing) return existing;
+    // Apps always install globally, whatever the proposal or the caller asked for.
+    if (this.deps.extensions.get(id)?.draft.kind === "app") scope = "global";
     const promise = (scope ? this.rescope(id, scope) : Promise.resolve()).then(() => this.runInstall(id)).finally(() => {
       if (this.inflightInstalls.get(id) === promise) this.inflightInstalls.delete(id);
     });
@@ -229,6 +292,8 @@ export class ExtensionService {
       }
 
       const scopeLabel = project ? `project "${project.name}"` : "global";
+
+      if (check.proposal.draft.kind === "app") return this.installApp(current, check.proposal.draft, digest, project, scopeLabel);
 
       if (check.proposal.draft.kind === "skill") {
         const draft = check.proposal.draft;
@@ -331,6 +396,78 @@ export class ExtensionService {
     });
   }
 
+  /**
+   * Install an app, or update one this service installed at the same scope: the new files are written to a staging
+   * folder first, the old folder is moved aside only after each of its recorded files still matches its hash (a
+   * hand-edited app is never overwritten), then swapped in and the old copy removed.
+   */
+  private installApp(current: StoredProposal, draft: AppDraft, digest: string, project: Project | null, scopeLabel: string): ExtensionProposalView {
+    if (!this.deps.appsDir) {
+      const updated = this.deps.extensions.setStatus(current.id, "failed", "Apps can't be installed in this build.");
+      return this.toView(updated ?? current);
+    }
+    const baseDir = this.deps.appsDir(project ? project.path : null);
+    const previous = this.installedApp(current.scope, draft.name, current.id);
+    let stagingDir: string | null = null;
+    let asideDir: string | null = null;
+    let promoted = false;
+    try {
+      if (project) assertContained(project.path, baseDir, "apps folder");
+      mkdirSync(baseDir, { recursive: true });
+      const destDir = join(baseDir, draft.name);
+      assertContained(baseDir, destDir, "app destination");
+      if (pathExists(destDir)) {
+        if (!previous) {
+          const updated = this.deps.extensions.setStatus(current.id, "failed", `An app named "${draft.name}" already exists in ${scopeLabel}.`);
+          return this.toView(updated ?? current);
+        }
+        verifyInstalledFiles(destDir, previous.files, draft.name);
+      }
+
+      stagingDir = join(baseDir, `.${draft.name}.staging-${randomBytes(6).toString("hex")}`);
+      mkdirSync(stagingDir, { recursive: true });
+      const installedFiles: InstalledFile[] = [];
+      for (const file of draft.files) {
+        const targetFile = join(stagingDir, ...file.path.split("/"));
+        assertContained(stagingDir, targetFile, file.path);
+        mkdirSync(dirname(targetFile), { recursive: true });
+        writeFileSync(targetFile, file.content, "utf-8");
+        installedFiles.push({ path: file.path, sha256: sha256(file.content) });
+      }
+
+      if (pathExists(destDir)) {
+        asideDir = join(baseDir, `.${draft.name}.staging-${randomBytes(6).toString("hex")}`);
+        renameSync(destDir, asideDir);
+      }
+      renameSync(stagingDir, destDir);
+      promoted = true;
+
+      if (previous) this.deps.extensions.removeInstall(previous.id);
+      this.deps.extensions.recordInstall({ proposalId: current.id, scope: current.scope, kind: "app", name: draft.name, location: destDir, files: installedFiles, digest });
+      this.deps.extensions.setStatus(current.id, "installed", null);
+      const key = current.scope.kind === "project" ? `p~${current.scope.projectId}~${draft.name}` : `g~${draft.name}`;
+      this.deps.appsChanged?.({ key, removed: false });
+      this.deps.emitNotice(current.threadId, `${previous ? "Updated" : "Installed"} app "${draft.name}" (${scopeLabel}). It is in the sidebar under Apps.`);
+      return this.getProposalView(current.id)!;
+    } catch (err) {
+      // Put the old app back if the new one never landed.
+      if (!promoted && asideDir && pathExists(asideDir)) {
+        try {
+          renameSync(asideDir, join(baseDir, draft.name));
+          asideDir = null;
+        } catch {
+          // Startup cleanup can't restore it either; the error below says what failed.
+        }
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      const updated = this.deps.extensions.setStatus(current.id, "failed", msg);
+      return this.toView(updated ?? current);
+    } finally {
+      if (!promoted && stagingDir && existsSync(stagingDir)) rmSync(stagingDir, { recursive: true, force: true });
+      if (promoted && asideDir && existsSync(asideDir)) rmSync(asideDir, { recursive: true, force: true });
+    }
+  }
+
   reject(id: string): ExtensionProposalView {
     const proposal = this.deps.extensions.get(id);
     if (!proposal) throw new Error("Extension proposal not found.");
@@ -367,6 +504,31 @@ export class ExtensionService {
     await this.serialize(lockKey, async () => {
       const current = this.deps.extensions.getInstall(installId);
       if (!current) return;
+
+      if (current.kind === "app") {
+        let baseDir: string | null = null;
+        if (current.scope.kind === "global") baseDir = this.deps.appsDir?.(null) ?? null;
+        else {
+          const project = this.deps.projectOf(current.scope.projectId);
+          if (project && existsSync(project.path) && !isChatsRoot(project.path, this.deps.chatsRoot) && this.deps.appsDir) {
+            baseDir = this.deps.appsDir(project.path);
+            assertContained(project.path, baseDir, "apps folder");
+          }
+        }
+        if (baseDir && existsSync(baseDir)) {
+          const destDir = join(baseDir, current.name);
+          if (pathExists(destDir)) {
+            assertContained(baseDir, destDir, "app destination");
+            const verified = verifyInstalledFiles(destDir, current.files ?? [], current.name);
+            for (const f of verified) unlinkSync(f.abs);
+            pruneEmptyDirs(destDir, verified.map((f) => f.rel));
+          }
+        }
+        this.deps.extensions.removeInstall(installId);
+        const key = current.scope.kind === "project" ? `p~${current.scope.projectId}~${current.name}` : `g~${current.name}`;
+        this.deps.appsChanged?.({ key, removed: true });
+        return;
+      }
 
       if (current.kind === "skill") {
         let baseDir: string | null = null;
@@ -428,13 +590,18 @@ export class ExtensionService {
 
   /** Remove abandoned staging folders left by crashes and reconcile partially committed installs. */
   cleanupStartup(): void {
-    const candidateDirs = [this.deps.skillDirs(null).harness];
+    const candidateDirs = [this.deps.skillDirs(null).harness, ...(this.deps.appsDir ? [this.deps.appsDir(null)] : [])];
     for (const p of this.deps.allProjects()) {
       if (isChatsRoot(p.path, this.deps.chatsRoot) || !existsSync(p.path)) continue;
       const projSkills = this.deps.skillDirs(p.path).projectCubiq;
       try {
         assertContained(p.path, projSkills, "skills root");
         candidateDirs.push(projSkills);
+        if (this.deps.appsDir) {
+          const projApps = this.deps.appsDir(p.path);
+          assertContained(p.path, projApps, "apps folder");
+          candidateDirs.push(projApps);
+        }
       } catch {
         // Ignore projects whose .cubiq/skills points outside the project.
       }
@@ -463,6 +630,27 @@ export class ExtensionService {
       }
     }
   }
+}
+
+/**
+ * Every recorded file of an installed folder that still exists, after checking each is a regular file inside the
+ * folder with its recorded hash. Throws before anything is changed when one was edited or replaced.
+ */
+function verifyInstalledFiles(destDir: string, files: InstalledFile[], name: string): { abs: string; rel: string }[] {
+  if (lstatSync(destDir).isSymbolicLink()) throw new Error(`Refusing to change "${name}": its folder is a symlink.`);
+  const out: { abs: string; rel: string }[] = [];
+  for (const entry of files) {
+    const segs = entry.path.split("/");
+    if (segs.some((s) => !s || s === "." || s === "..")) throw new Error(`Invalid recorded file path "${entry.path}".`);
+    const fileAbs = join(destDir, ...segs);
+    if (!pathExists(fileAbs)) continue;
+    const st = lstatSync(fileAbs);
+    if (st.isSymbolicLink() || !st.isFile()) throw new Error(`Cannot change "${name}": "${entry.path}" is not a regular file.`);
+    assertContained(destDir, fileAbs, entry.path);
+    if (sha256(readFileSync(fileAbs)) !== entry.sha256) throw new Error(`Cannot change "${name}": "${entry.path}" was modified after installation.`);
+    out.push({ abs: fileAbs, rel: entry.path });
+  }
+  return out;
 }
 
 function pruneEmptyDirs(root: string, relFiles: string[]): void {

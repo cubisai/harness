@@ -1,5 +1,5 @@
 import { type Ref, useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, ChevronRight, Plug, Puzzle } from "lucide-react";
+import { AlertTriangle, ChevronRight, LayoutGrid, Plug, Puzzle } from "lucide-react";
 import type { ExtensionProposalView } from "../../../shared/types";
 import { api } from "../api";
 import { Markdown } from "../markdown";
@@ -91,6 +91,25 @@ export function ProposalCard({ proposalId, threadId }: { proposalId: string; thr
   }
   if (!proposal) return null;
 
+  const draft = proposal.draft;
+  const appProps: Pick<ProposalCardViewProps, "onPreview" | "onOpenApp"> =
+    draft.kind === "app"
+      ? {
+          onPreview: () => {
+            void api()
+              .appInfo(draft.draftKey)
+              .then((a) => a && useStore.getState().openApp(a));
+          },
+          onOpenApp: () => {
+            const key = proposal.scope.kind === "project" ? `p~${proposal.scope.projectId}~${draft.name}` : `g~${draft.name}`;
+            void api()
+              .appInfo(key)
+              .then((a) => a && useStore.getState().openApp(a));
+            void useStore.getState().loadApps();
+          },
+        }
+      : {};
+
   const handleInstall = async () => {
     if (inFlightRef.current || busy !== null) return;
     inFlightRef.current = true;
@@ -105,6 +124,9 @@ export function ProposalCard({ proposalId, threadId }: { proposalId: string; thr
           .listSkills()
           .then((skills) => useStore.setState({ skills }))
           .catch(() => {});
+      }
+      if (updated.status === "installed" && updated.draft.kind === "app") {
+        void useStore.getState().loadApps();
       }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
@@ -145,6 +167,7 @@ export function ProposalCard({ proposalId, threadId }: { proposalId: string; thr
       onReject={handleReject}
       scopePick={pick ?? proposal.scope.kind}
       onScopePick={setPick}
+      {...appProps}
     />
   );
 }
@@ -160,19 +183,23 @@ export interface ProposalCardViewProps {
   /** The scope Install uses, shown as a picker while the proposal waits and the thread has a project. */
   scopePick?: "project" | "global";
   onScopePick?(scope: "project" | "global"): void;
+  /** Opens the draft app in the App tab, for an app proposal that can still be reviewed. */
+  onPreview?(): void;
+  /** Opens the installed app in the App tab. */
+  onOpenApp?(): void;
   ref?: Ref<HTMLDivElement>;
 }
 
 /** The card itself, stateless: every status renders from props (tests render it directly). */
-export function ProposalCardView({ proposal, busy, actionError, previewOpen, onTogglePreview, onInstall, onReject, scopePick, onScopePick, ref }: ProposalCardViewProps) {
+export function ProposalCardView({ proposal, busy, actionError, previewOpen, onTogglePreview, onInstall, onReject, scopePick, onScopePick, onPreview, onOpenApp, ref }: ProposalCardViewProps) {
   const { draft, scope, status } = proposal;
   const scopeLabel = scope.kind === "project" ? `Project${proposal.projectName ? `: ${proposal.projectName}` : ""}` : "Global";
   const waiting = status === "staged" || (status === "failed" && proposal.retryable !== false);
   // The picker replaces the head's scope chip while the user can still choose; Chats threads have only Global.
   const choice = waiting && onScopePick ? proposal.projectChoice : null;
   const picked = scopePick ?? scope.kind;
-  const KindIcon = draft.kind === "skill" ? Puzzle : Plug;
-  const kindLabel = draft.kind === "skill" ? "Skill" : "Connector";
+  const KindIcon = draft.kind === "skill" ? Puzzle : draft.kind === "app" ? LayoutGrid : Plug;
+  const kindLabel = draft.kind === "skill" ? "Skill" : draft.kind === "app" ? "App" : "Connector";
   const libraryTarget = draft.kind === "skill" ? "skills" : "connectors";
   const errorText = actionError ?? (status === "failed" ? (proposal.error ?? "Installation failed.") : null);
 
@@ -182,7 +209,7 @@ export function ProposalCardView({ proposal, busy, actionError, previewOpen, onT
         <span className="proposal-icon" aria-hidden>
           <KindIcon size={15} strokeWidth={1.75} />
         </span>
-        <span className="proposal-name">{draft.name}</span>
+        <span className="proposal-name">{draft.kind === "app" ? draft.title : draft.name}</span>
         <span className="proposal-chip">{kindLabel}</span>
         {!choice && <span className="proposal-chip">{scopeLabel}</span>}
         {status !== "staged" && (
@@ -222,6 +249,44 @@ export function ProposalCardView({ proposal, busy, actionError, previewOpen, onT
                 )}
               </div>
             )}
+          </>
+        ) : draft.kind === "app" ? (
+          <>
+            <p className="proposal-desc">{draft.description}</p>
+            {draft.grants.length > 0 ? (
+              <>
+                <div className="proposal-grants-label">Can use</div>
+                <ul className="proposal-grants">
+                  {draft.grants.map((g) => (
+                    <li key={`${g.server}.${g.tool}`}>
+                      <code>{`${g.server}.${g.tool}`}</code>
+                      <span className={`proposal-access ${g.access}`}>{g.access === "read" ? "Read" : g.access === "write" ? "Can change data" : "Unknown"}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="proposal-desc">Uses no connectors.</p>
+            )}
+            {draft.grants.some((g) => g.access === "write") && (
+              <div className="proposal-warning">
+                <AlertTriangle size={13} strokeWidth={1.75} aria-hidden />
+                <span>It asks you before each call that can change data.</span>
+              </div>
+            )}
+            <ul className="proposal-files">
+              {draft.files.map((f) => (
+                <li key={f.path}>
+                  <code>{f.path}</code>
+                  {f.change && (
+                    <span className={`proposal-change ${f.change}`}>
+                      {f.change === "added" ? "New" : f.change === "changed" ? "Changed" : "Removed"}
+                    </span>
+                  )}
+                  {f.change !== "removed" && <span className="proposal-size">{formatBytes(f.bytes)}</span>}
+                </li>
+              ))}
+            </ul>
           </>
         ) : (
           <>
@@ -271,23 +336,45 @@ export function ProposalCardView({ proposal, busy, actionError, previewOpen, onT
         )}
         {status === "staged" && (
           <>
+            {draft.kind === "app" && (
+              <button type="button" className="button ghost" onClick={onPreview}>
+                Preview
+              </button>
+            )}
             <button type="button" className="button ghost" disabled={busy !== null} onClick={onReject}>
               {busy === "reject" ? "Rejecting…" : "Reject"}
             </button>
             <button type="button" className="button primary" disabled={busy !== null} onClick={onInstall}>
-              {busy === "install" ? "Installing…" : "Install"}
+              {busy === "install"
+                ? draft.kind === "app" && draft.update
+                  ? "Updating…"
+                  : "Installing…"
+                : draft.kind === "app" && draft.update
+                  ? "Update"
+                  : "Install"}
             </button>
           </>
         )}
         {status === "installed" && (
           <>
-            <button type="button" className="button" onClick={() => useStore.setState({ libraryTab: libraryTarget })}>
-              Open in Library
-            </button>
+            {draft.kind === "app" ? (
+              <button type="button" className="button" onClick={onOpenApp}>
+                Open app
+              </button>
+            ) : (
+              <button type="button" className="button" onClick={() => useStore.setState({ libraryTab: libraryTarget })}>
+                Open in Library
+              </button>
+            )}
           </>
         )}
         {status === "failed" && (
           <>
+            {draft.kind === "app" && (
+              <button type="button" className="button ghost" onClick={onPreview}>
+                Preview
+              </button>
+            )}
             <button type="button" className="button ghost" disabled={busy !== null} onClick={onReject}>
               {busy === "reject" ? "Rejecting…" : "Reject"}
             </button>

@@ -7,7 +7,8 @@ import { type ProposalScope, validateProposal } from "../extensions/manifest";
 import type { ExtensionStore } from "../extensions/store";
 import type { Catalog } from "../skills/catalog";
 import { discoverSkills } from "../skills/discover";
-import type { McpOverview, McpServerView, Project, Thread } from "../../shared/types";
+import type { AppInfo, McpOverview, McpServerView, Project, Thread } from "../../shared/types";
+import { readAppFiles } from "../apps/registry";
 
 export const CREATOR_INSPECT_TOOL = "creator_inspect";
 export const CREATOR_PROPOSE_TOOL = "creator_propose";
@@ -27,6 +28,10 @@ export interface CreatorToolsDeps {
   extensions: ExtensionStore;
   emitProposal: (threadId: string, proposalId: string) => void;
   limitPerThread?: number;
+  /** The thread's app drafts folder (`<thread folder>/.cubiq/app-drafts`); absent: no app proposals. */
+  draftsDir?: (threadId: string) => string | null;
+  /** Installed apps the thread can see (its project's and global ones). */
+  apps?: (projectId: string | null) => AppInfo[];
 }
 
 function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
@@ -35,7 +40,7 @@ function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
 
 const error = (text: string): ToolOutput => ({ text, isError: true });
 
-const DOC_TOPICS = new Set(["overview", "skill-format", "connector-format"]);
+const DOC_TOPICS = new Set(["overview", "skill-format", "connector-format", "app-format", "app-bridge", "app-check"]);
 
 // Zod schemas: avoid z.record (use z.object({}).catchall(z.string())) so Claude SDK tools/list never drops tools.
 const stringMapSchema = z.object({}).catchall(z.string());
@@ -65,9 +70,9 @@ export function creatorTools(deps: CreatorToolsDeps, threadId: string): HarnessT
   return [
     define({
       name: CREATOR_INSPECT_TOOL,
-      description: "Read Creator mode docs (overview, skill-format, connector-format) or inspect installed skills and connectors.",
+      description: "Read Creator mode docs (overview, skill-format, connector-format, app-format, app-bridge, app-check) or inspect what is installed (skills, connectors, apps).",
       input: {
-        topic: z.enum(["overview", "skill-format", "connector-format", "installed"]),
+        topic: z.enum(["overview", "skill-format", "connector-format", "app-format", "app-bridge", "app-check", "installed"]),
       },
       autoAllow: true,
       effect: "read",
@@ -107,6 +112,7 @@ export function creatorTools(deps: CreatorToolsDeps, threadId: string): HarnessT
                 offGlobal: mcp.project ? mcp.project.offGlobal : [],
                 external: mcp.external.map((e) => ({ name: e.name, agent: e.agent, source: e.source, type: e.type })),
               },
+              apps: (deps.apps?.(effectiveProjectId) ?? []).map((a) => ({ name: a.name, scope: a.scope, title: a.title, grants: a.grants, ...(a.error ? { error: a.error } : {}) })),
               threadProposals: proposals.map((p) => ({
                 id: p.id,
                 kind: p.draft.kind,
@@ -124,10 +130,11 @@ export function creatorTools(deps: CreatorToolsDeps, threadId: string): HarnessT
     }),
     define({
       name: CREATOR_PROPOSE_TOOL,
-      description: "Validate and stage a skill or MCP connector proposal for user review. Never write skill files or mcp.json directly.",
+      description:
+        'Validate and stage a skill, MCP connector or app for user review. Never write skill files, mcp.json or installed app folders directly. For kind "app", pass only name: the files are read from your draft folder (see creator_app_preview); apps always install globally.',
       input: {
         scope: z.enum(["project", "global"]),
-        kind: z.enum(["skill", "connector"]),
+        kind: z.enum(["skill", "connector", "app"]),
         name: z.string(),
         description: z.string().optional(),
         files: z.array(z.object({ path: z.string(), content: z.string() })).optional(),
@@ -160,20 +167,33 @@ export function creatorTools(deps: CreatorToolsDeps, threadId: string): HarnessT
         }
         const project = deps.projectOf(thread.projectId);
         const chatsThread = project ? isChatsRoot(project.path, deps.chatsRoot) : true;
-        if (args.scope === "project" && (!project || chatsThread)) {
+        if (args.kind !== "app" && args.scope === "project" && (!project || chatsThread)) {
           return error('Chats threads have no project folder; propose with scope "global" instead.');
         }
-        const scope: ProposalScope = args.scope === "project" && project ? { kind: "project", projectId: project.id } : { kind: "global" };
+        // Apps always install globally (the sidebar shows them in every project); only skills and connectors take a scope.
+        const scope: ProposalScope = args.kind !== "app" && args.scope === "project" && project ? { kind: "project", projectId: project.id } : { kind: "global" };
 
         const stagedCount = deps.extensions.forThread(threadId).filter((p) => p.status === "staged").length;
         if (stagedCount >= limit) {
           return error(`At most ${limit} staged proposals are allowed per thread. Ask the user to install or reject an existing proposal first.`);
         }
 
-        const draftInput =
-          args.kind === "skill"
-            ? { kind: "skill" as const, name: args.name, description: args.description, files: args.files }
-            : { kind: "connector" as const, name: args.name, spec: args.spec };
+        let draftInput: Record<string, unknown>;
+        if (args.kind === "app") {
+          const base = deps.draftsDir?.(threadId) ?? null;
+          if (!base) return error("This thread has no app drafts folder.");
+          if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(args.name)) return error('App names are lowercase letters, digits and "-" (up to 64).');
+          const dir = join(base, args.name);
+          if (!existsSync(dir)) return error(`No draft named "${args.name}" (expected ${dir}). Build it and check it with creator_app_preview and creator_app_check first.`);
+          const read = readAppFiles(dir);
+          if (read.errors.length) return error(read.errors.join("\n"));
+          draftInput = { kind: "app", name: args.name, files: read.files };
+        } else {
+          draftInput =
+            args.kind === "skill"
+              ? { kind: "skill", name: args.name, description: args.description, files: args.files }
+              : { kind: "connector", name: args.name, spec: args.spec };
+        }
 
         const check = validateProposal(draftInput, {
           scope,
@@ -196,7 +216,10 @@ export function creatorTools(deps: CreatorToolsDeps, threadId: string): HarnessT
             kind: stored.draft.kind,
             name: stored.draft.name,
             scope: stored.scope,
-            message: "Proposal staged for user review. The user picks where it installs (this project or global) and installs or rejects it; do not claim it is installed yet.",
+            message:
+              stored.draft.kind === "app"
+                ? "App staged for user review with the files as they are now (later edits need a new proposal). It installs globally once the user clicks Install; do not claim it is installed yet."
+                : "Proposal staged for user review. The user picks where it installs (this project or global) and installs or rejects it; do not claim it is installed yet.",
           }),
         };
       },

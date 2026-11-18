@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
-import type { ConnectorDraft, ProposalScope, ProposalStatus, SkillDraft, StoredProposal } from "./manifest";
+import type { ExtensionDraft, ProposalScope, ProposalStatus, StoredProposal } from "./manifest";
 
 export interface InstalledFile {
   path: string;
@@ -13,7 +13,7 @@ export interface ExtensionInstall {
   id: string;
   proposalId: string;
   scope: ProposalScope;
-  kind: "skill" | "connector";
+  kind: "skill" | "connector" | "app";
   name: string;
   location: string;
   files: InstalledFile[];
@@ -61,7 +61,7 @@ function toProposal(r: RawProposal): StoredProposal {
     id: r.id,
     threadId: r.thread_id,
     scope: decodeScope(r.scope),
-    draft: JSON.parse(r.draft) as SkillDraft | ConnectorDraft,
+    draft: JSON.parse(r.draft) as ExtensionDraft,
     digest: r.digest,
     status: r.status as ProposalStatus,
     ...(r.error !== null && r.error !== undefined ? { error: r.error } : {}),
@@ -75,7 +75,7 @@ function toInstall(r: RawInstall): ExtensionInstall {
     id: r.id,
     proposalId: r.proposal_id,
     scope: decodeScope(r.scope),
-    kind: r.kind as "skill" | "connector",
+    kind: r.kind as "skill" | "connector" | "app",
     name: r.name,
     location: r.location,
     files: JSON.parse(r.files) as InstalledFile[],
@@ -91,7 +91,7 @@ export class ExtensionStore {
     id?: string;
     threadId: string;
     scope: ProposalScope;
-    draft: SkillDraft | ConnectorDraft;
+    draft: ExtensionDraft;
     digest: string;
     createdAt?: number;
   }): StoredProposal {
@@ -140,7 +140,7 @@ export class ExtensionStore {
     id?: string;
     proposalId: string;
     scope: ProposalScope;
-    kind: "skill" | "connector";
+    kind: "skill" | "connector" | "app";
     name: string;
     location: string;
     files: InstalledFile[];

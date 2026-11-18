@@ -117,6 +117,11 @@ import { appBridgeScript } from "./apps/bridge";
 import { AppCalls } from "./apps/calls";
 import { AppRegistry } from "./apps/registry";
 import { APP_SCHEME, serveApp } from "./apps/serve";
+import { AppChecker, CHECK_HEIGHT, CHECK_WIDTH } from "./apps/check";
+import { electronCheckWindow } from "./apps/check-window";
+import { appDraftsDir, projectAppsDir } from "./apps/registry";
+import { DraftWatcher } from "./apps/watch";
+import { creatorAppTools } from "./creator/app-tools";
 import { providerWarning } from "../shared/provider-rules";
 import { Updater, type UpdaterBackend } from "./updater";
 import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
@@ -739,10 +744,56 @@ async function main(): Promise<void> {
       threadId,
     );
   };
+  /** A Creator thread's app drafts folder, inside its own folder (the project, or the chat's folder). */
+  const creatorDraftsDir = (threadId: string): string | null => {
+    const t = threadOf(threadId);
+    if (!t || t.kind === "design" || t.preset !== "creator") return null;
+    try {
+      return appDraftsDir(service.cwdOf(t));
+    } catch {
+      return null;
+    }
+  };
+  /** The thread's project when it is a real one (not Chats). */
+  const threadRealProject = (threadId: string): string | null => {
+    const t = threadOf(threadId);
+    return t && realProjectPath(t.projectId) ? t.projectId : null;
+  };
   const creatorToolsOf = (threadId: string): HarnessTool[] => {
     const thread = threadOf(threadId);
     if (!thread || thread.kind === "design" || thread.preset !== "creator") return [];
-    return creatorTools(
+    const appTools = creatorAppTools(
+      {
+        templatesDir: join(creatorDir, "templates"),
+        draftsDir: creatorDraftsDir,
+        threadOf,
+        appInfo: (key) => appRegistry.info(key),
+        openPreview: (tid, info) => broadcast({ type: "app-open", threadId: tid, app: info }),
+        watch: (key, tid, dir) => draftWatcher.watch(key, tid, dir),
+        check: (key, src, opts) => appChecker.check(key, src, opts),
+        takeImage,
+        connectorTools: async (tid, server) => {
+          const target = mcpScopes.effective(threadRealProject(tid)).find((s) => s.name === server && s.enabled === true);
+          if (!target) return { ok: false, error: `No enabled connector named "${server}" for this thread. creator_inspect topic "installed" lists them.` };
+          await mcpTools.refresh([target], 20_000);
+          const listing = mcpTools.peek(target.spec);
+          if (!listing || !listing.ok) return { ok: false, error: `Couldn't list "${server}": ${listing?.error ?? "it didn't answer"}.` };
+          return { ok: true, tools: listing.tools };
+        },
+        callReadOnly: (tid, server, tool, args) =>
+          callServerTool(
+            { servers: (pid) => mcpScopes.effective(pid ?? null), listings: mcpTools, pool: mcpPool },
+            threadRealProject(tid) ?? undefined,
+            server,
+            tool,
+            args,
+            undefined,
+            async (found) => (found.readOnly ? null : `"${server}.${tool}" isn't marked read-only; the test only runs read-only tools.`),
+          ),
+      },
+      threadId,
+    );
+    return [...creatorTools(
       {
         creatorDir,
         bundledSkillsDir: skills.dirs(null).bundled,
@@ -760,9 +811,11 @@ async function main(): Promise<void> {
         mcpOverview: (pid) => mcpOverview(pid),
         extensions,
         emitProposal: (id, proposalId) => service.emitFromTool(id, { kind: "extension-proposal", proposalId }),
+        draftsDir: creatorDraftsDir,
+        apps: (pid) => appRegistry.list(pid),
       },
       threadId,
-    );
+    ), ...appTools];
   };
   const threadOwnTools = (threadId: string): HarnessTool[] => {
     let list = threadToolLists.get(threadId);
@@ -808,6 +861,7 @@ async function main(): Promise<void> {
     for (const map of [designToolLists, designThreadTools, shellToolLists, teamToolLists, documentToolLists, threadToolLists] as Map<string, unknown>[]) map.delete(id);
     codeServer.forget(id);
     codeModeOf.forget(id);
+    draftWatcher.forgetThread(id);
   };
   // Started on first use, for Codex and ACP agents, which take tools over MCP.
   let toolServer: Promise<ToolServer> | null = null;
@@ -1805,6 +1859,16 @@ async function main(): Promise<void> {
     },
     mcpFile: (projectId) => (projectId ? join(mcpProjectDir(projectId), "mcp.json") : join(userData, "mcp.json")),
     emitNotice: (threadId, text) => service.emitNotice(threadId, text),
+    appsDir: (projectPath) => (projectPath ? projectAppsDir(projectPath) : join(userData, "apps")),
+    toolAccess: (projectId, server, tool) => {
+      const target = mcpScopes.effective(projectId).find((s) => s.name === server);
+      const found = target ? mcpTools.peekStale(target.spec)?.tools.find((t) => t.name === tool) : undefined;
+      return found ? (found.readOnly ? "read" : "write") : "unknown";
+    },
+    appsChanged: ({ key, removed }) => {
+      if (removed) appCalls.forget(key);
+      broadcast({ type: "apps-changed" });
+    },
   });
   setImmediate(() => extensionService.cleanupStartup());
 
@@ -1836,12 +1900,20 @@ async function main(): Promise<void> {
       return null;
     }
   };
-  const appRegistry = new AppRegistry({ globalDir: join(userData, "apps"), projectPath: realProjectPath });
+  const appRegistry = new AppRegistry({ globalDir: join(userData, "apps"), projectPath: realProjectPath, draftsDir: creatorDraftsDir });
   const appCalls = new AppCalls({
     registry: appRegistry,
     dataDir: join(userData, "app-data"),
+    draftProject: threadRealProject,
     call: (projectId, server, tool, args, before) =>
       callServerTool({ servers: (pid) => mcpScopes.effective(pid ?? null), listings: mcpTools, pool: mcpPool }, projectId, server, tool, args, undefined, before),
+  });
+  const draftWatcher = new DraftWatcher((key) => broadcast({ type: "app-reload", key }));
+  const appChecker = new AppChecker({
+    createWindow: () => electronCheckWindow(CHECK_WIDTH, CHECK_HEIGHT),
+    call: (key, server, tool, args) => appCalls.call(key, null, server, tool, args),
+    storeGet: (key, name) => appCalls.storeGet(key, name),
+    storeSet: (key, name, value) => appCalls.storeSet(key, name, value),
   });
   const appBridgeJs = appBridgeScript();
   protocol.handle(APP_SCHEME, (req) => serveApp(req.url, { appRoot: (key) => appRegistry.root(key), bridge: appBridgeJs }));
@@ -1853,6 +1925,10 @@ async function main(): Promise<void> {
   ipcMain.handle("apps:list", (e, projectId?: string | null) => {
     assertMainWindow(e);
     return appRegistry.list(projectArg(projectId));
+  });
+  ipcMain.handle("apps:info", (e, key: unknown) => {
+    assertMainWindow(e);
+    return appRegistry.info(str(key));
   });
   ipcMain.handle("apps:call", (e, key: unknown, projectId: unknown, server: unknown, tool: unknown, args: unknown, approval: unknown) => {
     assertMainWindow(e);
@@ -2573,6 +2649,7 @@ async function main(): Promise<void> {
     service.dispose();
     previews.dispose();
     designWatcher.closeAll();
+    draftWatcher.closeAll();
     shooter.close();
     terminals.dispose();
     devServers.stopAll();

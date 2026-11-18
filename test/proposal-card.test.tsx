@@ -41,6 +41,29 @@ const connector = (type: "stdio" | "http", extra: Partial<ExtensionProposalView>
   ...extra,
 });
 
+const app = (extra: Partial<ExtensionProposalView> = {}): ExtensionProposalView => ({
+  ...skill(),
+  id: "pr5",
+  scope: { kind: "global" },
+  draft: {
+    kind: "app",
+    name: "sales-dashboard",
+    title: "Sales",
+    description: "Revenue and orders.",
+    files: [
+      { path: "app.json", bytes: 210 },
+      { path: "index.html", bytes: 1800 },
+    ],
+    grants: [
+      { server: "shop", tool: "sales_summary", access: "read" },
+      { server: "shop", tool: "refund_order", access: "write" },
+    ],
+    update: false,
+    draftKey: "d~t1~sales-dashboard",
+  },
+  ...extra,
+});
+
 const noop = () => {};
 const render = (proposal: ExtensionProposalView, props: Partial<ProposalCardViewProps> = {}) =>
   renderToStaticMarkup(
@@ -137,6 +160,74 @@ describe("ProposalCardView", () => {
     expect(html).not.toContain("<img");
     expect(html).not.toContain("<b>run</b>");
     expect(html).toContain("&lt;img");
+  });
+});
+
+describe("app proposals", () => {
+  it("shows the app title and kind, its grants with access badges, and the data warning", () => {
+    const html = render(app());
+    expect(html).toContain("Sales");
+    expect(html).toContain(">App<");
+    expect(html).toContain("shop.sales_summary");
+    expect(html).toContain("shop.refund_order");
+    expect(html).toContain("Read");
+    expect(html).toContain("Can change data");
+    expect(html).toContain("It asks you before each call that can change data.");
+  });
+
+  it("a staged app offers Preview, Reject and Install", () => {
+    const html = render(app(), { onPreview: noop, onOpenApp: noop });
+    expect(buttons(html)).toEqual(["Preview", "Reject", "Install"]);
+  });
+
+  it("an update names the changed files and installs as Update", () => {
+    const html = render(
+      app({
+        draft: {
+          kind: "app",
+          name: "sales-dashboard",
+          title: "Sales",
+          description: "Revenue and orders.",
+          files: [
+            { path: "app.json", bytes: 210, change: "changed" },
+            { path: "index.html", bytes: 1800, change: "added" },
+            { path: "old.js", bytes: 40, change: "removed" },
+          ],
+          grants: [],
+          update: true,
+          draftKey: "d~t1~sales-dashboard",
+        },
+      }),
+      { onPreview: noop },
+    );
+    expect(buttons(html)).toEqual(["Preview", "Reject", "Update"]);
+    expect(html).toContain("Changed");
+    expect(html).toContain("New");
+    expect(html).toContain("Removed");
+  });
+
+  it("installed: the card opens the app instead of the Library", () => {
+    const html = render(app({ status: "installed", installId: "i1" }), { onOpenApp: noop });
+    expect(html).toContain("Open app");
+    expect(html).not.toContain("Open in Library");
+  });
+
+  it("an app with no grants says so", () => {
+    const html = render(
+      app({
+        draft: {
+          kind: "app",
+          name: "sales-dashboard",
+          title: "Sales",
+          description: "Revenue and orders.",
+          files: [{ path: "index.html", bytes: 1800 }],
+          grants: [],
+          update: false,
+          draftKey: "d~t1~sales-dashboard",
+        },
+      }),
+    );
+    expect(html).toContain("Uses no connectors.");
   });
 });
 

@@ -86,6 +86,8 @@ export function AppPane({ app }: { app: AppInfo }) {
   const closeApp = useStore((s) => s.closeApp);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [nonce, setNonce] = useState(0);
+  // A previewed draft reloads itself when its files change.
+  const fileChanges = useStore((s) => s.appReloads[app.key] ?? 0);
   const [asks, setAsks] = useState<Ask[]>([]);
   const [logs, setLogs] = useState<Log[]>([]);
   const [showLogs, setShowLogs] = useState(false);
@@ -107,6 +109,14 @@ export function AppPane({ app }: { app: AppInfo }) {
     setLogs([]);
     setShowLogs(false);
   }, [app.key]);
+
+  // A draft's file changed: answers and logs from the old page go nowhere.
+  useEffect(() => {
+    if (!fileChanges) return;
+    loadRef.current++;
+    setAsks([]);
+    setLogs([]);
+  }, [fileChanges]);
 
   useEffect(() => {
     const onTheme = () => postTheme();
@@ -213,7 +223,7 @@ export function AppPane({ app }: { app: AppInfo }) {
         <span className="app-pane-title" title={app.description}>
           {app.title}
         </span>
-        <span className="proposal-chip">{app.scope === "project" ? "Project" : "Global"}</span>
+        <span className="proposal-chip">{app.scope === "project" ? "Project" : app.scope === "draft" ? "Draft" : "Global"}</span>
         <span className="grow" />
         {logs.length > 0 && (
           <button type="button" className={`app-pane-logs-toggle${errors ? " has-errors" : ""}`} aria-expanded={showLogs} onClick={() => setShowLogs((v) => !v)}>
@@ -256,7 +266,7 @@ export function AppPane({ app }: { app: AppInfo }) {
         </div>
       )}
       <iframe
-        key={`${app.key}:${nonce}`}
+        key={`${app.key}:${nonce}:${fileChanges}`}
         ref={frameRef}
         className="app-frame"
         title={app.title}

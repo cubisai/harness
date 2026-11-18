@@ -21,6 +21,54 @@ export const APP_THEME_TOKENS = [
   "del-bg",
 ] as const;
 
+export type AppThemeToken = (typeof APP_THEME_TOKENS)[number];
+
+/** The tokens' values in each scheme, for a frame with no CubiQ window around it (the Creator app check). Pinned to app.css by a test. */
+export const APP_THEME_DEFAULTS: Record<"light" | "dark", Record<AppThemeToken, string>> = {
+  light: {
+    bg: "#ffffff",
+    "bg-subtle": "#f5f6f8",
+    "bg-chip": "#f1f3f5",
+    "bg-hover": "#eff1f4",
+    text: "#0b0d10",
+    "text-secondary": "#5b606b",
+    "text-tertiary": "#9aa0aa",
+    hairline: "#e7e9ed",
+    "hairline-strong": "#d5d9df",
+    primary: "#0b0d10",
+    "on-primary": "#ffffff",
+    focus: "#0b0d10",
+    success: "#2f9e44",
+    danger: "#e5484d",
+    warning: "#c98500",
+    "signal-fill": "#a8ff55",
+    "signal-ink": "#357a08",
+    "add-bg": "rgb(47 158 68 / 0.1)",
+    "del-bg": "rgb(229 72 77 / 0.08)",
+  },
+  dark: {
+    bg: "#0e1013",
+    "bg-subtle": "#14171b",
+    "bg-chip": "#1a1d22",
+    "bg-hover": "#181b20",
+    text: "#f7f8fa",
+    "text-secondary": "#9aa0aa",
+    "text-tertiary": "#5f6570",
+    hairline: "#22252b",
+    "hairline-strong": "#30343c",
+    primary: "#f7f8fa",
+    "on-primary": "#0b0d10",
+    focus: "#f7f8fa",
+    success: "#3fb950",
+    danger: "#ff6369",
+    warning: "#f5a524",
+    "signal-fill": "#a8ff55",
+    "signal-ink": "#a8ff55",
+    "add-bg": "rgb(63 185 80 / 0.12)",
+    "del-bg": "rgb(255 99 105 / 0.12)",
+  },
+};
+
 // The script injected into every app page: `window.cubiq`. It only talks to the parent window (the CubiQ pane that
 // hosts the frame), which forwards calls to main, where grants are checked. Errors and console warnings go to the
 // host too, so the Creator agent's app check sees what broke.

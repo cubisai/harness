@@ -4230,6 +4230,23 @@ th[aria-sort="descending"] .smart-th::after { content: " ↓"; color: var(--text
 .proposal-files code { font: 12px var(--mono); color: var(--text); min-width: 0; overflow-wrap: anywhere; background: transparent; padding: 0; }
 .proposal-size { font: 11.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--text-tertiary); flex-shrink: 0; }
 
+.proposal-grants-label { font-size: 12px; color: var(--text-secondary); }
+.proposal-grants { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; min-width: 0; }
+.proposal-grants li {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 4px 8px; background: var(--bg-subtle); border: 1px solid var(--hairline); border-radius: var(--radius-s);
+  font-size: 12px; min-width: 0;
+}
+.proposal-grants code { font: 12px var(--mono); color: var(--text); min-width: 0; overflow-wrap: anywhere; background: transparent; padding: 0; }
+.proposal-access { font-size: 11px; font-weight: 500; border-radius: var(--radius-s); padding: 1px 6px; flex-shrink: 0; }
+.proposal-access.read { color: var(--success); background: var(--add-bg); }
+.proposal-access.write { color: var(--warning); background: var(--bg-chip); }
+.proposal-access.unknown { color: var(--text-tertiary); background: var(--bg-chip); }
+.proposal-change { font-size: 11px; font-weight: 500; margin-left: auto; margin-right: 8px; }
+.proposal-change.added { color: var(--success); }
+.proposal-change.changed { color: var(--warning); }
+.proposal-change.removed { color: var(--danger); }
+
 .proposal-preview-wrap { min-width: 0; }
 .proposal-preview-toggle {
   display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 6px;

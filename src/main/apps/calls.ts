@@ -28,6 +28,8 @@ export interface AppCallsDeps {
   call: ToolCaller;
   /** `<userData>/app-data`: each app's store and its "always allow" list. */
   dataDir: string;
+  /** A Creator thread's real project (its draft uses that project's connectors), or null for global ones. */
+  draftProject?: (threadId: string) => string | null;
   now?: () => number;
 }
 
@@ -51,7 +53,8 @@ export class AppCalls {
     const k = decodeAppKey(key);
     if (!manifest || !k) return { ok: false, error: "This app is not installed." };
     if (!granted(manifest, server, tool)) return { ok: false, error: `"${server}.${tool}" is not in this app's grants (app.json).` };
-    const projectId = k.scope === "project" ? k.projectId : (contextProjectId ?? undefined);
+    // A draft's connectors are its thread's, whatever window relays the call.
+    const projectId = k.scope === "project" ? k.projectId : k.scope === "draft" ? (this.deps.draftProject?.(k.threadId) ?? undefined) : (contextProjectId ?? undefined);
     const argsJson = stableStringify(args);
     const argsHash = sha(argsJson);
     const cacheKey = `${key}\u0000${projectId ?? ""}\u0000${server}\u0000${tool}\u0000${argsHash}`;

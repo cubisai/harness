@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { resolveInside } from "../artifacts";
 import { contentTypeOf } from "../design/serve";
 import { injectBridge } from "../design/serve";
+import { checkHostCsp, checkHostHtml } from "./check";
 
 export const APP_SCHEME = "cubiq-app";
 /** Keys are what `registry.ts` hands out: `g~name`, `p~<projectId>~name`, `d~<threadId>~name`. */
@@ -46,6 +47,13 @@ export interface AppServeDeps {
 
 export function serveApp(url: string, deps: AppServeDeps): Response {
   try {
+    // The app check's host page (see check.ts): fixed content, framing only cubiq-app://a/ pages.
+    if (/^cubiq-app:\/\/h\/check\.html(?:[?#]|$)/i.test(url)) {
+      return new Response(checkHostHtml(), {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": checkHostCsp(), "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+      });
+    }
     const parsed = parseAppUrl(url);
     if (!parsed) return notFound();
     const root = deps.appRoot(parsed.key);

@@ -1352,7 +1352,13 @@ export type LiveUpdate =
   /** An automation run changed state (finished, waiting on the user, paused at its budget). */
   | { type: "automation-run"; notice: AutomationNotice }
   /** An automation run's result was delivered into its thread. */
-  | { type: "automation-delivered"; automationId: string; runId: number; threadId: string; title: string };
+  | { type: "automation-delivered"; automationId: string; runId: number; threadId: string; title: string }
+  /** Creator apps were installed, updated or removed: list them again. */
+  | { type: "apps-changed" }
+  /** A Creator thread previews its draft app: open it in the App tab if that thread is on screen. */
+  | { type: "app-open"; threadId: string; app: AppInfo }
+  /** A previewed draft's files changed: reload its frame. */
+  | { type: "app-reload"; key: string };
 
 export type ProposalScope = { kind: "project"; projectId: string } | { kind: "global" };
 export type ProposalStatus = "staged" | "installed" | "rejected" | "failed";
@@ -1374,6 +1380,22 @@ export interface ExtensionConnectorSummary {
   requiredVars: string[];
 }
 
+export interface ExtensionAppSummary {
+  kind: "app";
+  name: string;
+  title: string;
+  description: string;
+  icon?: string;
+  /** `change` only when this proposal updates an installed app: what it does to that file. */
+  files: { path: string; bytes: number; change?: "added" | "changed" | "removed" }[];
+  /** Each granted connector tool; `access` from the server's listing (`readOnlyHint`), "unknown" when not listed. */
+  grants: { server: string; tool: string; access: "read" | "write" | "unknown" }[];
+  /** Installing replaces an app of the same name installed at this scope. */
+  update: boolean;
+  /** The draft's frame key, so the card can preview it. */
+  draftKey: string;
+}
+
 export interface ExtensionProposalView {
   id: string;
   threadId: string;
@@ -1387,15 +1409,15 @@ export interface ExtensionProposalView {
   updatedAt: number;
   installId?: string;
   retryable?: boolean;
-  draft: ExtensionSkillSummary | ExtensionConnectorSummary;
+  draft: ExtensionSkillSummary | ExtensionConnectorSummary | ExtensionAppSummary;
 }
 
 /** An installed Creator app, as the sidebar and Library list it. */
 export interface AppInfo {
-  /** The frame key (`g~name` or `p~<projectId>~name`). */
+  /** The frame key (`g~name`, `p~<projectId>~name`, or a Creator thread's draft `d~<threadId>~name`). */
   key: string;
   name: string;
-  scope: "global" | "project";
+  scope: "global" | "project" | "draft";
   projectId?: string;
   title: string;
   description: string;
@@ -1418,7 +1440,7 @@ export interface ExtensionInstallView {
   id: string;
   proposalId: string;
   scope: ProposalScope;
-  kind: "skill" | "connector";
+  kind: "skill" | "connector" | "app";
   name: string;
   targetPath: string;
   installedAt: number;
@@ -1615,6 +1637,8 @@ export interface UnskilledApi {
   listExtensionInstalls(projectId?: string | null): Promise<ExtensionInstallView[]>;
   /** Installed Creator apps for a project (its own, then global ones it doesn't shadow), or global only. */
   listApps(projectId: string | null): Promise<AppInfo[]>;
+  /** One app by frame key (an installed app or a Creator thread's draft), or null when there is none. */
+  appInfo(key: string): Promise<AppInfo | null>;
   /** A bridge call from an app's frame; `approval` resends a call the user said yes to. */
   callApp(key: string, projectId: string | null, server: string, tool: string, args: Record<string, unknown>, approval?: { token: string; remember?: boolean }): Promise<AppCallResult>;
   appStoreGet(key: string, name: string): Promise<unknown>;
