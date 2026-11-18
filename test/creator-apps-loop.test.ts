@@ -19,12 +19,15 @@ import { APP_THEME_DEFAULTS, APP_THEME_TOKENS } from "../src/shared/apps";
 import type { AppInfo, ExtensionAppSummary } from "../src/shared/types";
 
 const dirs: string[] = [];
+const stores: Store[] = [];
 const makeTemp = () => {
   const d = mkdtempSync(join(tmpdir(), "creator-apps-"));
   dirs.push(d);
   return d;
 };
 afterEach(() => {
+  // Windows cannot remove an open SQLite file.
+  while (stores.length) stores.pop()!.close();
   while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
 
@@ -49,6 +52,7 @@ function setup() {
   const cRoot = chatsRoot(userData);
   mkdirSync(cRoot, { recursive: true });
   const store = new Store(join(userData, "app.db"));
+  stores.push(store);
   const extensions = new ExtensionStore(store.sql);
   const project = store.addProject(projectDir);
   const thread = store.createThread(project.id, "codex", "m", "ask", "chat", null, null, "creator");
@@ -480,7 +484,7 @@ describe("draft hot reload", () => {
 
 describe("app theme defaults", () => {
   it("match app.css for every token in both schemes", () => {
-    const css = readFileSync(resolve("src/renderer/src/styles/app.css"), "utf-8");
+    const css = readFileSync(resolve("src/renderer/src/styles/app.css"), "utf-8").replace(/\r\n/g, "\n");
     // The base :root block (light) runs up to the dark media query; the explicit dark block is `:root[data-theme="dark"] {` on its own line.
     const light = css.slice(css.indexOf(":root {", css.indexOf(':root[data-theme="dark"] { color-scheme')), css.indexOf("@media (prefers-color-scheme: dark)"));
     const darkStart = css.indexOf(':root[data-theme="dark"] {\n');

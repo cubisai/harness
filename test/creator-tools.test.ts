@@ -21,6 +21,7 @@ import { prepareAutomation } from "../src/main/creator/automations";
 import { listKitSystems } from "../src/main/design/systems";
 
 const dirs: string[] = [];
+const stores: Store[] = [];
 const makeTemp = () => {
   const dir = mkdtempSync(join(tmpdir(), "creator-tools-"));
   dirs.push(dir);
@@ -28,6 +29,8 @@ const makeTemp = () => {
 };
 
 afterEach(() => {
+  // Windows cannot remove an open SQLite file.
+  while (stores.length) stores.pop()!.close();
   while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
 
@@ -51,6 +54,7 @@ function setupCreator(opts: { chatsThread?: boolean; permissionMode?: "ask" | "a
   mkdirSync(projectDir, { recursive: true });
 
   const store = new Store(join(userData, "app.db"));
+  stores.push(store);
   const extensions = new ExtensionStore(store.sql);
   const project = store.addProject(projectDir);
   const thread = store.createThread(project.id, "codex", "default-model", opts.permissionMode ?? "ask", "chat", null, null, "creator");

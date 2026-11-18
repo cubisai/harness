@@ -16,6 +16,7 @@ import { SkillCatalogs } from "../src/main/skills/sources";
 import type { McpServerEntry } from "../src/shared/types";
 
 const dirs: string[] = [];
+const stores: Store[] = [];
 const makeTemp = () => {
   const d = mkdtempSync(join(tmpdir(), "ext-install-"));
   dirs.push(d);
@@ -23,6 +24,8 @@ const makeTemp = () => {
 };
 
 afterEach(() => {
+  // Windows cannot remove an open SQLite file.
+  while (stores.length) stores.pop()!.close();
   while (dirs.length) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
 
@@ -48,6 +51,7 @@ function setupEnv() {
   mkdirSync(cRoot, { recursive: true });
 
   const store = new Store(join(userData, "app.db"));
+  stores.push(store);
   const extensions = new ExtensionStore(store.sql);
   const project = store.addProject(projectDir);
   const thread = store.createThread(project.id, "codex", "default-model", "ask", "chat", null, null, "creator");
