@@ -60,9 +60,14 @@ describe("store mode", () => {
         {
           get: (_t, name) =>
             name === "createThread"
-              ? async (projectId: string, agent: string | undefined, opts: { kind?: string }) => {
+              ? async (projectId: string, _agent: string | undefined, opts: { kind?: string; preset?: "creator" }) => {
                   created.push(opts);
-                  return thread("new", { projectId, kind: opts.kind === "design" ? "design" : "chat", updatedAt: 10 });
+                  return thread("new", {
+                    projectId,
+                    kind: opts.kind === "design" ? "design" : "chat",
+                    ...(opts.preset === "creator" ? { preset: "creator" } : {}),
+                    updatedAt: 10,
+                  });
                 }
               : name === "listEvents" || name === "listArtifacts"
                 ? async () => []
@@ -119,5 +124,23 @@ describe("store mode", () => {
     useStore.getState().setDraft({ designSystem: "mono" });
     await useStore.getState().newThread();
     expect(created).toEqual([{ kind: "design", designSystem: "mono" }, { kind: "design", designSystem: "editorial" }, { kind: "chat" }]);
+  });
+
+  it("switching to Creator opens the latest creator thread and creates new threads with preset creator", async () => {
+    useStore.setState({
+      threads: {
+        p: [
+          thread("chat", { updatedAt: 5 }),
+          thread("c1", { preset: "creator", updatedAt: 2 }),
+          thread("c2", { preset: "creator", updatedAt: 8 }),
+        ],
+      },
+      events: { chat: [], c1: [], c2: [] },
+      artifactFiles: { chat: [], c1: [], c2: [] },
+    });
+    await useStore.getState().setThreadKind("creator");
+    expect(useStore.getState()).toMatchObject({ threadKind: "creator", selectedThreadId: "c2" });
+    await useStore.getState().newThread();
+    expect(created).toEqual([{ kind: "chat", preset: "creator" }]);
   });
 });

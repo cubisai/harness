@@ -1,4 +1,4 @@
-import type { AgentCatalogEntry, DesignSystemDoc, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, MemoryScope, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
+import type { AgentCatalogEntry, DesignSystemDoc, ExtensionInstallView, ExtensionProposalView, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, MemoryScope, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
 import type { AutomationTemplate, AutomationView, Schedule } from "../../shared/automations";
 import type { ExpertDef } from "../../shared/experts";
 
@@ -19,6 +19,8 @@ export function installMock(): void {
   const listeners = new Set<(u: LiveUpdate) => void>();
   const emit = (u: LiveUpdate) => listeners.forEach((l) => l(u));
   const openTerminals = new Set<string>();
+  const mockProposals = new Map<string, ExtensionProposalView>();
+  const mockInstalls = new Map<string, ExtensionInstallView>();
   let settings: SettingsView = {
     theme: "system",
     defaultAgent: null,
@@ -126,6 +128,73 @@ export function installMock(): void {
       ev(22, { kind: "compaction", trigger: "auto", preTokens: 12400, postTokens: 4100 }),
     ],
   };
+
+  // Creator review cards in every state: staged skill, staged stdio connector, failed (long error), installed.
+  if (scene === "creator") {
+    const t1 = threads.p1?.find((x) => x.id === "t1");
+    if (t1) Object.assign(t1, { title: "Make a commit message skill", preset: "creator" });
+    const base = { threadId: "t1", projectName: "acme-web", createdAt: now, updatedAt: now };
+    const proposals: ExtensionProposalView[] = [
+      {
+        ...base,
+        id: "pr1",
+        scope: { kind: "project", projectId: "p1" },
+        status: "staged",
+        draft: {
+          kind: "skill",
+          name: "conventional-commits",
+          description: "Writes a Conventional Commits message for the staged changes: type, optional scope, an imperative subject under 72 characters.",
+          files: [
+            { path: "SKILL.md", bytes: 1840 },
+            { path: "reference/types.md", bytes: 612 },
+          ],
+          skillMd:
+            "---\nname: conventional-commits\ndescription: Writes a Conventional Commits message.\n---\n\n# Conventional commits\n\n1. Read the staged diff.\n2. Pick one type: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.\n3. Write `type(scope): subject` in the imperative, under 72 characters.\n",
+        },
+      },
+      {
+        ...base,
+        id: "pr2",
+        scope: { kind: "global" },
+        status: "staged",
+        draft: {
+          kind: "connector",
+          name: "github",
+          type: "stdio",
+          target: "npx -y @modelcontextprotocol/server-github --toolsets repos,issues,pull_requests --read-only",
+          requiredVars: ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+        },
+      },
+      {
+        ...base,
+        id: "pr3",
+        scope: { kind: "project", projectId: "p1" },
+        status: "failed",
+        retryable: true,
+        error:
+          "A skill named release-notes-from-merged-pull-requests-since-last-tag already exists in Project: acme-web. Ask the agent for a different name, or remove the existing one from Library → Skills first.",
+        draft: { kind: "skill", name: "release-notes-from-merged-pull-requests-since-last-tag", description: "Drafts release notes from merged PRs.", files: [{ path: "SKILL.md", bytes: 920 }], skillMd: "# Release notes\n" },
+      },
+      {
+        ...base,
+        id: "pr4",
+        scope: { kind: "global" },
+        status: "installed",
+        installId: "inst-pr4",
+        draft: { kind: "connector", name: "linear", type: "http", target: "https://mcp.linear.app/mcp", requiredVars: [] },
+      },
+    ];
+    for (const p of proposals) mockProposals.set(p.id, p);
+    events.t1 = [
+      ev(1, { kind: "user", text: "Create a skill that writes conventional commit messages, and add the GitHub MCP server." }),
+      ev(2, { kind: "assistant-text", text: "Here are both drafts. Nothing is installed until you choose **Install**." }),
+      ev(3, { kind: "extension-proposal", proposalId: "pr1" }),
+      ev(4, { kind: "extension-proposal", proposalId: "pr2" }),
+      ev(5, { kind: "assistant-text", text: "An earlier attempt and an existing connector, for reference:" }),
+      ev(6, { kind: "extension-proposal", proposalId: "pr3" }),
+      ev(7, { kind: "extension-proposal", proposalId: "pr4" }),
+    ];
+  }
 
   // Sample skills across every origin, so the Library tab and the / menu show
   // project, harness, shared, bundled and legacy rows (and a shadowed one).
@@ -305,6 +374,10 @@ export function installMock(): void {
         if (opts.designSystem) th.designSystem = opts.designSystem;
       }
       if (opts?.expertId) th.expertId = opts.expertId;
+      if (opts?.preset === "creator") {
+        th.preset = "creator";
+        th.presetRevision = 1;
+      }
       threads[pid] = [th, ...(threads[pid] ?? [])];
       return th;
     },
@@ -558,6 +631,34 @@ export function installMock(): void {
         ? { ...mcp, project: { ...mcp.project!, servers: (mcp.project?.servers ?? []).filter((x) => x.name !== name) } }
         : { ...mcp, servers: mcp.servers.filter((x) => x.name !== name) };
       return mcp;
+    },
+    getExtensionProposal: async (id) => mockProposals.get(id) ?? null,
+    installExtension: async (id) => {
+      const p = mockProposals.get(id);
+      if (!p) throw new Error("Extension proposal not found.");
+      const updated: ExtensionProposalView = { ...p, status: "installed", installId: `inst-${id}`, updatedAt: Date.now(), error: undefined, retryable: false };
+      mockProposals.set(id, updated);
+      mockInstalls.set(updated.installId!, {
+        id: updated.installId!,
+        proposalId: id,
+        scope: updated.scope,
+        kind: updated.draft.kind,
+        name: updated.draft.name,
+        targetPath: updated.draft.kind === "skill" ? `/Users/you/.cubiq/skills/${updated.draft.name}` : "/Users/you/Library/Application Support/CubiQ/mcp.json",
+        installedAt: Date.now(),
+      });
+      return updated;
+    },
+    rejectExtension: async (id) => {
+      const p = mockProposals.get(id);
+      if (!p) throw new Error("Extension proposal not found.");
+      const updated: ExtensionProposalView = { ...p, status: "rejected", updatedAt: Date.now(), error: undefined, retryable: false };
+      mockProposals.set(id, updated);
+      return updated;
+    },
+    listExtensionInstalls: async () => [...mockInstalls.values()],
+    uninstallExtension: async (installId) => {
+      mockInstalls.delete(installId);
     },
     setMcpServerEnabled: async (name, enabled, projectId) => {
       const set = (x: McpOverview["servers"][number]) => (x.name === name ? { ...x, enabled } : x);

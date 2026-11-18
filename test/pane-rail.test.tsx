@@ -26,7 +26,8 @@ describe("PaneRail", () => {
     const buttons = html.match(/<button[^>]*>/g) ?? [];
     expect(buttons.length).toBe(5);
     for (const b of buttons) expect(b).toMatch(/title="[^"]+"/);
-    for (const title of ["switch to Design", "Add Project", "Message Center", "Library", "Settings"]) expect(html).toContain(title);
+    for (const title of ["Workspace mode: Chat", "Add Project", "Message Center", "Library", "Settings"]) expect(html).toContain(title);
+    expect(html).toContain('aria-haspopup="listbox"');
   });
 });
 

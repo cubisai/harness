@@ -1295,14 +1295,14 @@ describe("Codex shared memory", () => {
     }
   });
 
-  it("appends the expert block between the guide and the memory", async () => {
+  it("appends the expert block and preset note between the guide and the memory", async () => {
     const { memory } = recording("<harness-memory>MEM</harness-memory>");
     const { d, sent } = probeDriver(memory);
     try {
-      await d.runTurn(turn("hi", { projectId: "p1", expert: "<expert>Be terse.</expert>" }).input);
+      await d.runTurn(turn("hi", { projectId: "p1", expert: "<expert>Be terse.</expert>", preset: "# Creator mode" }).input);
       const start = sent();
       expect(start.method).toBe("thread/start");
-      expect(start.params.developerInstructions).toBe(GUIDE + "\n\n<expert>Be terse.</expert>\n\n<harness-memory>MEM</harness-memory>");
+      expect(start.params.developerInstructions).toBe(GUIDE + "\n\n<expert>Be terse.</expert>\n\n# Creator mode\n\n<harness-memory>MEM</harness-memory>");
     } finally {
       delete process.env.GUIDE_PROBE;
     }

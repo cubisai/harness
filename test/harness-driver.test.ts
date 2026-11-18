@@ -823,6 +823,18 @@ describe("provider driver", () => {
     expect(t.events.find((e) => e.kind === "tool-use" && e.parentId === "c1")).toMatchObject({ name: "Write", summary: "x.txt" });
     expect(t.events.find((e) => e.kind === "tool-result" && e.parentId === "c1")).toMatchObject({ isError: true });
   });
+
+  it("keeps the system prompt of an ordinary chat thread byte-identical while appending preset for a creator thread", async () => {
+    const plain = setup([[{ type: "text", text: "ok" }]]);
+    await plain.driver.runTurn(plain.input("hi"));
+    const withPreset = setup([[{ type: "text", text: "ok" }]]);
+    await withPreset.driver.runTurn({ ...withPreset.input("hi"), preset: "# Creator mode\nUse creator_propose." });
+
+    expect(plain.requests[0]!.system.join("\n")).not.toContain("Creator mode");
+    expect(withPreset.requests[0]!.system.join("\n")).toContain("# Creator mode\nUse creator_propose.");
+    // Removing the appended preset note from the creator system prompt yields the exact plain chat system prompt.
+    expect(withPreset.requests[0]!.system.map((s) => s.replace("\n\n# Creator mode\nUse creator_propose.", "").replace(withPreset.cwd, plain.cwd))).toEqual(plain.requests[0]!.system);
+  });
 });
 
 describe("ProviderAgents", () => {

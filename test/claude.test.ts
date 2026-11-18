@@ -301,14 +301,15 @@ describe("Claude driver guide", () => {
     expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: TODO_HINT });
   });
 
-  it("appends the expert block between the guide and the memory", async () => {
+  it("appends the expert block and preset note between the guide and the memory", async () => {
     sdk.calls.length = 0;
     const d = createClaudeDriver({ pluginDir: () => null, guide: () => "GUIDE" });
     const { input } = turnInput();
     input.expert = "<expert>Be terse.</expert>";
+    input.preset = "# Creator mode";
     await d.runTurn(input);
     expect(sdk.calls).toHaveLength(1);
-    expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: `GUIDE\n\n${TODO_HINT}\n\n<expert>Be terse.</expert>` });
+    expect(sdk.calls[0]?.options.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: `GUIDE\n\n${TODO_HINT}\n\n<expert>Be terse.</expert>\n\n# Creator mode` });
     expect(sdk.calls[0]?.options).not.toHaveProperty("agents");
   });
 

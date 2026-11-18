@@ -314,22 +314,25 @@ describe("ACP driver", () => {
     expect(c.deltas.join("")).not.toContain(CODE_HINT);
   });
 
-  it("sends the expert block once, right after the guide, on a new session's first prompt", async () => {
+  it("sends the expert block and preset note once, right after the guide, on a new session's first prompt", async () => {
     const d = createAcpDriver(
       { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },
       { clientVersion: "test", guide: () => "GUIDE" },
     );
     closeAfter(() => d.dispose?.());
-    const first = turn("hello", { expert: "<expert>Be terse.</expert>" });
+    const first = turn("hello", { expert: "<expert>Be terse.</expert>", preset: "# Creator mode" });
     await d.runTurn(first.input);
     const firstText = first.deltas.join("");
     expect(firstText).toContain("<harness-guide>\nGUIDE\n</harness-guide>");
     expect(firstText).toContain("<expert>Be terse.</expert>");
+    expect(firstText).toContain("# Creator mode");
     expect(firstText.indexOf("<harness-guide>")).toBeLessThan(firstText.indexOf("<expert>"));
-    // Only a new session's first prompt carries it; a resume drops it.
+    expect(firstText.indexOf("<expert>")).toBeLessThan(firstText.indexOf("# Creator mode"));
+    // Only a new session's first prompt carries them; a resume drops them.
     const second = turn("hello", { sessionId: first.sessions[0]! });
     await d.runTurn(second.input);
     expect(second.deltas.join("")).not.toContain("<expert>");
+    expect(second.deltas.join("")).not.toContain("# Creator mode");
   });
 
   it("opens a fresh session when the thread asks for one while a session is still live", async () => {

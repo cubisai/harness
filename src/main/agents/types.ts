@@ -63,6 +63,8 @@ export interface TurnInput {
   designGuard?: (paths: readonly string[]) => string | null;
   /** The thread's expert persona block (see shared/experts.ts expertBlock), appended to the guide; absent = no expert. */
   expert?: string;
+  /** The thread's preset note (Creator), appended after the expert block; absent = general. */
+  preset?: string;
   /** The expert team's members as subagents (Claude SDK agents, OpenCode agents); absent = no team. Fixed for a thread. */
   team?: TeamAgent[];
   /** The folder holding the thread's expert's private package skills (read-only for the agent); absent = none. */
@@ -132,6 +134,8 @@ export interface SeedRequest {
   design?: string;
   /** The thread's expert persona block (see shared/experts.ts expertBlock), appended to the guide; absent = no expert. */
   expert?: string;
+  /** The thread's preset note (Creator), appended after the expert block; absent = general. */
+  preset?: string;
   /** The folder holding the thread's expert's private package skills (read-only for the agent); absent = none. */
   expertRoot?: string;
   model: string;

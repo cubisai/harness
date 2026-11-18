@@ -463,6 +463,9 @@ export interface SettingsView extends Settings {
 }
 
 export type ThreadKind = "chat" | "design";
+export type AgentPresetId = "general" | "creator";
+export type WorkspaceMode = "chat" | "design" | "creator";
+export const CREATOR_PRESET_REVISION = 1;
 
 export interface Thread {
   id: string;
@@ -512,6 +515,10 @@ export interface Thread {
   expertId?: string;
   /** The issue this thread works on, picked with /issue; absent = none. */
   issue?: ThreadIssue;
+  /** The workspace preset ("creator"); absent = general (older rows and exports). */
+  preset?: "creator";
+  /** The preset prompt/tool revision this thread was created with; absent when preset is absent. */
+  presetRevision?: number;
 }
 
 export type IssueTracker = "github" | "gitlab" | "gitea" | "local";
@@ -744,6 +751,8 @@ export type ThreadEvent = (
   | { kind: "check"; command: string; ok: boolean | null; exitCode: number | null; timedOut: boolean; durationMs: number; tail: string; round: number }
   /** A table, stat or chart a run_code script showed the user from its own data (`show()`); never sent back to a model. */
   | { kind: "widget"; envelope: WidgetEnvelope }
+  /** Creator mode: a validated skill or MCP connector proposal awaiting user review in the transcript. */
+  | { kind: "extension-proposal"; proposalId: string }
 ) &
   EventIds;
 
@@ -1345,6 +1354,50 @@ export type LiveUpdate =
   /** An automation run's result was delivered into its thread. */
   | { type: "automation-delivered"; automationId: string; runId: number; threadId: string; title: string };
 
+export type ProposalScope = { kind: "project"; projectId: string } | { kind: "global" };
+export type ProposalStatus = "staged" | "installed" | "rejected" | "failed";
+
+export interface ExtensionSkillSummary {
+  kind: "skill";
+  name: string;
+  description: string;
+  files: { path: string; bytes: number }[];
+  skillMd: string;
+}
+
+export interface ExtensionConnectorSummary {
+  kind: "connector";
+  name: string;
+  type: McpServerSpec["type"];
+  /** Redacted command line (stdio) or URL (remote) shown on the review card. */
+  target: string;
+  requiredVars: string[];
+}
+
+export interface ExtensionProposalView {
+  id: string;
+  threadId: string;
+  scope: ProposalScope;
+  projectName: string | null;
+  status: ProposalStatus;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+  installId?: string;
+  retryable?: boolean;
+  draft: ExtensionSkillSummary | ExtensionConnectorSummary;
+}
+
+export interface ExtensionInstallView {
+  id: string;
+  proposalId: string;
+  scope: ProposalScope;
+  kind: "skill" | "connector";
+  name: string;
+  targetPath: string;
+  installedAt: number;
+}
+
 /** The API the preload script exposes as `window.unskilled`. */
 export interface UnskilledApi {
   platform: string;
@@ -1364,7 +1417,7 @@ export interface UnskilledApi {
   listThreads(projectId: string): Promise<Thread[]>;
   /** Every project's threads, grouped by project id; a project with none is absent. */
   listAllThreads(): Promise<Record<string, Thread[]>>;
-  createThread(projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: ThreadKind; designSystem?: string; expertId?: string }): Promise<Thread>;
+  createThread(projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: ThreadKind; designSystem?: string; expertId?: string; preset?: "creator" }): Promise<Thread>;
   /** Pick a design thread's design system (null = the default); the next turn copies it into the design folder. */
   setDesignSystem(threadId: string, id: string | null): Promise<Thread>;
   /** Pick a design thread's prototype tier (null = Working); the next turn tells the agent. */
@@ -1529,6 +1582,11 @@ export interface UnskilledApi {
   /** Add or replace a server. Env or header values left empty keep what was stored. */
   saveMcpServer(entry: McpServerEntry, previousName?: string, projectId?: string | null): Promise<McpOverview>;
   removeMcpServer(name: string, projectId?: string | null): Promise<McpOverview>;
+  getExtensionProposal(id: string): Promise<ExtensionProposalView | null>;
+  installExtension(id: string): Promise<ExtensionProposalView>;
+  rejectExtension(id: string): Promise<ExtensionProposalView>;
+  listExtensionInstalls(projectId?: string | null): Promise<ExtensionInstallView[]>;
+  uninstallExtension(installId: string): Promise<void>;
   setMcpServerEnabled(name: string, enabled: boolean, projectId?: string | null): Promise<McpOverview>;
   testMcpServer(name: string, projectId?: string | null): Promise<McpTestResult>;
   /** Use (or stop using) a global server in one project. */

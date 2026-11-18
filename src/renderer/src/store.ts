@@ -30,6 +30,7 @@ import type {
   Thread,
   ThreadKind,
   ThreadTotals,
+  WorkspaceMode,
 } from "../../shared/types";
 import type { DocumentStatus } from "../../shared/design-mutation";
 import { api } from "./api";
@@ -37,7 +38,7 @@ import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread }
 import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
-import { threadKind, waitingThreads } from "./sections";
+import { waitingThreads, workspaceModeOf } from "./sections";
 import { readSession, restoreDraft, restoreTarget, writeSession } from "./session";
 import { setupMessage, setupQuestions } from "./issueSetup";
 import { buildInCodePrompt, buildThreadPatch, designDirName, handoffPath } from "../../shared/design";
@@ -147,10 +148,10 @@ interface State {
   selectedThreadId: string | null;
   /** Thread ids by how recently they were selected (oldest first), so the per-thread caches can be bounded. */
   selectedOrder: string[];
-  /** Chat or Design mode: which threads the sidebar lists and what New thread makes. Follows the selected thread. */
-  threadKind: ThreadKind;
-  /** Switch mode; a selected thread of the other kind gives way to the project's latest of this kind, if any. */
-  setThreadKind(kind: ThreadKind): Promise<void>;
+  /** Chat, Design or Creator mode: which threads the sidebar lists and what New thread makes. Follows the selected thread. */
+  threadKind: WorkspaceMode;
+  /** Switch workspace mode; a selected thread of another mode gives way to the project's latest of this mode, if any. */
+  setThreadKind(kind: WorkspaceMode): Promise<void>;
   events: Record<string, StoredEvent[]>; // by thread id
   /** Each thread's loaded history window: where it starts, whether older events exist, and its whole-thread totals. */
   history: Record<string, { firstSeq: number; hasMore: boolean; loadingOlder: boolean; totals: ThreadTotals | null }>;
@@ -403,14 +404,21 @@ export function eventCount(events: StoredEvent[] | undefined, totals: ThreadTota
   return Math.max(loaded, totals.events + live);
 }
 
-/** createThread's options: the kind being shown, and a design thread's system (an explicit one beats the draft's). */
+/** createThread's options: the mode being shown, and a design thread's system (an explicit one beats the draft's). */
 function createOpts(
-  kind: ThreadKind,
+  mode: WorkspaceMode,
   draft: Draft,
   opts?: { worktree?: boolean; designSystem?: string; expertId?: string },
-): { worktree?: boolean; kind: ThreadKind; designSystem?: string; expertId?: string } {
+): { worktree?: boolean; kind: ThreadKind; designSystem?: string; expertId?: string; preset?: "creator" } {
+  const kind: ThreadKind = mode === "design" ? "design" : "chat";
   const designSystem = kind === "design" ? (opts?.designSystem ?? draft.designSystem) : undefined;
-  return { ...(opts?.worktree !== undefined ? { worktree: opts.worktree } : {}), kind, ...(designSystem ? { designSystem } : {}), ...(opts?.expertId ? { expertId: opts.expertId } : {}) };
+  return {
+    ...(opts?.worktree !== undefined ? { worktree: opts.worktree } : {}),
+    kind,
+    ...(mode === "creator" ? { preset: "creator" as const } : {}),
+    ...(designSystem ? { designSystem } : {}),
+    ...(opts?.expertId ? { expertId: opts.expertId } : {}),
+  };
 }
 
 /** The updates a freshly created thread needs to match the user's draft picks. */
@@ -647,9 +655,9 @@ export const useStore = create<State>((set, get) => ({
     if (s.threadKind === kind) return;
     set({ threadKind: kind });
     const current = s.selectedThreadId ? Object.values(s.threads).flat().find((t) => t.id === s.selectedThreadId) : undefined;
-    if (current && threadKind(current) === kind) return;
+    if (current && workspaceModeOf(current) === kind) return;
     const latest = (s.threads[s.selectedProjectId ?? ""] ?? [])
-      .filter((t) => !t.archived && threadKind(t) === kind)
+      .filter((t) => !t.archived && workspaceModeOf(t) === kind)
       .sort((a, b) => b.updatedAt - a.updatedAt)[0];
     await get().selectThread(latest?.id ?? null);
   },
@@ -1118,7 +1126,7 @@ export const useStore = create<State>((set, get) => ({
       // Keep the selection order so the per-thread caches can be bounded below.
       selectedOrder: id ? [...s.selectedOrder.filter((x) => x !== id), id] : s.selectedOrder,
       // Jumping to a thread (⌘K, the Message Center) lands in its mode.
-      ...(picked ? { threadKind: threadKind(picked) } : {}),
+      ...(picked ? { threadKind: workspaceModeOf(picked) } : {}),
       finished: threadSeen(s.finished, id),
       // Opening a thread also clears the run notices it delivered into.
       automationNotices: id ? s.automationNotices.filter((n) => n.threadId !== id) : s.automationNotices,

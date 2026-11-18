@@ -121,6 +121,8 @@ export class Service {
   private designPatternsDir: string | null = null;
   private designIconsDir: string | null = null;
   private designFontsDir: string | null = null;
+  private creatorModePath: string | null = null;
+  private creatorModeNote: string | null = null;
   /** The downloaded design references (GradientDeck); null until main wires the store in. */
   private designReferences: ReferenceSource | null = null;
   /** Where the picker's adapted previews of references are cached (rebuilt at will; never a thread's pin). */
@@ -281,7 +283,15 @@ export class Service {
     });
   }
 
-  createThread(projectId: string, agent?: string, kind: ThreadKind = "chat", designSystem: string | null = null, expertId: string | null = null): Thread {
+  createThread(
+    projectId: string,
+    agent?: string,
+    kind: ThreadKind = "chat",
+    designSystem: string | null = null,
+    expertId: string | null = null,
+    preset: "creator" | null = null,
+  ): Thread {
+    if (preset === "creator" && kind === "design") throw new Error("A Creator thread is a chat thread.");
     const project = this.store.getProject(projectId);
     const d = this.defaults();
     const wanted = agent ?? d.agent;
@@ -290,7 +300,16 @@ export class Service {
     // A design thread nobody picked a system for starts on Auto: the agent picks the style (the project's own still wins).
     const system = kind === "design" ? this.knownSystem(projectId, designSystem) : designSystem;
     // A design thread is always Full: its folder fence stands in for asking.
-    const thread = this.store.createThread(projectId, driver.id, driver.defaultModel, kind === "design" ? "full" : d.permissionMode, kind, system, expertId);
+    const thread = this.store.createThread(
+      projectId,
+      driver.id,
+      driver.defaultModel,
+      kind === "design" ? "full" : d.permissionMode,
+      kind,
+      system,
+      expertId,
+      preset,
+    );
     if (!isChatsRoot(project.path, this.chatsRoot)) return thread;
     // A chat works in its own folder, so files one chat writes never show up in another.
     const dir = join(project.path, thread.id);
@@ -302,12 +321,20 @@ export class Service {
    * A thread with its own git worktree on a new branch, so its edits stay off
    * the project's checkout. Nothing is left behind when the worktree can't be made.
    */
-  async createWorktreeThread(projectId: string, agent?: string, kind: ThreadKind = "chat", designSystem: string | null = null, expertId: string | null = null): Promise<Thread> {
+  async createWorktreeThread(
+    projectId: string,
+    agent?: string,
+    kind: ThreadKind = "chat",
+    designSystem: string | null = null,
+    expertId: string | null = null,
+    preset: "creator" | null = null,
+  ): Promise<Thread> {
+    if (preset === "creator" && kind === "design") throw new Error("A Creator thread is a chat thread.");
     const project = this.store.getProject(projectId);
     // Chats have no git: a chat already gets its own folder.
-    if (isChatsRoot(project.path, this.chatsRoot)) return this.createThread(projectId, agent, kind, designSystem, expertId);
+    if (isChatsRoot(project.path, this.chatsRoot)) return this.createThread(projectId, agent, kind, designSystem, expertId, preset);
     if (!this.worktreesDir) throw new Error("Worktree threads aren't available here.");
-    const thread = this.createThread(projectId, agent, kind, designSystem, expertId);
+    const thread = this.createThread(projectId, agent, kind, designSystem, expertId, preset);
     const branch = worktreeBranch(project.name, thread.id);
     const dir = join(this.worktreesDir, thread.id);
     // Where it branches from, so Review & merge can compare and merge back later.
@@ -380,9 +407,34 @@ export class Service {
     return { expert: expertBlock(def, bound.lead), ...(team.length ? { team } : {}), ...(root ? { expertRoot: root } : {}) };
   }
 
+  /** A turn's preset note: read once from `resources/CREATOR-MODE.md` and included only for Creator threads. */
+  private presetInput(thread: Thread): { preset?: string } {
+    if (thread.preset !== "creator") return {};
+    if (this.creatorModeNote === null) {
+      const candidate =
+        this.creatorModePath ??
+        (typeof process.resourcesPath === "string" && existsSync(join(process.resourcesPath, "CREATOR-MODE.md"))
+          ? join(process.resourcesPath, "CREATOR-MODE.md")
+          : join(process.cwd(), "resources", "CREATOR-MODE.md"));
+      this.creatorModeNote = existsSync(candidate) ? readFileSync(candidate, "utf-8").trim() : "";
+    }
+    return this.creatorModeNote ? { preset: this.creatorModeNote } : {};
+  }
+
+  /** Where `CREATOR-MODE.md` lives (resources/CREATOR-MODE.md). */
+  setCreatorModePath(path: string): void {
+    this.creatorModePath = path;
+    this.creatorModeNote = null;
+  }
+
   /** A note on a team thread's channel (team_post), shown in the thread as it happens. */
   teamNote(threadId: string, note: { from: string; to: string; text: string }): void {
     this.emit(threadId, { kind: "notice", text: `Team note · ${note.from} → ${note.to}: ${note.text}` });
+  }
+
+  /** Persist and broadcast a notice event on a thread whether or not a turn is running. */
+  emitNotice(threadId: string, text: string): void {
+    this.emit(threadId, { kind: "notice", text });
   }
 
   /**
@@ -553,6 +605,7 @@ export class Service {
         projectId: thread.projectId,
         design: designOf(thread),
         ...this.expertInput(thread),
+        ...this.presetInput(thread),
         model: thread.model,
         permissionMode: turnMode(thread),
         tools: this.harnessTools(thread),
@@ -579,6 +632,7 @@ export class Service {
           projectId: thread.projectId,
           design: designOf(thread),
           ...this.expertInput(thread),
+        ...this.presetInput(thread),
           prompt,
           sessionId: null,
           model: thread.model,
@@ -984,6 +1038,7 @@ export class Service {
         design: designOf(thread),
         ...(thread.kind === "design" ? { designGuard: this.designGuard(thread.id) } : {}),
         ...this.expertInput(thread),
+        ...this.presetInput(thread),
         prompt: turnPrompt,
         ...(compact ? { compact } : {}),
         sessionId: current.sessionId,

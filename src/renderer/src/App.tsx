@@ -110,7 +110,7 @@ export function App() {
         const model = inboxModel(
           s.projects.map((p) => p.id),
           s.threads,
-          { running: s.running, waiting: waitingThreads(s.permissions, s.plans, s.questions), kind: s.threadKind },
+          { running: s.running, waiting: waitingThreads(s.permissions, s.plans, s.questions), mode: s.threadKind },
         );
         const target = nthVisibleThread(model, Number(e.key), { groupByProject: s.settings?.sidebarGroupByProject ?? true, collapsed: s.collapsedProjects });
         if (target) {
@@ -143,6 +143,7 @@ export function App() {
   // A design thread's chat column: automatic (the CSS default) until the user drags its splitter.
   const designChat = designChatWidth(pane.width - pane.sidebar - (inspectorVisible && pane.inspector !== null ? pane.inspector : 0), layout.designChat);
   const designMode = useStore((s) => s.threadKind) === "design";
+  const creatorMode = useStore((s) => s.threadKind) === "creator";
   // Canvas-first: the canvas fills the main area and the chat is a prompt bar over its foot, the transcript a drawer.
   const canvasFirst = design && Boolean(thread) && Boolean(project) && layout.designLayout === "canvas";
   // Design v2's studio: one top bar, one Composer. A design thread gets the window, so the sidebar folds while it's open.
@@ -289,6 +290,8 @@ export function App() {
                       <h1>What should we design in {project.name}?</h1>
                       <p>Describe a page, screen or component. The design opens on a canvas beside this chat.</p>
                     </>
+                  ) : creatorMode ? (
+                    <CreatorEmptyState />
                   ) : project.builtin ? (
                     <>
                       <h1>What's on your mind?</h1>
@@ -328,7 +331,13 @@ export function App() {
                   aria-label={canvasFirst ? "Chat" : undefined}
                 >
                   {studio && <TodoDock threadId={thread.id} quietWhileRunning />}
-                  <ThreadView threadId={thread.id} expertId={thread.expertId} />
+                  {thread.preset === "creator" && !hasMessages && !running && !thread.expertId ? (
+                    <div className="start-thread">
+                      <CreatorEmptyState />
+                    </div>
+                  ) : (
+                    <ThreadView threadId={thread.id} expertId={thread.expertId} />
+                  )}
                   {canvasFirst && !hasMessages && (systemOpen ? (
                     <p className="design-drawer-empty system">
                       <strong>New design system chat</strong>
@@ -440,6 +449,28 @@ export function App() {
       <ReferencesSheet />
       <Splash />
     </div>
+  );
+}
+
+/** Empty state for Creator mode: three starter prompts that insert into the Composer without sending. */
+function CreatorEmptyState() {
+  const { setComposerDraft } = useStore.getState();
+  return (
+    <>
+      <h1>Extend CubiQ</h1>
+      <p>Create reusable skills and add MCP connectors for this project or all projects.</p>
+      <div className="empty-actions" style={{ marginTop: 16 }}>
+        <button type="button" className="button ghost" onClick={() => setComposerDraft("Create a skill that ")}>
+          Create a skill
+        </button>
+        <button type="button" className="button ghost" onClick={() => setComposerDraft("Add an MCP connector for ")}>
+          Add a connector
+        </button>
+        <button type="button" className="button ghost" onClick={() => setComposerDraft("What skills and connectors are installed, and what can I add?")}>
+          What can I add?
+        </button>
+      </div>
+    </>
   );
 }
 

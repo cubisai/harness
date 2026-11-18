@@ -200,7 +200,10 @@ async function runTurn(
   const platform = deps.platform ?? process.platform;
   const route = routeFor(provider, protocol, wire, deps.secret(), deps.secretHeaders(), env);
   const shell = shellFor(platform, env).name;
-  const guide = input.expert ? [deps.guide(input.cwd, input.design), input.expert].filter(Boolean).join("\n\n") : deps.guide(input.cwd, input.design);
+  const guide =
+    input.expert || input.preset
+      ? [deps.guide(input.cwd, input.design), input.expert, input.preset].filter(Boolean).join("\n\n")
+      : deps.guide(input.cwd, input.design);
   const files = contextFiles(input.cwd);
 
   const contextSize = provider.contextWindowOverride ?? entry.contextWindow;

@@ -1489,6 +1489,46 @@ describe("Chats (no project)", () => {
     const other = store.addProject(tempDir());
     expect(service.createThread(other.id).worktreePath ?? null).toBeNull();
   });
+
+  it("creates a creator thread with the default permission mode (not full) and refuses design+creator", async () => {
+    const { store, service, project } = setupChats(fakeDriver(async () => {}));
+    const other = store.addProject(tempDir());
+    const creator = service.createThread(other.id, undefined, "chat", null, null, "creator");
+    expect(creator).toMatchObject({ kind: "chat", preset: "creator", presetRevision: 1, permissionMode: "ask" });
+
+    const inChats = service.createThread(project.id, undefined, "chat", null, null, "creator");
+    expect(inChats).toMatchObject({ kind: "chat", preset: "creator", presetRevision: 1, permissionMode: "ask" });
+    expect(inChats.worktreePath).toBe(join(project.path, inChats.id));
+
+    expect(() => service.createThread(other.id, undefined, "design", null, null, "creator")).toThrow("A Creator thread is a chat thread.");
+    await expect(service.createWorktreeThread(other.id, undefined, "design", null, null, "creator")).rejects.toThrow("A Creator thread is a chat thread.");
+  });
+
+  it("includes the Creator note only on creator threads (<= 600 chars) and leaves chat and design turn inputs without preset", async () => {
+    const inputs: TurnInput[] = [];
+    const { store, service } = setupChats(
+      fakeDriver(async (input) => {
+        inputs.push(input);
+        input.onEvent({ kind: "assistant-text", text: "ok" });
+      }),
+    );
+    const p = store.addProject(tempDir());
+    const chat = service.createThread(p.id);
+    const design = service.createThread(p.id, undefined, "design");
+    const creator = service.createThread(p.id, undefined, "chat", null, null, "creator");
+
+    await service.send({ threadId: chat.id, text: "hi chat" });
+    await service.send({ threadId: design.id, text: "hi design" });
+    await service.send({ threadId: creator.id, text: "hi creator" });
+
+    expect("preset" in inputs[0]!).toBe(false);
+    expect("preset" in inputs[1]!).toBe(false);
+    expect(inputs[2]!.preset).toBeDefined();
+    expect(inputs[2]!.preset!.length).toBeGreaterThan(0);
+    expect(inputs[2]!.preset!.length).toBeLessThanOrEqual(600);
+    expect(inputs[2]!.preset).toContain("creator_inspect");
+    expect(inputs[2]!.preset).toContain("creator_propose");
+  });
 });
 
 describe("issue offer after a turn", () => {

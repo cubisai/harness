@@ -55,6 +55,9 @@ import { withBrowserOnDemand } from "./browser/on-demand";
 import { DevServers } from "./devserver/registry";
 import { devServerTools } from "./devserver/tools";
 import { Store } from "./db";
+import { creatorTools } from "./creator/tools";
+import { ExtensionService } from "./extensions/install";
+import { ExtensionStore } from "./extensions/store";
 import { artifactKind, resolveInside } from "./artifacts";
 import { createLinkPreviews, localImage } from "./link-preview";
 import { headContent } from "./git";
@@ -114,6 +117,7 @@ import { providerWarning } from "../shared/provider-rules";
 import { Updater, type UpdaterBackend } from "./updater";
 import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
 import { codexCoveredSkills, withoutCodexCovered } from "./skills/codex-plugins";
+import { discoverSkills } from "./skills/discover";
 import { ensureModelSkillsDir, ensurePlugin } from "./skills/plugin";
 import { SkillCatalogs, forAgent } from "./skills/sources";
 import { skillTool } from "./skills/tool";
@@ -276,6 +280,7 @@ async function main(): Promise<void> {
     return net.fetch(pathToFileURL(join(shotsDir, name)).toString());
   });
   const store = new Store(join(userData, "unskilled.db"));
+  const extensions = new ExtensionStore(store.sql);
   // Content left behind by threads deleted before blobs were pruned on delete, off the startup path.
   setImmediate(() => store.pruneBlobs());
   // Saved tool output from old turns, likewise off the startup path.
@@ -322,6 +327,7 @@ async function main(): Promise<void> {
     harnessDir,
     disabled: () => settings.get().skills?.disabled ?? [],
   });
+  const creatorDir = app.isPackaged ? join(process.resourcesPath, "creator") : join(app.getAppPath(), "resources", "creator");
   /**
    * The skills listing one agent carries for a cwd, priced the same by the
    * Context sheet and the first-turn breakdown. Null when the agent takes no
@@ -727,9 +733,34 @@ async function main(): Promise<void> {
       threadId,
     );
   };
+  const creatorToolsOf = (threadId: string): HarnessTool[] => {
+    const thread = threadOf(threadId);
+    if (!thread || thread.kind === "design" || thread.preset !== "creator") return [];
+    return creatorTools(
+      {
+        creatorDir,
+        bundledSkillsDir: skills.dirs(null).bundled,
+        chatsRoot: chats,
+        threadOf,
+        projectOf: (id) => {
+          try {
+            return store.getProject(id);
+          } catch {
+            return null;
+          }
+        },
+        cwdOf: (t) => service.cwdOf(t),
+        skillsForProject: (cwd) => skills.forProject(cwd),
+        mcpOverview: (pid) => mcpOverview(pid),
+        extensions,
+        emitProposal: (id, proposalId) => service.emitFromTool(id, { kind: "extension-proposal", proposalId }),
+      },
+      threadId,
+    );
+  };
   const threadOwnTools = (threadId: string): HarnessTool[] => {
     let list = threadToolLists.get(threadId);
-    if (!list) threadToolLists.set(threadId, (list = [...shellToolsOf(threadId), ...documentToolsOf(threadId), ...issueToolsOf(threadId)]));
+    if (!list) threadToolLists.set(threadId, (list = [...shellToolsOf(threadId), ...documentToolsOf(threadId), ...issueToolsOf(threadId), ...creatorToolsOf(threadId)]));
     return list;
   };
   // A turn's tools: the app's, plus the thread's shell and document tools (not in a design thread, whose tools are its own).
@@ -1047,6 +1078,7 @@ async function main(): Promise<void> {
   const syncProviderAgents = () => service.syncDrivers(PROVIDER_AGENT_PREFIX, providerAgents.list());
   syncProviderAgents();
   service.setDesignFontsDir(app.isPackaged ? join(process.resourcesPath, "design-fonts") : join(app.getAppPath(), "resources", "design-fonts"));
+  service.setCreatorModePath(app.isPackaged ? join(process.resourcesPath, "CREATOR-MODE.md") : join(app.getAppPath(), "resources", "CREATOR-MODE.md"));
   // Foundation ships with the app, so a kit is always there offline; the others are installed under userData.
   const foundationKit = app.isPackaged ? join(process.resourcesPath, "design-kits", "foundation") : join(app.getAppPath(), "resources", "design-kits", "foundation");
   const kitStore = new KitStore(join(userData, "design-packs"));
@@ -1694,7 +1726,7 @@ async function main(): Promise<void> {
     return skills.forProject(null).all;
   });
   ipcMain.handle("skills:folders", (_e, projectId?: string) => skills.dirs(projectPathOf(projectId ?? null)));
-  ipcMain.handle("skills:create", (_e, input: { scope: "harness" | "project"; projectId?: string | null; name: string; description: string }) => {
+  const createSkillFile = (input: { scope: "harness" | "project"; projectId?: string | null; name: string; description: string }): string => {
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(input.name)) throw new Error("A skill name is lowercase letters, digits and dashes, up to 64 characters.");
     const dirs = skills.dirs(projectPathOf(input.projectId ?? null));
     const base = input.scope === "project" ? dirs.projectCubiq : dirs.harness;
@@ -1708,27 +1740,82 @@ async function main(): Promise<void> {
     writeFileSync(file, `---\nname: ${input.name}\ndescription: ${description}\n---\n\n# ${input.name}\n\nDescribe what the agent should do.\n`);
     skills.invalidate();
     return file;
-  });
-  ipcMain.handle("library:agents", () => catalogOfAgents());
-  ipcMain.handle("mcp:get", (_e, projectId: string | null) => mcpOverview(projectId));
-  ipcMain.handle("mcp:save", async (_e, entry: McpServerEntry, previousName?: string, projectId?: string | null) => {
+  };
+  const saveMcpEntry = async (entry: McpServerEntry, previousName?: string, projectId?: string | null): Promise<McpOverview> => {
     (projectId ? mcpScopes.project(projectId) : mcpStore).save(entry, previousName);
     if (previousName && previousName !== entry.name) await mcpChanged(mcpScope(projectId), previousName);
     await mcpChanged(mcpScope(projectId), entry.name);
     return mcpOverview(projectId ?? null);
-  });
-  ipcMain.handle("mcp:remove", async (_e, name: string, projectId?: string | null) => {
-    const store = projectId ? mcpScopes.project(projectId) : mcpStore;
-    const entry = store.list().find((s) => s.name === name);
+  };
+  const removeMcpEntry = async (name: string, projectId?: string | null): Promise<McpOverview> => {
+    const targetStore = projectId ? mcpScopes.project(projectId) : mcpStore;
+    const entry = targetStore.list().find((s) => s.name === name);
     const key = `${mcpScope(projectId)}:${name}`;
     // Revoke the sign-in at the server (best effort) before the store drops its tokens from the vault.
     if (entry && isRemote(entry.spec) && mcpAuth.hasTokens(key)) {
       const spec = resolveSpec(entry.spec);
       if (isRemote(spec)) await mcpAuth.disconnect(key, spec).catch(() => {});
     }
-    store.remove(name);
+    targetStore.remove(name);
     await mcpChanged(mcpScope(projectId), name);
     return mcpOverview(projectId ?? null);
+  };
+  const assertMainWindow = (event: Electron.IpcMainInvokeEvent): void => {
+    if (!isFromAppWindow(event) || event.sender.getType() === "webview") {
+      throw new Error("Extensions can only be managed from the main window.");
+    }
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || !windows.has(win)) {
+      throw new Error("Extensions can only be managed from the main window.");
+    }
+  };
+  const extensionService = new ExtensionService({
+    extensions,
+    projectOf: (id) => {
+      try {
+        return store.getProject(id);
+      } catch {
+        return null;
+      }
+    },
+    allProjects: () => store.listProjects(),
+    chatsRoot: chats,
+    skillDirs: (projectPath) => skills.dirs(projectPath),
+    bundledSkillNames: () => discoverSkills({ origin: "bundled", dir: skills.dirs(null).bundled }).map((s) => s.name),
+    invalidateSkills: () => skills.invalidate(),
+    listMcpNames: (projectId) => (projectId ? mcpScopes.project(projectId) : mcpStore).list().map((s) => s.name),
+    saveMcp: async (entry, projectId) => {
+      await saveMcpEntry(entry, undefined, projectId);
+    },
+    removeMcp: async (name, projectId) => {
+      await removeMcpEntry(name, projectId);
+    },
+    mcpFile: (projectId) => (projectId ? join(mcpProjectDir(projectId), "mcp.json") : join(userData, "mcp.json")),
+    emitNotice: (threadId, text) => service.emitNotice(threadId, text),
+  });
+  setImmediate(() => extensionService.cleanupStartup());
+
+  ipcMain.handle("skills:create", (_e, input: { scope: "harness" | "project"; projectId?: string | null; name: string; description: string }) => createSkillFile(input));
+  ipcMain.handle("library:agents", () => catalogOfAgents());
+  ipcMain.handle("mcp:get", (_e, projectId: string | null) => mcpOverview(projectId));
+  ipcMain.handle("mcp:save", (_e, entry: McpServerEntry, previousName?: string, projectId?: string | null) => saveMcpEntry(entry, previousName, projectId));
+  ipcMain.handle("mcp:remove", (_e, name: string, projectId?: string | null) => removeMcpEntry(name, projectId));
+  ipcMain.handle("extensions:get", (_e, id: string) => (typeof id === "string" ? extensionService.getProposalView(id) : null));
+  ipcMain.handle("extensions:install", (e, id: string) => {
+    assertMainWindow(e);
+    if (typeof id !== "string") throw new Error("Invalid proposal id.");
+    return extensionService.install(id);
+  });
+  ipcMain.handle("extensions:reject", (e, id: string) => {
+    assertMainWindow(e);
+    if (typeof id !== "string") throw new Error("Invalid proposal id.");
+    return extensionService.reject(id);
+  });
+  ipcMain.handle("extensions:installs", (_e, projectId?: string | null) => extensionService.installs(projectId));
+  ipcMain.handle("extensions:uninstall", (e, installId: string) => {
+    assertMainWindow(e);
+    if (typeof installId !== "string") throw new Error("Invalid install id.");
+    return extensionService.uninstall(installId);
   });
   ipcMain.handle("mcp:enable", async (_e, name: string, enabled: boolean, projectId?: string | null) => {
     (projectId ? mcpScopes.project(projectId) : mcpStore).setEnabled(name, enabled);
@@ -2045,15 +2132,16 @@ async function main(): Promise<void> {
   );
   ipcMain.handle("threads:list", (_e, projectId: string) => store.listThreads(projectId));
   ipcMain.handle("threads:all", () => store.listAllThreads());
-  ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: unknown; designSystem?: unknown; expertId?: unknown }) => {
+  ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: unknown; designSystem?: unknown; expertId?: unknown; preset?: unknown }) => {
     const kind: ThreadKind = opts?.kind === "design" ? "design" : "chat";
+    const preset: "creator" | null = opts?.preset === "creator" ? "creator" : null;
     // Only a design thread keeps a system, and only an id the picker could offer (checked again at each turn).
     const designSystem = kind === "design" && typeof opts?.designSystem === "string" && /^[\w:.-]{1,80}$/.test(opts.designSystem) ? opts.designSystem : null;
     // Only an expert the catalogue knows; anything else (unknown id, bad shape) is no expert.
     const expertId = typeof opts?.expertId === "string" && EXPERT_ID_RE.test(opts.expertId) && experts.get(opts.expertId) ? opts.expertId : null;
     return opts?.worktree
-      ? service.createWorktreeThread(projectId, agent, kind, designSystem, expertId)
-      : service.createThread(projectId, agent, kind, designSystem, expertId);
+      ? service.createWorktreeThread(projectId, agent, kind, designSystem, expertId, preset)
+      : service.createThread(projectId, agent, kind, designSystem, expertId, preset);
   });
   ipcMain.handle("threads:set-prototype-tier", (_e, threadId: string, tier: unknown) => service.setPrototypeTier(threadId, readTier(tier)));
   ipcMain.handle("issues:list", (_e, projectId: string) => service.listIssues(projectId));

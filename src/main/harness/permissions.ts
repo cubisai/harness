@@ -9,7 +9,20 @@ import type { ToolAccess } from "./tools/types";
 export type Verdict = "allow" | "ask" | "deny";
 
 export function decide(mode: PermissionMode, access: ToolAccess, outside = false): Verdict {
-  if (access === "read" || access === "other") return "allow";
+  switch (access) {
+    case "read":
+    case "control":
+      return "allow";
+    case "edit":
+    case "shell":
+    case "web":
+      break;
+    default: {
+      const _exhaustive: never = access;
+      void _exhaustive;
+      return "deny";
+    }
+  }
   switch (mode) {
     case "full":
       return "allow";

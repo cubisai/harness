@@ -413,6 +413,36 @@ describe("Store migrations", () => {
     closeAfter(() => again.close());
     expect("issue" in again.getThread(t.id)).toBe(false);
   });
+
+  it("migrates a pre-preset database leaving existing threads with no preset, and round-trips creator threads", () => {
+    const file = join(tempDir(), "pre-preset.db");
+    const old = new DatabaseSync(file);
+    old.exec(`
+      CREATE TABLE projects (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at INTEGER NOT NULL);
+      CREATE TABLE threads (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, agent TEXT NOT NULL DEFAULT 'claude', title TEXT NOT NULL,
+        session_id TEXT, model TEXT NOT NULL, permission_mode TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+      CREATE TABLE schema_version (version INTEGER NOT NULL);
+      INSERT INTO schema_version VALUES (1);
+      INSERT INTO projects VALUES ('p', '/x', 'x', 1);
+      INSERT INTO threads VALUES ('t', 'p', 'claude', 'Old', NULL, 'opus', 'ask', 1, 1);
+    `);
+    old.close();
+
+    const store = new Store(file);
+    const existing = store.getThread("t");
+    expect("preset" in existing).toBe(false);
+    expect("presetRevision" in existing).toBe(false);
+
+    const creator = store.createThread("p", "claude", "opus", "ask", "chat", null, null, "creator");
+    expect(creator.preset).toBe("creator");
+    expect(creator.presetRevision).toBe(1);
+    store.close();
+
+    const reloaded = new Store(file);
+    closeAfter(() => reloaded.close());
+    expect("preset" in reloaded.getThread("t")).toBe(false);
+    expect(reloaded.getThread(creator.id)).toMatchObject({ preset: "creator", presetRevision: 1 });
+  });
 });
 
 describe("Store design systems (migration 21)", () => {

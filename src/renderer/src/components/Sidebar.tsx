@@ -6,7 +6,7 @@ import { elapsed, inboxModel, shortTime, waitingThreads } from "../sections";
 import { ThreadRow, type ThreadStatus } from "./ThreadRow";
 import { useStore } from "../store";
 import { InboxBell } from "./MessageCenter";
-import { ModeToggle, SidebarToggle } from "./PaneRail";
+import { SidebarToggle } from "./PaneRail";
 import { Select } from "./Select";
 
 /** A project as a small folder label: toggles its group, + starts a thread, ⋯ opens its menu. */
@@ -261,7 +261,7 @@ export function Sidebar() {
   const model = inboxModel(
     ordered.map((p) => p.id),
     threads,
-    { running, waiting, kind },
+    { running, waiting, mode: kind },
   );
   const now = useNow(model.running.length > 0);
   const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? "";
@@ -338,14 +338,15 @@ export function Sidebar() {
           <span className="wordmark">CubiQ</span>
           <SidebarToggle collapsed={false} />
         </div>
+      </div>
+      <div className="sidebar-mode">
         <div className="segmented compact mode-switch" role="group" aria-label="Mode">
-          {(["chat", "design"] as const).map((k) => (
-            <button key={k} className={kind === k ? "on" : undefined} aria-pressed={kind === k} onClick={() => void setThreadKind(k)}>
-              {k === "chat" ? "Chat" : "Design"}
+          {(["chat", "design", "creator"] as const).map((k) => (
+            <button key={k} type="button" className={kind === k ? "on" : undefined} aria-pressed={kind === k} onClick={() => void setThreadKind(k)}>
+              {k === "chat" ? "Chat" : k === "design" ? "Design" : "Creator"}
             </button>
           ))}
         </div>
-        <ModeToggle className="mode-switch-icon" />
       </div>
 
       <nav className="sidebar-nav" aria-label="Sidebar">

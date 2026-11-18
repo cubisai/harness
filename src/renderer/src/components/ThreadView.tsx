@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { ChevronRight, Copy, Pencil, RotateCcw, X } from "lucide-react";
 import { artifactKind, isPreviewable, PLAN_ARTIFACT, TEAM_ARTIFACT_PREFIX, withoutExportSources } from "../../../shared/artifact-kind";
@@ -28,6 +28,8 @@ import { useSmoothText } from "../hooks/useSmoothText";
 import { UiAnswersProvider, UiOriginProvider } from "../genui/origin";
 import { createSegmenter, type Segment, type TurnChanges, workDuration, workSummary } from "../turns";
 import { computeWindow, ESTIMATE_PX, WINDOW_MIN_SEGMENTS } from "../windowing";
+
+const ProposalCard = lazy(() => import("./ProposalCard").then((m) => ({ default: m.ProposalCard })));
 
 type ToolEvent = Extract<ThreadEvent, { kind: "tool-use" }>;
 type ResultEvent = Extract<ThreadEvent, { kind: "tool-result" }>;
@@ -871,6 +873,12 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
       return <div className="notice">{e.text}</div>;
     case "issue-offer":
       return threadId ? <IssueOfferCard stored={stored} offer={e} threadId={threadId} /> : null;
+    case "extension-proposal":
+      return threadId ? (
+        <Suspense fallback={null}>
+          <ProposalCard key={e.proposalId} proposalId={e.proposalId} threadId={threadId} />
+        </Suspense>
+      ) : null;
     case "plan": {
       // The live list is in the todo dock; history keeps one quiet line that opens to the list.
       const { done, total } = todoProgress(e.entries);

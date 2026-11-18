@@ -5,7 +5,8 @@ import type { RunUsage } from "../../../shared/types";
 
 /** What a call can touch; permission modes allow or ask per access. */
 /** "web" reaches the network (web_fetch): a URL can carry data out, so it asks like a shell call. */
-export type ToolAccess = "read" | "edit" | "shell" | "web" | "other";
+/** "control" is harness bookkeeping with no effect outside the thread (todo list); allowed in every mode. */
+export type ToolAccess = "read" | "edit" | "shell" | "web" | "control";
 
 export interface ToolContext {
   /** The thread's working folder; relative paths resolve against it. */

@@ -312,16 +312,11 @@ body.resizing, body.resizing * { cursor: grabbing !important; user-select: none 
   flex-shrink: 0;
 }
 .platform-win32 .sidebar-top, .platform-linux .sidebar-top { padding-left: 16px; }
-.sidebar-brand { display: flex; align-items: center; gap: 6px; min-width: 0; }
-/* Chat | Design, at the right end of the brand row so the toggle keeps its spot by the traffic lights. */
-.mode-switch { margin-left: auto; flex-shrink: 0; }
-/* A sidebar too narrow for both words (beside the macOS traffic lights or the Windows wordmark) gets the one-icon toggle instead. */
-.sidebar-top .mode-switch-icon { display: none; margin-left: auto; flex-shrink: 0; }
-.sidebar { container: sidebar / inline-size; }
-@container sidebar (max-width: 229px) {
-  .sidebar-top .mode-switch { display: none; }
-  .sidebar-top .mode-switch-icon { display: inline-flex; }
-}
+.sidebar-brand { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+/* Chat | Design | Creator segmented switch on its own row below the brand/traffic-light header so it fits at every sidebar width and zoom level. */
+.sidebar-mode { padding: 0 10px 6px; flex-shrink: 0; }
+.mode-switch { display: flex; width: 100%; }
+.mode-switch button { flex: 1; min-width: 0; padding: 0 4px; }
 .sidebar-nav { display: flex; flex-direction: column; gap: 1px; padding: 2px 10px 6px; flex-shrink: 0; }
 .nav-row {
   display: flex;
@@ -4176,3 +4171,92 @@ th[aria-sort="descending"] .smart-th::after { content: " ↓"; color: var(--text
 .doctor-result.ok { color: var(--success); font-size: 11.5px; }
 .doctor-result.error { color: var(--danger); font-size: 11.5px; }
 .doctor-error { color: var(--danger); }
+
+/* ---------- Creator proposal review card (ProposalCard.tsx) ---------- */
+
+.proposal-card {
+  border: 1px solid var(--hairline-strong);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-l);
+  padding: 12px 14px;
+  margin: 12px 0;
+  min-width: 0;
+}
+.proposal-card-loading { color: var(--text-tertiary); font-size: 12.5px; }
+.proposal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+.proposal-icon { display: inline-flex; flex-shrink: 0; color: var(--text-secondary); }
+.proposal-name { font-size: 13.5px; font-weight: 600; color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.proposal-chip {
+  font-size: 11px; font-weight: 500; color: var(--text-secondary);
+  background: var(--bg-chip); border-radius: var(--radius-s); padding: 1px 6px; max-width: 100%; overflow-wrap: anywhere;
+}
+.proposal-status {
+  margin-left: auto; font-size: 11px; font-weight: 500; border-radius: var(--radius-s); padding: 1px 7px; flex-shrink: 0;
+}
+.proposal-status.installed { color: var(--success); background: var(--add-bg); }
+.proposal-status.rejected { color: var(--text-tertiary); background: var(--bg-chip); }
+.proposal-status.failed { color: var(--danger); background: var(--del-bg); }
+
+.proposal-body { margin-top: 8px; display: grid; gap: 8px; min-width: 0; }
+.proposal-desc { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-secondary); overflow-wrap: anywhere; }
+.proposal-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; min-width: 0; }
+.proposal-files li {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 4px 8px; background: var(--bg-subtle); border: 1px solid var(--hairline); border-radius: var(--radius-s);
+  font-size: 12px; min-width: 0;
+}
+.proposal-files code { font: 12px var(--mono); color: var(--text); min-width: 0; overflow-wrap: anywhere; background: transparent; padding: 0; }
+.proposal-size { font: 11.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--text-tertiary); flex-shrink: 0; }
+
+.proposal-preview-wrap { min-width: 0; }
+.proposal-preview-toggle {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 6px;
+  border: 0; border-radius: var(--radius-s); background: transparent; color: var(--text-secondary);
+  font: 12px var(--font); cursor: pointer;
+}
+.proposal-preview-toggle:hover { background: var(--bg-hover); color: var(--text); }
+.proposal-preview-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.proposal-chevron { color: var(--text-tertiary); transition: transform 120ms var(--ease); }
+.proposal-chevron.open { transform: rotate(90deg); }
+.proposal-preview {
+  margin-top: 6px; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-m);
+  background: var(--bg-subtle); font-size: 12.5px; max-height: 260px; overflow: auto; min-width: 0;
+}
+.proposal-preview > :first-child { margin-top: 0; }
+.proposal-preview.msg-assistant { margin: 6px 0 0; font-size: 12.5px; line-height: 1.55; }
+.proposal-preview.msg-assistant :is(h1, h2, h3) { font-size: 13.5px; margin: 10px 0 6px; }
+.proposal-card:focus { outline: none; }
+.proposal-preview > :last-child { margin-bottom: 0; }
+
+.proposal-target {
+  display: flex; align-items: flex-start; gap: 8px; padding: 7px 9px;
+  background: var(--bg-subtle); border: 1px solid var(--hairline); border-radius: var(--radius-m); min-width: 0;
+}
+.proposal-transport {
+  flex-shrink: 0; font: 600 10.5px var(--mono); color: var(--text-secondary);
+  background: var(--bg-chip); border-radius: var(--radius-s); padding: 2px 5px;
+}
+.proposal-command {
+  font: 12px/1.45 var(--mono); color: var(--text); min-width: 0; flex: 1;
+  white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; background: transparent; padding: 0;
+}
+.proposal-warning {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); min-width: 0;
+}
+.proposal-warning svg { color: var(--warning); flex-shrink: 0; }
+.proposal-vars { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12px; min-width: 0; }
+.proposal-vars-label { color: var(--text-secondary); }
+.proposal-vars-list { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.proposal-vars-list code {
+  font: 11.5px var(--mono); background: var(--bg-subtle); border: 1px solid var(--hairline);
+  border-radius: var(--radius-s); padding: 1px 6px; color: var(--text); overflow-wrap: anywhere;
+}
+
+.proposal-error {
+  padding: 7px 10px; border-radius: var(--radius-m); background: var(--del-bg);
+  border: 1px solid var(--hairline); color: var(--danger); font-size: 12px; line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+.proposal-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 10px; min-width: 0; }
+.proposal-foot .button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
