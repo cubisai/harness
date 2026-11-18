@@ -228,6 +228,14 @@ describe("validateProposal (connectors)", () => {
     expect(localhost.ok).toBe(true);
   });
 
+  it("a header may put Bearer/Token/Basic before one placeholder, nothing else", () => {
+    const header = (v: string) => validateProposal({ kind: "connector", name: "gh", spec: { type: "http", url: "https://api.githubcopilot.com/mcp/", headers: { Authorization: v } } }, GLOBAL);
+    for (const ok of ["Bearer ${GITHUB_TOKEN}", "Token ${GITHUB_TOKEN}", "Basic ${B64_CREDS}", "${AUTH}"]) expect(header(ok).ok, ok).toBe(true);
+    for (const bad of ["Bearer sk-live-1", "Bearer ${A}${B}", "Bearer ${A} x", "bearer ${A}", "Bearer  ${A}", "X ${A}", "Bearer ${lower}"]) expect(header(bad).ok, bad).toBe(false);
+    const check = header("Bearer ${GITHUB_TOKEN}");
+    expect(check.ok && requiredVarsOf(check.proposal.draft.kind === "connector" ? check.proposal.draft.spec : ({} as never))).toEqual(["GITHUB_TOKEN"]);
+  });
+
   it("rejects literal secrets in env or headers, non-localhost http URLs, clientSecret, multiline commands, and oversized JSON", () => {
     expect(
       validateProposal(

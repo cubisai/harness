@@ -42,14 +42,14 @@ Maximum serialized `spec` size is 64 KiB.
     "type": "http",
     "url": "https://mcp.linear.app/mcp",
     "headers": {
-      "Authorization": "${LINEAR_AUTH_HEADER}"
+      "Authorization": "Bearer ${LINEAR_API_KEY}"
     }
   }
 }
 ```
 
 - `url`: valid `https://` URL, or `http://` only for `localhost` or `127.0.0.1` (no `user:pass@` credentials in URL).
-- `headers`: optional string map where every value is empty `""` or ONLY `${UPPER_SNAKE_CASE}` placeholders (never `"Bearer ${...}"` or literal tokens).
+- `headers`: optional string map where every value is empty `""`, only `${UPPER_SNAKE_CASE}` placeholders, or one auth scheme then one placeholder: `"Bearer ${GITHUB_TOKEN}"`, `"Token ${X}"`, `"Basic ${X}"`. Never a literal token.
 - `oauth`: optional `{ clientId?: string, scopes?: string, callbackPort?: number }`.
 
 ## Secret handling

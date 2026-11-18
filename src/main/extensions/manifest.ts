@@ -14,6 +14,8 @@ export const CONNECTOR_MAX_BYTES = 64 * 1024;
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const PLACEHOLDER_ONLY_RE = /^(\$\{[A-Z_][A-Z0-9_]*\})+$/;
+/** A header may also carry a fixed auth scheme before one placeholder (`Bearer ${GITHUB_TOKEN}`): the scheme is public, the secret stays in the env. */
+const SCHEME_PLACEHOLDER_RE = /^(?:Bearer|Token|Basic) \$\{[A-Z_][A-Z0-9_]*\}$/;
 const SECRET_KEY_RE = /secret|token|password|apikey|api_key|privatekey/i;
 
 export type { ProposalScope, ProposalStatus };
@@ -368,8 +370,8 @@ export function validateProposal(input: unknown, ctx: ValidateProposalContext): 
           if (!k.trim() || /[\r\n\0]/.test(k)) {
             errors.push(`Invalid header name "${k}".`);
           }
-          if (typeof v !== "string" || (v !== "" && !PLACEHOLDER_ONLY_RE.test(v))) {
-            errors.push(`Header "${k}" must be empty or use only \${VAR} placeholders (never a literal token or secret).`);
+          if (typeof v !== "string" || (v !== "" && !PLACEHOLDER_ONLY_RE.test(v) && !SCHEME_PLACEHOLDER_RE.test(v))) {
+            errors.push(`Header "${k}" must be empty, \${VAR} placeholders, or "Bearer \${VAR}" / "Token \${VAR}" / "Basic \${VAR}" (never a literal token or secret).`);
           } else {
             headers[k] = v;
           }
