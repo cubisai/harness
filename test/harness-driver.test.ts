@@ -786,6 +786,25 @@ describe("provider driver", () => {
     expect(next.text).toContain("=> 2");
   });
 
+  it("in plan mode with code mode on, a script can read but its edits are still refused", async () => {
+    const t = setup(
+      [
+        [{ type: "tool-call", id: "c1", name: "run_code", input: { code: "return (await tools.read({ path: 'a.txt' })).includes('hello');" } }],
+        [{ type: "tool-call", id: "c2", name: "run_code", input: { code: "await tools.write({ path: 'b.txt', content: 'x' }); return 1;" } }],
+        [{ type: "text", text: "planned" }],
+      ],
+      { mode: "plan", codeMode: () => "on" },
+    );
+    writeFileSync(join(t.cwd, "a.txt"), "hello\n");
+    await t.driver.runTurn(t.input("look"));
+    const text = (n: number) => (t.requests[n]!.messages.at(-1) as Extract<LlmMessage, { role: "tool" }>).results[0]!.text;
+    // read, glob and grep are hidden behind run_code, so refusing the script left plan mode unable to look at anything.
+    expect(text(1)).toContain("=> true");
+    expect(text(2)).toContain("Plan mode is read-only");
+    expect(existsSync(join(t.cwd, "b.txt"))).toBe(false);
+    expect(t.asked).toEqual([]);
+  });
+
   it("in code mode, runs a shell search as usual", async () => {
     const t = setup(
       [[{ type: "tool-call", id: "b1", name: "bash", input: { command: "grep -rn hello ." } }], [{ type: "text", text: "ok" }]],

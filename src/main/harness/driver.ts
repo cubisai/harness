@@ -453,6 +453,9 @@ async function runTurn(
         return { ok: false, reason };
       }
     }
+    // Plan mode runs a script: read, glob and grep live only inside run_code, and every call it makes comes back
+    // through here, so its edits and shell are still refused one by one.
+    if (mode === "plan" && tool === codeLoop) return { ok: true };
     const verdict = decide(mode, tool.access, tool.outside?.(args) ?? false);
     if (verdict === "allow") return { ok: true };
     if (verdict === "deny") return { ok: false, reason: refusal(mode, "deny") };
