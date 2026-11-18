@@ -34,6 +34,11 @@ import { detectPins, lintWidth, styleAllows, withoutAllowed, type PageLint } fro
 import { kitIndexEntry, kitThemeIndex, type KitIndexEntry } from "./design/systems";
 import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
+import { prepareTheme, readThemeFiles } from "./creator/themes";
+import { ThemePreviews } from "./creator/theme-previews";
+import { stylePreviewUrl } from "../shared/style-preview";
+import { prepareAutomation, checkAutomationAgent } from "./creator/automations";
+import { parseTokens } from "./design/tokens";
 import { DOC_SCHEME, documentUrl, pdfPageCount, serveDocument } from "./documents/serve";
 import { documentTools } from "./documents/tools";
 import { designTools, imageBudget } from "./design/tools";
@@ -56,7 +61,7 @@ import { DevServers } from "./devserver/registry";
 import { devServerTools } from "./devserver/tools";
 import { Store } from "./db";
 import { creatorTools } from "./creator/tools";
-import { ExtensionService } from "./extensions/install";
+import { assertContained, ExtensionService } from "./extensions/install";
 import { ExtensionStore } from "./extensions/store";
 import { artifactKind, resolveInside } from "./artifacts";
 import { createLinkPreviews, localImage } from "./link-preview";
@@ -115,13 +120,14 @@ import { McpVault } from "./mcp/vault";
 import { callServerTool, MCP_ROUTER_MIN_TOOLS, McpClientPool, routerTools } from "./mcp/router";
 import { appBridgeScript } from "./apps/bridge";
 import { AppCalls } from "./apps/calls";
-import { AppRegistry } from "./apps/registry";
+import { AppRegistry, decodeAppKey } from "./apps/registry";
 import { APP_SCHEME, serveApp } from "./apps/serve";
 import { AppChecker, CHECK_HEIGHT, CHECK_WIDTH } from "./apps/check";
 import { electronCheckWindow } from "./apps/check-window";
-import { appDraftsDir, projectAppsDir } from "./apps/registry";
+import { appDraftsDir, appEditDraftsDir, projectAppsDir } from "./apps/registry";
 import { DraftWatcher } from "./apps/watch";
 import { creatorAppTools } from "./creator/app-tools";
+import { prepareAppEdit } from "./apps/manage";
 import { providerWarning } from "../shared/provider-rules";
 import { Updater, type UpdaterBackend } from "./updater";
 import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
@@ -749,7 +755,9 @@ async function main(): Promise<void> {
     const t = threadOf(threadId);
     if (!t || t.kind === "design" || t.preset !== "creator") return null;
     try {
-      return appDraftsDir(service.cwdOf(t));
+      const cwd = service.cwdOf(t);
+      const editing = appEditDraftsDir(cwd, threadId);
+      return existsSync(editing) ? editing : appDraftsDir(cwd);
     } catch {
       return null;
     }
@@ -813,6 +821,22 @@ async function main(): Promise<void> {
         emitProposal: (id, proposalId) => service.emitFromTool(id, { kind: "extension-proposal", proposalId }),
         draftsDir: creatorDraftsDir,
         apps: (pid) => appRegistry.list(pid),
+        prepareTheme: (name, config, pid) => prepareTheme(name, config, (base) => creatorThemeBase(pid, base)),
+        themes: (pid) => service.kits.groups(pid).flatMap((g) => g.themes.map((t) => ({ id: t.id, name: t.name }))),
+        themeTokens: (pid, id) => {
+          const base = creatorThemeBase(pid, id);
+          if (!base?.tokensCss || statSync(base.tokensCss).size > 128 * 1024) throw new Error("No local token file for that base.");
+          return parseTokens(readFileSync(base.tokensCss, "utf8")).flatMap((g) => g.tokens).slice(0, 64);
+        },
+        prepareAutomation: (name, config, t) => prepareAutomation(name, config, t, service.allDrivers().map((d) => ({ id: d.id, models: d.models().map((m) => m.id) }))),
+        automations: (pid) => automations.overview(pid).automations.map((a) => ({ id: a.id, name: a.name, enabled: a.enabled, scheduleText: a.scheduleText })),
+        previewTheme: async (id, scheme) => {
+          const p = extensions.get(id);
+          if (!p || p.scope.kind !== "project" || !themePreviews.system(p.scope.projectId, `creator:${id}`)) return { text: "Theme preview is unavailable; its base may have changed. Create a new proposal.", isError: true };
+          if (!takeImage(threadId)) return { text: "Theme specimen is available on the review card; image budget reached." };
+          const shot = await shooter.screenshot(stylePreviewUrl(p.scope.projectId, `creator:${id}`, scheme), { width: 900, height: 700 });
+          return { text: `Isolated ${scheme} page theme at 900×700; no live page changed.`, imagePng: shot.png.toString("base64") };
+        },
       },
       threadId,
     ), ...appTools];
@@ -1200,10 +1224,19 @@ async function main(): Promise<void> {
       bridge: designBridgeJs,
     }),
   );
+  const creatorThemeBase = (pid: string, id: string) => {
+    const base = service.previewSystem(pid, id);
+    if (base?.source === "projectFolder") {
+      const project = store.getProject(pid);
+      for (const file of [base.designMd, base.tokensCss, ...(base.fontFiles ?? []), base.kit?.dir].filter((p): p is string => Boolean(p))) assertContained(project.path, file, "theme source");
+    }
+    return base;
+  };
+  const themePreviews = new ThemePreviews({ dir: join(userData, "creator-theme-previews"), proposal: (id) => extensions.get(id), resolve: creatorThemeBase });
   // Style previews: the shared specimen, a style's tokens and fonts, all read-only and script-free.
   protocol.handle(STYLE_PREVIEW_SCHEME, (req) =>
     serveStylePreview(req.url, {
-      system: (projectId, id) => service.previewSystem(projectId, id),
+      system: (projectId, id) => id.startsWith("creator:") ? themePreviews.system(projectId, id) : service.previewSystem(projectId, id),
       specimen: app.isPackaged ? join(process.resourcesPath, "design-preview", "specimen.html") : join(app.getAppPath(), "resources", "design-preview", "specimen.html"),
     }),
   );
@@ -1860,14 +1893,37 @@ async function main(): Promise<void> {
     mcpFile: (projectId) => (projectId ? join(mcpProjectDir(projectId), "mcp.json") : join(userData, "mcp.json")),
     emitNotice: (threadId, text) => service.emitNotice(threadId, text),
     appsDir: (projectPath) => (projectPath ? projectAppsDir(projectPath) : join(userData, "apps")),
+    themeFiles: (draft, pid) => readThemeFiles(draft, (base) => creatorThemeBase(pid, base)),
+    automation: {
+      list: (pid) => automations.overview(pid).automations,
+      save: (pid, input, id) => {
+        checkAutomationAgent(input, service.allDrivers().map((d) => ({ id: d.id, models: d.models().map((m) => m.id) })));
+        const saved = automations.save(pid, input, id);
+        broadcast({ type: "automations-changed", projectId: pid });
+        return saved;
+      },
+      remove: (id) => {
+        const a = automations.store.get(id);
+        automations.remove(id);
+        if (a) broadcast({ type: "automations-changed", projectId: a.projectId });
+      },
+      active: (id) => Boolean(store.sql.prepare("SELECT 1 FROM automation_runs WHERE automation_id = ? AND status IN ('queued', 'running', 'waiting-input') LIMIT 1").get(id)),
+    },
     toolAccess: (projectId, server, tool) => {
       const target = mcpScopes.effective(projectId).find((s) => s.name === server);
       const found = target ? mcpTools.peekStale(target.spec)?.tools.find((t) => t.name === tool) : undefined;
       return found ? (found.readOnly ? "read" : "write") : "unknown";
     },
     appsChanged: ({ key, removed }) => {
-      if (removed) appCalls.forget(key);
+      const decoded = decodeAppKey(key);
+      const dir = decoded ? appRegistry.dirOf(decoded) : null;
+      if (dir) appRegistry.forget(dir);
+      if (removed) {
+        appCalls.forget(key);
+        appRegistry.resetEnabled(key);
+      } else appCalls.invalidate(key);
       broadcast({ type: "apps-changed" });
+      if (!removed) broadcast({ type: "app-reload", key });
     },
   });
   setImmediate(() => extensionService.cleanupStartup());
@@ -1878,6 +1934,13 @@ async function main(): Promise<void> {
   ipcMain.handle("mcp:save", (_e, entry: McpServerEntry, previousName?: string, projectId?: string | null) => saveMcpEntry(entry, previousName, projectId));
   ipcMain.handle("mcp:remove", (_e, name: string, projectId?: string | null) => removeMcpEntry(name, projectId));
   ipcMain.handle("extensions:get", (_e, id: string) => (typeof id === "string" ? extensionService.getProposalView(id) : null));
+  ipcMain.handle("extensions:theme-preview", (e, id: unknown) => {
+    assertMainWindow(e);
+    if (typeof id !== "string" || id.length > 80) throw new Error("Invalid proposal id.");
+    const p = extensions.get(id);
+    if (!p || p.scope.kind !== "project" || !themePreviews.system(p.scope.projectId, `creator:${id}`)) throw new Error("Theme preview unavailable; its base may have changed. Create a new proposal.");
+    return stylePreviewUrl(p.scope.projectId, `creator:${id}`, "light");
+  });
   ipcMain.handle("extensions:install", (e, id: string, scope?: unknown) => {
     assertMainWindow(e);
     if (typeof id !== "string") throw new Error("Invalid proposal id.");
@@ -1900,7 +1963,7 @@ async function main(): Promise<void> {
       return null;
     }
   };
-  const appRegistry = new AppRegistry({ globalDir: join(userData, "apps"), projectPath: realProjectPath, draftsDir: creatorDraftsDir });
+  const appRegistry = new AppRegistry({ globalDir: join(userData, "apps"), stateFile: join(userData, "app-state.json"), projectPath: realProjectPath, draftsDir: creatorDraftsDir });
   const appCalls = new AppCalls({
     registry: appRegistry,
     dataDir: join(userData, "app-data"),
@@ -1929,6 +1992,27 @@ async function main(): Promise<void> {
   ipcMain.handle("apps:info", (e, key: unknown) => {
     assertMainWindow(e);
     return appRegistry.info(str(key));
+  });
+  ipcMain.handle("apps:enable", (e, key: unknown, enabled: unknown) => {
+    assertMainWindow(e);
+    if (typeof enabled !== "boolean") throw new Error("Invalid enabled state.");
+    const id = str(key);
+    appRegistry.setEnabled(id, enabled);
+    appCalls.invalidate(id);
+    broadcast({ type: "apps-changed" });
+  });
+  ipcMain.handle("apps:edit", (e, key: unknown, threadId: unknown) => {
+    assertMainWindow(e);
+    const tid = str(threadId);
+    const thread = threadOf(tid);
+    if (!thread || thread.kind === "design" || thread.preset !== "creator") throw new Error("A Creator thread is required to edit an app.");
+    const cwd = service.cwdOf(thread);
+    const editing = appEditDraftsDir(cwd, tid);
+    assertContained(cwd, editing, "app edit drafts");
+    mkdirSync(editing, { recursive: true });
+    const result = prepareAppEdit(appRegistry, str(key), tid, cwd);
+    draftWatcher.watch(result.app.key, tid, result.app.path);
+    return result;
   });
   ipcMain.handle("apps:call", (e, key: unknown, projectId: unknown, server: unknown, tool: unknown, args: unknown, approval: unknown) => {
     assertMainWindow(e);

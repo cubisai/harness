@@ -44,3 +44,7 @@ No other fields are allowed.
 ## Templates
 
 `creator_app_preview` with `template: "dashboard"` seeds a stat row, a bar chart and a table over one connector call. Only its `load()` knows the connector: change the server, tool and mapping, and update `grants` in app.json.
+
+## Managing installed apps
+
+Library → Apps opens, disables or uninstalls apps. Disabling keeps saved data; uninstalling removes it but keeps connectors. **Edit with Creator** copies the installed files into a new Creator thread's draft and opens its preview. Edit only that draft, preview and check it, then propose the same name: the user reviews an **Update** card before the installed files are replaced. Nothing installs or runs a model turn automatically when Edit is clicked.

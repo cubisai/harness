@@ -5,8 +5,15 @@ import { isChatsRoot } from "../chats";
 import { describeSpec } from "../mcp/servers";
 import type { ExtensionAppSummary, ExtensionInstallView, ExtensionProposalView, McpServerEntry, Project } from "../../shared/types";
 import { parseAppManifest } from "../apps/manifest";
-import { type AppDraft, computeProposalDigest, type ProposalScope, requiredVarsOf, type StoredProposal, validateProposal } from "./manifest";
+import { type AppDraft, type AutomationDraft, computeProposalDigest, type ProposalScope, requiredVarsOf, type StoredProposal, type ThemeDraft, validateProposal } from "./manifest";
 import { encodeScope, type ExtensionInstall, type ExtensionStore, type InstalledFile } from "./store";
+import { projectSystemsDir } from "../design/kit-library";
+import { parseTokens } from "../design/tokens";
+import { stylePreviewUrl } from "../../shared/style-preview";
+import type { ThemeFile } from "../creator/themes";
+import type { AutomationInput, AutomationView } from "../../shared/automations";
+import { automationDigest } from "../creator/automations";
+import { describeSchedule } from "../automations/schedule";
 
 const CHANGED_AFTER_REVIEW = "Proposal changed after review; create a new proposal.";
 const STAGING_DIR_RE = /^\..+\.staging-[0-9a-f]+$/;
@@ -32,6 +39,13 @@ export interface ExtensionInstallDeps {
   toolAccess?: (projectId: string | null, server: string, tool: string) => "read" | "write" | "unknown";
   /** An app was installed, updated or removed (`key`: its frame key, whose data an uninstall drops). */
   appsChanged?: (change: { key: string; removed: boolean }) => void;
+  themeFiles?: (draft: ThemeDraft, projectId: string) => ThemeFile[];
+  automation?: {
+    list(projectId: string): AutomationView[];
+    save(projectId: string, input: AutomationInput, id?: string): AutomationView;
+    remove(id: string): void;
+    active(id: string): boolean;
+  };
 }
 
 function sha256(content: Buffer | string): string {
@@ -103,7 +117,7 @@ export class ExtensionService {
     const project = proposal.scope.kind === "project" ? this.deps.projectOf(proposal.scope.projectId) : null;
     const home = this.threadProject(proposal.threadId);
     // Apps always install globally, so their card offers no project.
-    const projectChoice = home && proposal.draft.kind !== "app" ? { id: home.id, name: home.name } : null;
+    const projectChoice = home && (proposal.draft.kind === "skill" || proposal.draft.kind === "connector") ? { id: home.id, name: home.name } : null;
     const install = this.deps.extensions.installs(proposal.scope).find((i) => i.proposalId === proposal.id);
     const retryable = proposal.status === "failed" && !(proposal.error ?? "").includes("changed after review");
 
@@ -147,6 +161,32 @@ export class ExtensionService {
         ...(install ? { installId: install.id } : {}),
         retryable,
         draft: this.appSummary(proposal, proposal.draft),
+      };
+    }
+
+    if (proposal.draft.kind === "theme") {
+      const draft = proposal.draft;
+      const tokens = new Map(parseTokens(draft.baseCss).flatMap((g) => g.tokens.map((t) => [t.name, t] as const)));
+      return {
+        id: proposal.id, threadId: proposal.threadId, scope: proposal.scope, projectName: project?.name ?? null,
+        projectChoice: null, status: proposal.status, ...(proposal.error ? { error: proposal.error } : {}),
+        createdAt: proposal.createdAt, updatedAt: proposal.updatedAt, ...(install ? { installId: install.id } : {}), retryable,
+        draft: {
+          kind: "theme", name: draft.name, title: draft.title, description: draft.description, baseName: draft.baseName,
+          tokens: draft.tokens.map((t) => ({ ...t, before: t.scheme === "dark" ? tokens.get(t.name)?.dark ?? tokens.get(t.name)?.light ?? "" : tokens.get(t.name)?.light ?? "" })),
+          previewUrl: stylePreviewUrl(proposal.scope.kind === "project" ? proposal.scope.projectId : null, `creator:${proposal.id}`, "light"),
+          update: proposal.status !== "installed" && this.deps.extensions.installs(proposal.scope).some((i) => i.kind === "theme" && i.name === draft.name),
+        },
+      };
+    }
+
+    if (proposal.draft.kind === "automation") {
+      const draft = proposal.draft;
+      return {
+        id: proposal.id, threadId: proposal.threadId, scope: proposal.scope, projectName: project?.name ?? null, projectChoice: null,
+        status: proposal.status, ...(proposal.error ? { error: proposal.error } : {}), createdAt: proposal.createdAt, updatedAt: proposal.updatedAt,
+        ...(install ? { installId: install.id } : {}), retryable,
+        draft: { kind: "automation", name: draft.name, input: draft.input, scheduleText: describeSchedule(draft.input.schedule), update: proposal.status !== "installed" && this.deps.extensions.installs(proposal.scope).some((i) => i.kind === "automation" && i.name === draft.name) },
       };
     }
 
@@ -226,6 +266,8 @@ export class ExtensionService {
     if (existing) return existing;
     // Apps always install globally, whatever the proposal or the caller asked for.
     if (this.deps.extensions.get(id)?.draft.kind === "app") scope = "global";
+    const kind = this.deps.extensions.get(id)?.draft.kind;
+    if ((kind === "theme" || kind === "automation") && scope === "global") return Promise.reject(new Error("Page themes and scheduled prompts require this project's folder."));
     const promise = (scope ? this.rescope(id, scope) : Promise.resolve()).then(() => this.runInstall(id)).finally(() => {
       if (this.inflightInstalls.get(id) === promise) this.inflightInstalls.delete(id);
     });
@@ -281,6 +323,7 @@ export class ExtensionService {
       const current = this.deps.extensions.get(id);
       if (!current) throw new Error("Extension proposal not found.");
       if (current.status === "installed") return this.toView(current);
+      if (current.status === "rejected") throw new Error("Rejected proposals cannot be installed.");
 
       let project: Project | null = null;
       if (current.scope.kind === "project") {
@@ -294,6 +337,14 @@ export class ExtensionService {
       const scopeLabel = project ? `project "${project.name}"` : "global";
 
       if (check.proposal.draft.kind === "app") return this.installApp(current, check.proposal.draft, digest, project, scopeLabel);
+      if (check.proposal.draft.kind === "theme") {
+        if (!project || this.threadProject(current.threadId)?.id !== project.id) throw new Error("Theme destination must be this Creator thread's project.");
+        return this.installTheme(current, check.proposal.draft, digest, project);
+      }
+      if (check.proposal.draft.kind === "automation") {
+        if (!project || this.threadProject(current.threadId)?.id !== project.id) throw new Error("Automation destination must be this Creator thread's project.");
+        return this.installAutomation(current, check.proposal.draft, digest, project);
+      }
 
       if (check.proposal.draft.kind === "skill") {
         const draft = check.proposal.draft;
@@ -421,7 +472,7 @@ export class ExtensionService {
           const updated = this.deps.extensions.setStatus(current.id, "failed", `An app named "${draft.name}" already exists in ${scopeLabel}.`);
           return this.toView(updated ?? current);
         }
-        verifyInstalledFiles(destDir, previous.files, draft.name);
+        verifyInstalledFiles(destDir, previous.files, draft.name, true);
       }
 
       stagingDir = join(baseDir, `.${draft.name}.staging-${randomBytes(6).toString("hex")}`);
@@ -478,6 +529,91 @@ export class ExtensionService {
     return this.toView(updated ?? proposal);
   }
 
+  /** A page theme inherits only resolved local assets; never overwrite an unowned or hand-edited folder. */
+  private installTheme(current: StoredProposal, draft: ThemeDraft, digest: string, project: Project): ExtensionProposalView {
+    const base = projectSystemsDir(project.path);
+    const dest = join(base, draft.name);
+    const previous = this.deps.extensions.installs(current.scope).find((i) => i.kind === "theme" && i.name === draft.name);
+    let staging: string | null = null;
+    let aside: string | null = null;
+    let promoted = false;
+    try {
+      if (!this.deps.themeFiles) throw new Error("Themes are not supported in this build.");
+      const files = this.deps.themeFiles(draft, project.id);
+      assertContained(project.path, base, "themes root");
+      if (pathExists(base) && lstatSync(base).isSymbolicLink()) throw new Error("Theme root is a symlink.");
+      mkdirSync(base, { recursive: true });
+      assertContained(base, dest, "theme destination");
+      if (pathExists(dest)) {
+        if (!previous) throw new Error(`A theme named "${draft.name}" already exists in this project.`);
+        verifyInstalledFiles(dest, previous.files, draft.name, true);
+      } else if (previous) throw new Error("Installed theme was removed; create a new proposal with a fresh name.");
+      staging = join(base, `.${draft.name}.staging-${randomBytes(6).toString("hex")}`);
+      mkdirSync(staging);
+      const hashes: InstalledFile[] = [];
+      for (const f of files) {
+        const file = join(staging, ...f.path.split("/"));
+        assertContained(staging, file, f.path);
+        mkdirSync(dirname(file), { recursive: true });
+        writeFileSync(file, f.content);
+        hashes.push({ path: f.path, sha256: sha256(f.content) });
+      }
+      if (pathExists(dest)) {
+        if (!previous) throw new Error("Theme destination appeared during installation.");
+        verifyInstalledFiles(dest, previous.files, draft.name, true);
+        aside = join(base, `.${draft.name}.staging-${randomBytes(6).toString("hex")}`);
+        renameSync(dest, aside);
+      }
+      renameSync(staging, dest);
+      promoted = true;
+      this.deps.extensions.transaction(() => {
+        this.deps.extensions.recordInstall({ proposalId: current.id, scope: current.scope, kind: "theme", name: draft.name, location: dest, files: hashes, digest });
+        this.deps.extensions.setStatus(current.id, "installed");
+      });
+      try { this.deps.emitNotice(current.threadId, `${previous ? "Updated" : "Installed"} page theme "${draft.title}". Choose it in Design → Style; no page was changed.`); } catch { /* The install is committed; a notification failure must not delete it. */ }
+      return this.getProposalView(current.id)!;
+    } catch (err) {
+      if (promoted) { rmSync(dest, { recursive: true, force: true }); promoted = false; }
+      if (aside && pathExists(aside)) { renameSync(aside, dest); aside = null; }
+      const failed = this.deps.extensions.setStatus(current.id, "failed", err instanceof Error ? err.message : String(err));
+      return this.toView(failed ?? current);
+    } finally {
+      if (staging && pathExists(staging)) rmSync(staging, { recursive: true, force: true });
+      if (promoted && aside && pathExists(aside)) rmSync(aside, { recursive: true, force: true });
+    }
+  }
+
+  private installedAutomation(record: ExtensionInstall, projectId: string): AutomationView {
+    if (!this.deps.automation || !record.location.startsWith("automation:")) throw new Error("Invalid automation ownership record.");
+    const id = record.location.slice(11);
+    const current = this.deps.automation.list(projectId).find((a) => a.id === id);
+    if (!current) throw new Error("Installed automation was removed; use a fresh proposal name.");
+    if (this.deps.automation.active(id)) throw new Error("Automation has an active run. Wait for it to finish before changing it.");
+    if (record.files.length !== 1 || record.files[0]?.path !== "automation.json" || record.files[0].sha256 !== automationDigest(current)) throw new Error("Automation was modified after installation; its settings were kept.");
+    return current;
+  }
+
+  /** Off/Ask only. The existing save service writes settings; it never queues a run here. */
+  private installAutomation(current: StoredProposal, draft: AutomationDraft, digest: string, project: Project): ExtensionProposalView {
+    try {
+      const api = this.deps.automation;
+      if (!api) throw new Error("Scheduled prompts are not supported in this build.");
+      const previous = this.deps.extensions.installs(current.scope).find((i) => i.kind === "automation" && i.name === draft.name);
+      const owned = previous ? this.installedAutomation(previous, project.id) : null;
+      if (api.list(project.id).some((a) => a.id !== owned?.id && a.name.trim().toLowerCase() === draft.input.name.toLowerCase())) throw new Error("An automation with this title already exists in this project.");
+      this.deps.extensions.transaction(() => {
+        const saved = api.save(project.id, draft.input, owned?.id);
+        this.deps.extensions.recordInstall({ proposalId: current.id, scope: current.scope, kind: "automation", name: draft.name, location: `automation:${saved.id}`, files: [{ path: "automation.json", sha256: automationDigest(saved) }], digest });
+        this.deps.extensions.setStatus(current.id, "installed");
+      });
+      try { this.deps.emitNotice(current.threadId, `${owned ? "Updated" : "Installed"} automation "${draft.input.name}" Off/Ask. Enable it or Run now in Library → Automations; no run was started.`); } catch { /* Committed settings are independent of the notice. */ }
+      return this.getProposalView(current.id)!;
+    } catch (err) {
+      const failed = this.deps.extensions.setStatus(current.id, "failed", err instanceof Error ? err.message : String(err));
+      return this.toView(failed ?? current);
+    }
+  }
+
   installs(projectId?: string | null): ExtensionInstallView[] {
     const rows =
       projectId === undefined
@@ -504,6 +640,31 @@ export class ExtensionService {
     await this.serialize(lockKey, async () => {
       const current = this.deps.extensions.getInstall(installId);
       if (!current) return;
+
+      if (current.kind === "automation") {
+        const pid = current.scope.kind === "project" ? current.scope.projectId : null;
+        if (!pid) throw new Error("Automation has no project.");
+        const a = this.installedAutomation(current, pid);
+        this.deps.automation!.remove(a.id);
+        this.deps.extensions.removeInstall(installId);
+        return;
+      }
+
+      if (current.kind === "theme") {
+        const project = current.scope.kind === "project" ? this.deps.projectOf(current.scope.projectId) : null;
+        if (!project || !existsSync(project.path)) throw new Error("Theme project is no longer available.");
+        const base = projectSystemsDir(project.path);
+        assertContained(project.path, base, "themes root");
+        const dest = join(base, current.name);
+        assertContained(base, dest, "theme destination");
+        if (pathExists(dest)) {
+          const verified = verifyInstalledFiles(dest, current.files, current.name, true);
+          for (const f of verified) unlinkSync(f.abs);
+          pruneEmptyDirs(dest, verified.map((f) => f.rel));
+        }
+        this.deps.extensions.removeInstall(installId);
+        return;
+      }
 
       if (current.kind === "app") {
         let baseDir: string | null = null;
@@ -636,14 +797,28 @@ export class ExtensionService {
  * Every recorded file of an installed folder that still exists, after checking each is a regular file inside the
  * folder with its recorded hash. Throws before anything is changed when one was edited or replaced.
  */
-function verifyInstalledFiles(destDir: string, files: InstalledFile[], name: string): { abs: string; rel: string }[] {
+function verifyInstalledFiles(destDir: string, files: InstalledFile[], name: string, complete = false): { abs: string; rel: string }[] {
   if (lstatSync(destDir).isSymbolicLink()) throw new Error(`Refusing to change "${name}": its folder is a symlink.`);
+  if (complete) {
+    const recorded = new Set(files.map((f) => f.path));
+    const scan = (rel: string): void => {
+      for (const entry of readdirSync(join(destDir, rel), { withFileTypes: true })) {
+        const p = rel ? `${rel}/${entry.name}` : entry.name;
+        if (entry.isDirectory() && files.some((f) => f.path.startsWith(`${p}/`))) scan(p);
+        else if (!entry.isFile() || !recorded.has(p)) throw new Error(`Cannot change "${name}": "${p}" was added after installation.`);
+      }
+    };
+    scan("");
+  }
   const out: { abs: string; rel: string }[] = [];
   for (const entry of files) {
     const segs = entry.path.split("/");
     if (segs.some((s) => !s || s === "." || s === "..")) throw new Error(`Invalid recorded file path "${entry.path}".`);
     const fileAbs = join(destDir, ...segs);
-    if (!pathExists(fileAbs)) continue;
+    if (!pathExists(fileAbs)) {
+      if (complete) throw new Error(`Cannot change "${name}": "${entry.path}" was removed after installation.`);
+      continue;
+    }
     const st = lstatSync(fileAbs);
     if (st.isSymbolicLink() || !st.isFile()) throw new Error(`Cannot change "${name}": "${entry.path}" is not a regular file.`);
     assertContained(destDir, fileAbs, entry.path);

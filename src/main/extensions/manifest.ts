@@ -5,6 +5,10 @@ import { extname, isAbsolute } from "node:path";
 import type { McpOAuthConfig, McpServerSpec, ProposalScope, ProposalStatus } from "../../shared/types";
 import { stableStringify } from "../cache-policy";
 import { validateApp } from "../apps/manifest";
+import { validateThemeDraft } from "../creator/themes";
+import type { ThemeTokenOverride } from "../../shared/types";
+import type { AutomationInput } from "../../shared/automations";
+import { validateAutomationDraft } from "../creator/automations";
 
 export const SKILL_MAX_FILES = 32;
 export const SKILL_MAX_TOTAL_BYTES = 1024 * 1024;
@@ -44,7 +48,20 @@ export type AppDraft = {
   files: { path: string; content: string }[];
 };
 
-export type ExtensionDraft = SkillDraft | ConnectorDraft | AppDraft;
+export type ThemeDraft = {
+  kind: "theme";
+  name: string;
+  title: string;
+  description: string;
+  base: string;
+  baseName: string;
+  baseCss: string;
+  sourceDigest: string;
+  tokens: ThemeTokenOverride[];
+};
+
+export type AutomationDraft = { kind: "automation"; name: string; input: AutomationInput };
+export type ExtensionDraft = SkillDraft | ConnectorDraft | AppDraft | ThemeDraft | AutomationDraft;
 
 export interface StoredProposal {
   id: string;
@@ -202,8 +219,8 @@ export function validateProposal(input: unknown, ctx: ValidateProposalContext): 
   if (!isRecord(input)) return { ok: false, errors: ["Proposal draft must be an object."] };
 
   const kind = input.kind;
-  if (kind !== "skill" && kind !== "connector" && kind !== "app") {
-    return { ok: false, errors: ['Proposal draft "kind" must be "skill", "connector" or "app".'] };
+  if (kind !== "skill" && kind !== "connector" && kind !== "app" && kind !== "theme" && kind !== "automation") {
+    return { ok: false, errors: ['Proposal draft "kind" must be skill, connector, app, theme or automation.'] };
   }
 
   const name = typeof input.name === "string" ? input.name : "";
@@ -222,6 +239,26 @@ export function validateProposal(input: unknown, ctx: ValidateProposalContext): 
     if (!check.ok) return { ok: false, errors: check.errors };
     const draft: AppDraft = { kind: "app", name, files: check.files.map((f) => ({ path: f.path, content: f.content.replace(/\r\n/g, "\n") })) };
     return { ok: true, proposal: { scope: ctx.scope, draft, digest: computeProposalDigest(ctx.scope, draft) } };
+  }
+
+  if (kind === "theme") {
+    if (ctx.scope.kind !== "project") errors.push("Page themes require a project folder.");
+    if (errors.length) return { ok: false, errors };
+    try {
+      const draft = validateThemeDraft(input);
+      return { ok: true, proposal: { scope: ctx.scope, draft, digest: computeProposalDigest(ctx.scope, draft) } };
+    } catch (err) {
+      return { ok: false, errors: [err instanceof Error ? err.message : String(err)] };
+    }
+  }
+
+  if (kind === "automation") {
+    if (ctx.scope.kind !== "project") errors.push("Scheduled prompts require a project folder.");
+    if (errors.length) return { ok: false, errors };
+    try {
+      const draft = validateAutomationDraft(input);
+      return { ok: true, proposal: { scope: ctx.scope, draft, digest: computeProposalDigest(ctx.scope, draft) } };
+    } catch (err) { return { ok: false, errors: [err instanceof Error ? err.message : String(err)] }; }
   }
 
   if (kind === "skill") {

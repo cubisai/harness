@@ -401,10 +401,10 @@ export function Sidebar() {
             {model.pinned.map((t) => row(t))}
           </section>
         )}
-        {apps.length > 0 && (
+        {apps.some((a) => a.enabled !== false) && (
           <section className="inbox-section" aria-label="Apps">
             <div className="section-label">Apps</div>
-            {apps.map((a) => {
+            {apps.filter((a) => a.enabled !== false).map((a) => {
               const Icon = appIcon(a.icon);
               const open = appOpen?.key === a.key && inspectorTab === "app" && inspectorOpen;
               return (

@@ -36,7 +36,7 @@ import type {
 import type { DocumentStatus } from "../../shared/design-mutation";
 import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
-import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
+import { clampLayout, DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { waitingThreads, workspaceModeOf } from "./sections";
@@ -62,7 +62,7 @@ export interface DesignSelection {
 /** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact; App runs a Creator app. */
 export type InspectorTab = "changes" | "browser" | "files" | "artifact" | "app";
 
-export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents" | "memory" | "automations" | "learned";
+export type LibraryTab = "experts" | "skills" | "connectors" | "apps" | "mcp" | "agents" | "memory" | "automations" | "learned";
 
 /** A new thread's pickers before it exists; reset once the thread is created. */
 interface Draft {
@@ -138,6 +138,7 @@ interface State {
   openInEditor(target: { path?: string; line?: number; column?: number }, editor?: string): Promise<void>;
   /** The Library sheet's tab, or null when it's closed. */
   libraryTab: LibraryTab | null;
+  automationsRevision: Record<string, number>;
   /** A skill for the Library to show first. */
   librarySkill: string | null;
   /** The agent new threads start with: the last one picked. */
@@ -351,6 +352,7 @@ interface State {
   /** Per frame key, how many times main said a previewed draft's files changed (the App tab reloads on each). */
   appReloads: Record<string, number>;
   openApp(app: AppInfo): void;
+  editApp(app: AppInfo): Promise<string | null>;
   closeApp(): void;
   toggleTerminal(): void;
   /** Add the current terminal to `terminals` if missing, so its shell is mounted. */
@@ -562,6 +564,7 @@ export const useStore = create<State>((set, get) => ({
   pendingSwitch: null,
   pendingSwitchModel: null,
   libraryTab: null,
+  automationsRevision: {},
   librarySkill: null,
   editors: [],
   notice: null,
@@ -1547,7 +1550,12 @@ export const useStore = create<State>((set, get) => ({
     try {
       const apps = await api().listApps(projectId);
       // A reply for a project the user already left is dropped.
-      if (get().selectedProjectId === projectId) set({ apps });
+      if (get().selectedProjectId === projectId) {
+        const open = get().appOpen;
+        const fresh = open && open.scope !== "draft" ? apps.find((a) => a.key === open.key) : null;
+        set({ apps, ...(fresh && fresh.enabled !== false && !fresh.error ? { appOpen: fresh } : {}) });
+        if (open && open.scope !== "draft" && (!fresh || fresh.enabled === false || fresh.error)) get().closeApp();
+      }
     } catch {
       // The list stays as it was.
     }
@@ -1555,9 +1563,49 @@ export const useStore = create<State>((set, get) => ({
 
   openApp(app) {
     const s = get();
+    if (app.enabled === false || app.error) {
+      s.showNotice(app.error ?? "This app is disabled. Enable it in Library → Apps.");
+      return;
+    }
     const opens = !s.inspectorOpen;
     set({ appOpen: app, inspectorOpen: true, inspectorTab: "app" });
-    if (opens && s.paneLayout.inspectorCollapsed) s.setPaneLayout({ inspectorCollapsed: false }, true);
+    const narrow = typeof window !== "undefined" && Number.isFinite(window.innerWidth) && clampLayout(window.innerWidth, { ...s.paneLayout, inspectorCollapsed: false }, true).inspectorAutoCollapsed;
+    // An explicit Open/Preview must show something, even where the normal chat floor auto-hides the panel.
+    if (narrow || (opens && s.paneLayout.inspectorCollapsed)) s.setPaneLayout({ inspectorCollapsed: false, ...(narrow ? { sidebarCollapsed: true } : {}) }, true);
+  },
+
+  async editApp(app) {
+    const s = get();
+    try {
+      const project = s.selectedProjectId ? s.projects.find((p) => p.id === s.selectedProjectId) : await api().openChats();
+      if (!project) throw new Error("Choose a project or open Chats first.");
+      const current = s.selectedThreadId ? findThread(s.threads, s.selectedThreadId) : undefined;
+      const agent = s.draft.agent ?? current?.agent ?? s.lastAgent ?? undefined;
+      const draft = current && current.agent === agent ? { model: current.model ?? undefined, effort: current.effort ?? undefined, contextWindow: current.contextWindow, ...s.draft } : s.draft;
+      // Always a new Creator chat, never a design thread, worktree or an automatic model turn.
+      let thread = await api().createThread(project.id, agent, { kind: "chat", preset: "creator" });
+      thread = await api().updateThread(thread.id, { ...draftPatch(draft, thread), title: `Edit ${app.title}` });
+      const prepared = await api().prepareAppEdit(app.key, thread.id);
+      set((x) => ({
+        projects: x.projects.some((p) => p.id === project.id) ? x.projects : [...x.projects, project],
+        threads: { ...x.threads, [project.id]: upsertThread(x.threads[project.id], thread) },
+        events: { ...x.events, [thread.id]: [] },
+        history: { ...x.history, [thread.id]: { firstSeq: 0, hasMore: false, loadingOlder: false, totals: null } },
+        selectedProjectId: project.id,
+        selectedThreadId: thread.id,
+        threadKind: "creator",
+        draft: {},
+        pendingSkills: [],
+        lastAgent: thread.agent,
+        libraryTab: null,
+        composerDraft: { text: prepared.prompt, nonce: (x.composerDraft?.nonce ?? 0) + 1 },
+      }));
+      get().openApp(prepared.app);
+      return thread.id;
+    } catch (err) {
+      get().showNotice(`Couldn't edit the app: ${ipcErrorText(err)}`);
+      return null;
+    }
   },
 
   closeApp() {
@@ -1771,6 +1819,10 @@ export const useStore = create<State>((set, get) => ({
         return;
       case "apps-changed":
         void get().loadApps();
+        return;
+      case "automations-changed":
+        if (typeof update.projectId !== "string" || !update.projectId || update.projectId.length > 160) return;
+        set((s) => ({ automationsRevision: { ...s.automationsRevision, [update.projectId]: (s.automationsRevision[update.projectId] ?? 0) + 1 } }));
         return;
       case "app-open":
         // Only the window showing that Creator thread opens it; elsewhere it would take over the panel.

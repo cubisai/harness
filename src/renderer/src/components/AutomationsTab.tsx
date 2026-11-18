@@ -125,6 +125,7 @@ function toInput(draft: Draft): AutomationInput {
  */
 export function AutomationsTab({ overview: initial }: { overview?: AutomationsOverview | null } = {}) {
   const projectId = useStore((s) => s.selectedProjectId);
+  const revision = useStore((s) => projectId ? s.automationsRevision[projectId] ?? 0 : 0);
   const agents = useStore((s) => s.agents);
   const [data, setData] = useState<AutomationsOverview | null>(initial ?? null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -136,8 +137,8 @@ export function AutomationsTab({ overview: initial }: { overview?: AutomationsOv
 
   const reload = useCallback(() => {
     if (initial !== undefined || !projectId) return;
-    void api().automationsOverview(projectId).then(setData);
-  }, [projectId, initial]);
+    void api().automationsOverview(projectId).then(setData).catch((err) => setError(errorText(err)));
+  }, [projectId, initial, revision]);
 
   useEffect(() => {
     reload();
@@ -160,7 +161,7 @@ export function AutomationsTab({ overview: initial }: { overview?: AutomationsOv
     );
   }
 
-  if (!data) return <div className="library-pad" />;
+  if (!data) return <div className="library-pad">{error ? <><p className="form-error" role="alert">{error}</p><button className="button" onClick={reload}>Retry</button></> : <p className="note" aria-busy="true">Loading automations…</p>}</div>;
 
   const open = (view: AutomationView) => {
     setError(null);

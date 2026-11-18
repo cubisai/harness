@@ -2,6 +2,7 @@ import { BrowserWindow } from "electron";
 import { DOC_SCHEME } from "../documents/serve";
 import { DESIGN_SCHEME } from "./serve";
 import type { ShotWindow } from "./shooter";
+import { parseStylePreviewUrl } from "./style-preview";
 
 /**
  * The shooter's hidden window: off-screen rendering, sandboxed, no preload or
@@ -21,7 +22,7 @@ export function electronShotWindow(): ShotWindow {
   wc.setAudioMuted(true);
   wc.setWindowOpenHandler(() => ({ action: "deny" }));
   const guard = (e: { preventDefault(): void }, url: string): void => {
-    if (!url.startsWith(`${DESIGN_SCHEME}://`) && !url.startsWith(`${DOC_SCHEME}://`)) e.preventDefault();
+    if (!url.startsWith(`${DESIGN_SCHEME}://`) && !url.startsWith(`${DOC_SCHEME}://`) && !parseStylePreviewUrl(url)) e.preventDefault();
   };
   wc.on("will-navigate", (e) => guard(e, e.url));
   wc.on("will-redirect", (e) => guard(e, e.url));

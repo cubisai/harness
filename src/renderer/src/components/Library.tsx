@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { Brain, BriefcaseBusiness, CalendarClock, GraduationCap, Plug, Puzzle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Brain, BriefcaseBusiness, CalendarClock, GraduationCap, LayoutGrid, Plug, Puzzle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { AgentCatalogEntry, SkillDetail, SkillEntry, SkillOrigin } from "../../../shared/types";
 import { api } from "../api";
 import { Markdown } from "../markdown";
 import { useStore, type LibraryTab } from "../store";
 import { AutomationsTab } from "./AutomationsTab";
+import { AppsTab } from "./AppsTab";
 import { CantDoList, CapabilityChips, BinaryLine } from "./Capabilities";
 import { ExpertCenter } from "./experts/ExpertCenter";
 import { LearnedTab } from "./LearnedTab";
@@ -14,10 +15,11 @@ import { MemoryTab } from "./MemoryTab";
 import { Select, selectPopupOpen } from "./Select";
 import { UnsupportedChip } from "./UnsupportedChip";
 
-const TABS: { id: "experts" | "skills" | "connectors" | "memory" | "automations" | "learned"; label: string; icon: LucideIcon }[] = [
+const TABS: { id: Exclude<LibraryTab, "agents" | "mcp">; label: string; icon: LucideIcon }[] = [
   { id: "experts", label: "Experts", icon: BriefcaseBusiness },
   { id: "skills", label: "Skills", icon: Puzzle },
   { id: "connectors", label: "Connectors", icon: Plug },
+  { id: "apps", label: "Apps", icon: LayoutGrid },
   { id: "memory", label: "Memory", icon: Brain },
   { id: "automations", label: "Automations", icon: CalendarClock },
   { id: "learned", label: "Learned", icon: GraduationCap },
@@ -29,12 +31,14 @@ export function Library() {
   return <LibrarySheet tab={tab} />;
 }
 
-function LibrarySheet({ tab }: { tab: LibraryTab }) {
+export function LibrarySheet({ tab }: { tab: LibraryTab }) {
   const close = () => useStore.setState({ libraryTab: null });
-  const activeTab: "experts" | "skills" | "connectors" | "memory" | "automations" | "learned" =
-    tab === "agents" ? "experts" : tab === "mcp" ? "connectors" : tab === "experts" ? "experts" : tab === "connectors" ? "connectors" : tab === "memory" ? "memory" : tab === "automations" ? "automations" : tab === "learned" ? "learned" : "skills";
+  const activeTab = tab === "agents" ? "experts" : tab === "mcp" ? "connectors" : tab;
+  const sheetRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    sheetRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
     const onKey = (e: KeyboardEvent) => {
       // An open pick list, or an expert's detail modal, takes Escape for itself.
       if (e.key === "Escape" && (selectPopupOpen() || document.querySelector(".xc-detail"))) return;
@@ -42,24 +46,46 @@ function LibrarySheet({ tab }: { tab: LibraryTab }) {
         e.stopPropagation();
         close();
       }
+      if (e.key === "Tab") {
+        const controls = [...(sheetRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]') ?? [])]
+          .filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0);
+        const next = e.shiftKey ? controls.at(-1) : controls[0];
+        if ((e.shiftKey && document.activeElement === controls[0]) || (!e.shiftKey && document.activeElement === controls.at(-1))) {
+          e.preventDefault();
+          next?.focus();
+        }
+      }
     };
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      if (previous?.isConnected) previous.focus();
+    };
   }, []);
 
   return (
     <div className="sheet-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="library" role="dialog" aria-modal="true" aria-label="Library">
+      <div ref={sheetRef} className="library" role="dialog" aria-modal="true" aria-label="Library">
         <div className="library-head">
           <h2>Library</h2>
           <div className="segmented" role="tablist">
-            {TABS.map((t) => (
+            {TABS.map((t, index) => (
               <button
                 key={t.id}
                 role="tab"
+                id={`library-tab-${t.id}`}
+                aria-controls="library-panel"
                 aria-selected={activeTab === t.id}
+                tabIndex={activeTab === t.id ? 0 : -1}
                 className={activeTab === t.id ? "on" : ""}
                 onClick={() => useStore.setState({ libraryTab: t.id })}
+                onKeyDown={(e) => {
+                  const next = e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : e.key === "ArrowRight" ? (index + 1) % TABS.length : e.key === "ArrowLeft" ? (index + TABS.length - 1) % TABS.length : null;
+                  if (next === null) return;
+                  e.preventDefault();
+                  useStore.setState({ libraryTab: TABS[next]!.id });
+                  sheetRef.current?.querySelector<HTMLElement>(`#library-tab-${TABS[next]!.id}`)?.focus();
+                }}
               >
                 <span style={{ display: "inline-flex", marginRight: 6, verticalAlign: "-2px" }}>
                   <t.icon size={14} strokeWidth={1.75} aria-hidden />
@@ -72,12 +98,15 @@ function LibrarySheet({ tab }: { tab: LibraryTab }) {
             Done
           </button>
         </div>
-        {activeTab === "experts" && <ExpertsTab />}
-        {activeTab === "skills" && <SkillsTab />}
-        {activeTab === "connectors" && <ConnectorsTab />}
-        {activeTab === "memory" && <MemoryTab />}
-        {activeTab === "automations" && <AutomationsTab />}
-        {activeTab === "learned" && <LearnedTab />}
+        <div id="library-panel" className="library-panel" role="tabpanel" aria-labelledby={`library-tab-${activeTab}`}>
+          {activeTab === "experts" && <ExpertsTab />}
+          {activeTab === "skills" && <SkillsTab />}
+          {activeTab === "connectors" && <ConnectorsTab />}
+          {activeTab === "apps" && <AppsTab />}
+          {activeTab === "memory" && <MemoryTab />}
+          {activeTab === "automations" && <AutomationsTab />}
+          {activeTab === "learned" && <LearnedTab />}
+        </div>
       </div>
     </div>
   );

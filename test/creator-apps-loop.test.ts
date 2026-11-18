@@ -210,6 +210,21 @@ describe("installing app proposals", () => {
     expect(v.error).toContain('An app named "sales" already exists');
   });
 
+  it("refuses an update that would discard an unrecorded file or restore a user's deletion", async () => {
+    const env = setup();
+    await env.service.install(stageApp(env, "global", appFiles()).id);
+    const dir = join(env.userData, "apps", "sales");
+    writeFileSync(join(dir, "notes.txt"), "User notes");
+    const added = await env.service.install(stageApp(env, "global", appFiles("<h1>v2</h1>")).id);
+    expect(added.error).toContain("added after installation");
+    expect(readFileSync(join(dir, "notes.txt"), "utf-8")).toBe("User notes");
+    rmSync(join(dir, "notes.txt"));
+    rmSync(join(dir, "index.html"));
+    const removed = await env.service.install(stageApp(env, "global", appFiles()).id);
+    expect(removed.error).toContain("removed after installation");
+    expect(existsSync(join(dir, "index.html"))).toBe(false);
+  });
+
   it("uninstalls an app's verified files without touching connectors", async () => {
     const env = setup();
     await env.service.install(stageApp(env, "global", appFiles()).id);

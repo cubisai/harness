@@ -13,7 +13,7 @@ export interface ExtensionInstall {
   id: string;
   proposalId: string;
   scope: ProposalScope;
-  kind: "skill" | "connector" | "app";
+  kind: ExtensionDraft["kind"];
   name: string;
   location: string;
   files: InstalledFile[];
@@ -75,7 +75,7 @@ function toInstall(r: RawInstall): ExtensionInstall {
     id: r.id,
     proposalId: r.proposal_id,
     scope: decodeScope(r.scope),
-    kind: r.kind as "skill" | "connector" | "app",
+    kind: r.kind as ExtensionDraft["kind"],
     name: r.name,
     location: r.location,
     files: JSON.parse(r.files) as InstalledFile[],
@@ -86,6 +86,13 @@ function toInstall(r: RawInstall): ExtensionInstall {
 
 export class ExtensionStore {
   constructor(private db: DatabaseSync) {}
+
+  /** Related Creator-owned database writes commit together, or leave no partial install. */
+  transaction<T>(run: () => T): T {
+    this.db.exec("BEGIN");
+    try { const result = run(); this.db.exec("COMMIT"); return result; }
+    catch (err) { this.db.exec("ROLLBACK"); throw err; }
+  }
 
   stage(input: {
     id?: string;
@@ -140,7 +147,7 @@ export class ExtensionStore {
     id?: string;
     proposalId: string;
     scope: ProposalScope;
-    kind: "skill" | "connector" | "app";
+    kind: ExtensionDraft["kind"];
     name: string;
     location: string;
     files: InstalledFile[];

@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { sendAndWait, sourcesForTemplate } from "../src/main/automations/app";
+import { describe, expect, it, vi } from "vitest";
+import { sendAndWait, sourcesForTemplate, startAutomations } from "../src/main/automations/app";
+import { Store } from "../src/main/db";
+import { join } from "node:path";
+import { closeAfter, tempDir } from "./helpers";
 import type { StoredEvent, ThreadEvent } from "../src/shared/types";
 
 const ev = (seq: number, event: ThreadEvent): StoredEvent => ({ seq, event, createdAt: seq });
@@ -32,4 +35,25 @@ describe("sourcesForTemplate", () => {
     expect(sourcesForTemplate("project-brief")).toEqual(["git"]);
     expect(sourcesForTemplate("repo-health")).toEqual([]);
   });
+});
+
+it("Ask automation runs never inherit a Full-access thread default", async () => {
+  vi.useFakeTimers();
+  const store = new Store(join(tempDir(), "app.db"));
+  closeAfter(() => store.close());
+  const project = store.addProject(tempDir());
+  const service = {
+    createThread: (pid: string) => store.createThread(pid, "codex", "default", "full"),
+    allDrivers: () => [{ id: "codex" }],
+    send: async () => {}, isRunning: () => false, interrupt: () => {},
+    pendingState: () => ({ running: [], permissions: [], questions: [], plans: [] }),
+  };
+  const app = startAutomations({ store, service: service as never, broadcast: () => {} });
+  try {
+    const a = app.save(project.id, { name: "Brief", template: "custom", prompt: "Read only", schedule: { kind: "interval", everyMinutes: 30 }, missed: "skip", enabled: false, agent: "codex", model: null, budgetUsd: null, permissions: "ask" });
+    app.runNow(a.id);
+    await vi.advanceTimersByTimeAsync(2000);
+    const tid = app.runs(a.id)[0]!.threadId!;
+    expect(store.getThread(tid).permissionMode).toBe("ask");
+  } finally { app.dispose(); vi.useRealTimers(); }
 });

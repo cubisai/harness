@@ -240,3 +240,36 @@ describe("previewMarkdown", () => {
     expect(previewMarkdown("# Title\n\n---\n")).toBe("# Title\n\n---\n");
   });
 });
+
+describe("page theme and automation review cards", () => {
+  const theme = (): ExtensionProposalView => ({ ...skill(), draft: { kind: "theme", name: "paper", title: "Paper", description: "Warm surfaces", baseName: "Foundation", tokens: [{ name: "--color-bg", scheme: "light", before: "white", value: "#faf8f2" }], previewUrl: "cubiq-style://p/p1/creator%3Apr1/index.html?theme=light", update: false } });
+  const automation = (): ExtensionProposalView => ({ ...skill(), draft: { kind: "automation", name: "brief", input: { name: "Morning brief", template: "custom", prompt: '<script>alert("no")</script> Read only.', schedule: { kind: "daily", at: "09:00", timeZone: "Asia/Bangkok" }, missed: "skip", enabled: false, permissions: "ask", agent: "codex", model: null, budgetUsd: 0.25 }, scheduleText: "daily at 09:00 (Asia/Bangkok)", update: false } });
+  it("shows token changes, isolated light/dark preview, no automatic page application or scope picker", () => {
+    const html = render(theme(), { previewOpen: true, onScopePick: noop });
+    expect(html).toContain("Page theme");
+    expect(html).toContain("Installing changes no page");
+    expect(html).toContain('sandbox=""');
+    expect(html).toContain("Page theme preview scheme");
+    expect(html).not.toContain("Install to");
+    expect(buttons(html)).toEqual(["Hide preview", "Light", "Dark", "Reject", "Install"]);
+    expect(render(theme(), { previewBusy: true })).toContain("Preparing preview…");
+  });
+  it("makes schedule, timezone, model, budget, prompt and Off/Ask behavior visible with no Run now action", () => {
+    const html = render(automation());
+    expect(html).toContain("Asia/Bangkok");
+    expect(html).toContain("$0.25 per run");
+    expect(html).toContain("Saved Off, with Ask permissions");
+    expect(html).toContain("Installing starts no run");
+    expect(html).not.toContain("<script>");
+    expect(buttons(html)).toEqual(["Reject", "Install"]);
+  });
+  it("labels updates and preserves busy/error/rejected states for both kinds", () => {
+    for (const p of [theme(), automation()]) {
+      const updated = { ...p, draft: { ...p.draft, update: true } } as ExtensionProposalView;
+      expect(buttons(render(updated))).toContain("Update");
+      expect(buttons(render(updated, { busy: "install" }))).toContain("Updating…");
+      expect(render({ ...p, status: "failed", error: "Protected settings" })).toContain('role="alert"');
+      expect(buttons(render({ ...p, status: "rejected" }))).toEqual([]);
+    }
+  });
+});

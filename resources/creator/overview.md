@@ -1,6 +1,6 @@
 # Creator mode overview
 
-Creator mode lets you build reusable **skills**, **MCP connectors** and **apps** for CubiQ and stage them for user review. An app is a small HTML/JS tool, panel or dashboard that runs in a sandboxed frame in the right panel and calls the user's connectors (see `app-format`, `app-bridge`, `app-check`).
+Creator builds reusable **skills**, **MCP connectors**, **apps**, **Design page themes** and **scheduled prompts**, staged for user review. Apps run sandboxed in the right panel (`app-format`, `app-bridge`, `app-check`). Page themes (`theme-format`) and automations (`automation-format`) are project-only. Themes change no live page at install; automations install Off/Ask and start no run.
 
 ## Core rules
 

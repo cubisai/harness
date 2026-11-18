@@ -16,6 +16,9 @@ import { McpVault } from "../src/main/mcp/vault";
 import type { SecretBox } from "../src/main/settings";
 import { SkillCatalogs } from "../src/main/skills/sources";
 import type { McpOverview, ThreadEvent } from "../src/shared/types";
+import { prepareTheme, readThemeFiles } from "../src/main/creator/themes";
+import { prepareAutomation } from "../src/main/creator/automations";
+import { listKitSystems } from "../src/main/design/systems";
 
 const dirs: string[] = [];
 const makeTemp = () => {
@@ -115,12 +118,12 @@ function setupCreator(opts: { chatsThread?: boolean; permissionMode?: "ask" | "a
 
   const tools = creatorTools(deps, thread.id);
   const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
-  return { root, store, extensions, project, thread, tools, byName, emitted };
+  return { root, store, extensions, project, thread, tools, byName, emitted, deps };
 }
 
 describe("Creator tools (B6)", () => {
   it("ships creator docs under resources/creator within the 8000 char cap", () => {
-    for (const topic of ["overview", "skill-format", "connector-format"] as const) {
+    for (const topic of ["overview", "skill-format", "connector-format", "theme-format", "automation-format"] as const) {
       const content = readFileSync(resolve("resources/creator", `${topic}.md`), "utf-8");
       expect(content.length).toBeGreaterThan(100);
       expect(content.length).toBeLessThanOrEqual(8000);
@@ -325,5 +328,40 @@ describe("Creator tools (B6)", () => {
     expect(toolNamesFor(chat.preset, chat.kind)).toEqual([]);
     expect(toolNamesFor(design.preset, design.kind)).toEqual([]);
     expect(tools.map((t) => t.name)).toEqual([CREATOR_INSPECT_TOOL, CREATOR_PROPOSE_TOOL]);
+  });
+});
+
+describe("Creator optional kinds", () => {
+  const themeConfig = { title: "Paper", base: "kit:foundation", tokens: [{ name: "--color-bg", scheme: "light", value: "#faf8f2" }] };
+  const automationConfig = { title: "Brief", prompt: "Read project status only.", schedule: { kind: "interval", everyMinutes: 30 }, budgetUsd: 0.1 };
+  function setup(options: Parameters<typeof setupCreator>[0] = {}) {
+    const s = setupCreator(options);
+    const foundation = listKitSystems(resolve("resources/design-kits/foundation"))[0]!;
+    const resolver = (id: string) => id === foundation.id ? foundation : null;
+    const deps: CreatorToolsDeps = { ...s.deps, prepareTheme: (name, c) => prepareTheme(name, c, resolver), prepareAutomation: (name, c, t) => prepareAutomation(name, c, t, [{ id: "codex", models: ["default-model"] }]), previewTheme: async (id) => { const p = s.extensions.get(id)!; if (p.draft.kind !== "theme") throw new Error("Not a theme"); readThemeFiles(p.draft, resolver); return { text: "Checked isolated specimen" }; } };
+    return { ...s, tools: creatorTools(deps, s.thread.id) };
+  }
+  it("stages both kinds project-only, shares the cap, and previews only this thread's unrejected theme", async () => {
+    const s = setup();
+    const propose = s.tools.find((t) => t.name === CREATOR_PROPOSE_TOOL)!;
+    for (const [kind, config] of [["theme", themeConfig], ["automation", automationConfig]] as const) {
+      expect((await propose.run({ kind, scope: "global", name: "no", config: JSON.stringify(config) })).isError).toBe(true);
+      expect((await propose.run({ kind, scope: "project", name: kind, config: JSON.stringify(config) })).isError).not.toBe(true);
+    }
+    expect(s.extensions.installs()).toHaveLength(0);
+    const p = s.extensions.forThread(s.thread.id).find((p) => p.draft.kind === "theme")!;
+    const preview = s.tools.find((t) => t.name === "creator_theme_preview")!;
+    expect((await preview.run({ proposalId: p.id, scheme: "light" })).text).toContain("isolated");
+    s.extensions.setStatus(p.id, "rejected");
+    expect((await preview.run({ proposalId: p.id, scheme: "dark" })).isError).toBe(true);
+    for (let i = 0; i < 4; i++) await propose.run({ kind: "automation", scope: "project", name: `brief-${i}`, config: JSON.stringify(automationConfig) });
+    expect((await propose.run({ kind: "theme", scope: "project", name: "sixth", config: JSON.stringify(themeConfig) })).text).toContain("At most 5");
+  });
+  it.each([{ chatsThread: true }, { permissionMode: "plan" as const }])("rejects both kinds before preparing/staging for %j", async (options) => {
+    const s = setup(options);
+    const propose = s.tools.find((t) => t.name === CREATOR_PROPOSE_TOOL)!;
+    for (const kind of ["theme", "automation"]) expect((await propose.run({ kind, scope: "project", name: "blocked", config: "{}" })).isError).toBe(true);
+    expect(s.extensions.forThread(s.thread.id)).toHaveLength(0);
+    expect(s.emitted).toHaveLength(0);
   });
 });

@@ -1355,6 +1355,7 @@ export type LiveUpdate =
   | { type: "automation-delivered"; automationId: string; runId: number; threadId: string; title: string }
   /** Creator apps were installed, updated or removed: list them again. */
   | { type: "apps-changed" }
+  | { type: "automations-changed"; projectId: string }
   /** A Creator thread previews its draft app: open it in the App tab if that thread is on screen. */
   | { type: "app-open"; threadId: string; app: AppInfo }
   /** A previewed draft's files changed: reload its frame. */
@@ -1396,6 +1397,31 @@ export interface ExtensionAppSummary {
   draftKey: string;
 }
 
+export interface ThemeTokenOverride {
+  name: string;
+  scheme: "light" | "dark";
+  value: string;
+}
+
+export interface ExtensionThemeSummary {
+  kind: "theme";
+  name: string;
+  title: string;
+  description: string;
+  baseName: string;
+  tokens: (ThemeTokenOverride & { before: string })[];
+  previewUrl: string;
+  update: boolean;
+}
+
+export interface ExtensionAutomationSummary {
+  kind: "automation";
+  name: string;
+  input: AutomationInput;
+  scheduleText: string;
+  update: boolean;
+}
+
 export interface ExtensionProposalView {
   id: string;
   threadId: string;
@@ -1409,7 +1435,7 @@ export interface ExtensionProposalView {
   updatedAt: number;
   installId?: string;
   retryable?: boolean;
-  draft: ExtensionSkillSummary | ExtensionConnectorSummary | ExtensionAppSummary;
+  draft: ExtensionSkillSummary | ExtensionConnectorSummary | ExtensionAppSummary | ExtensionThemeSummary | ExtensionAutomationSummary;
 }
 
 /** An installed Creator app, as the sidebar and Library list it. */
@@ -1423,6 +1449,8 @@ export interface AppInfo {
   description: string;
   icon?: string;
   grants: { server: string; tools: string[] }[];
+  /** Disabled apps stay in Library but cannot open or call connectors. Omitted means enabled. */
+  enabled?: boolean;
   path: string;
   /** The entry page's `cubiq-app://` URL. */
   url: string;
@@ -1440,7 +1468,7 @@ export interface ExtensionInstallView {
   id: string;
   proposalId: string;
   scope: ProposalScope;
-  kind: "skill" | "connector" | "app";
+  kind: "skill" | "connector" | "app" | "theme" | "automation";
   name: string;
   targetPath: string;
   installedAt: number;
@@ -1631,6 +1659,7 @@ export interface UnskilledApi {
   saveMcpServer(entry: McpServerEntry, previousName?: string, projectId?: string | null): Promise<McpOverview>;
   removeMcpServer(name: string, projectId?: string | null): Promise<McpOverview>;
   getExtensionProposal(id: string): Promise<ExtensionProposalView | null>;
+  getExtensionThemePreview(id: string): Promise<string>;
   /** `scope` is the user's pick on the card; omitted, the proposal's own scope is kept. */
   installExtension(id: string, scope?: "project" | "global"): Promise<ExtensionProposalView>;
   rejectExtension(id: string): Promise<ExtensionProposalView>;
@@ -1639,6 +1668,8 @@ export interface UnskilledApi {
   listApps(projectId: string | null): Promise<AppInfo[]>;
   /** One app by frame key (an installed app or a Creator thread's draft), or null when there is none. */
   appInfo(key: string): Promise<AppInfo | null>;
+  setAppEnabled(key: string, enabled: boolean): Promise<void>;
+  prepareAppEdit(key: string, threadId: string): Promise<{ app: AppInfo; prompt: string }>;
   /** A bridge call from an app's frame; `approval` resends a call the user said yes to. */
   callApp(key: string, projectId: string | null, server: string, tool: string, args: Record<string, unknown>, approval?: { token: string; remember?: boolean }): Promise<AppCallResult>;
   appStoreGet(key: string, name: string): Promise<unknown>;

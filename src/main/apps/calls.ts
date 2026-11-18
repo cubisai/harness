@@ -24,7 +24,7 @@ export type ToolCaller = (
 ) => Promise<{ text: string; isError: boolean; data?: unknown }>;
 
 export interface AppCallsDeps {
-  registry: Pick<AppRegistry, "manifest">;
+  registry: Pick<AppRegistry, "manifest"> & Partial<Pick<AppRegistry, "isEnabled">>;
   call: ToolCaller;
   /** `<userData>/app-data`: each app's store and its "always allow" list. */
   dataDir: string;
@@ -38,6 +38,7 @@ const NEEDS_APPROVAL = "\u0000needs-approval";
 export class AppCalls {
   private tokens = new Map<string, { key: string; server: string; tool: string; argsHash: string; exp: number }>();
   private cache = new Map<string, { at: number; result: unknown }>();
+  private revisions = new Map<string, number>();
   private now: () => number;
 
   constructor(private deps: AppCallsDeps) {
@@ -49,9 +50,12 @@ export class AppCalls {
    * yes (`remember`: for this app from now on).
    */
   async call(key: string, contextProjectId: string | null, server: string, tool: string, args: Record<string, unknown>, approval?: { token: string; remember?: boolean }): Promise<AppCallResult> {
+    if (this.deps.registry.isEnabled?.(key) === false) return { ok: false, error: "This app is disabled. Enable it in Library → Apps." };
     const manifest = this.deps.registry.manifest(key);
     const k = decodeAppKey(key);
     if (!manifest || !k) return { ok: false, error: "This app is not installed." };
+    const revision = this.revisions.get(key) ?? 0;
+    const changed = () => (this.revisions.get(key) ?? 0) !== revision;
     if (!granted(manifest, server, tool)) return { ok: false, error: `"${server}.${tool}" is not in this app's grants (app.json).` };
     // A draft's connectors are its thread's, whatever window relays the call.
     const projectId = k.scope === "project" ? k.projectId : k.scope === "draft" ? (this.deps.draftProject?.(k.threadId) ?? undefined) : (contextProjectId ?? undefined);
@@ -64,6 +68,8 @@ export class AppCalls {
 
     let wasReadOnly = false;
     const before = async (found: McpToolInfo): Promise<string | null> => {
+      if (changed()) return "This app changed; retry the call.";
+      if (this.deps.registry.isEnabled?.(key) === false) return "This app is disabled.";
       if (found.readOnly) {
         wasReadOnly = true;
         return null;
@@ -80,6 +86,8 @@ export class AppCalls {
       return NEEDS_APPROVAL;
     };
     const r = await this.deps.call(projectId, server, tool, args, before);
+    if (changed()) return { ok: false, error: "This app changed; retry the call." };
+    if (this.deps.registry.isEnabled?.(key) === false) return { ok: false, error: "This app is disabled." };
     if (r.isError && r.text === NEEDS_APPROVAL) {
       this.sweepTokens();
       const token = randomBytes(16).toString("hex");
@@ -121,6 +129,13 @@ export class AppCalls {
   /** Forget an app's data and approvals (uninstall). */
   forget(key: string): void {
     for (const kind of ["store", "allow"] as const) this.writeJson(key, kind, "{}");
+    this.invalidate(key);
+  }
+
+  /** Disable/update drops transient permissions and results, but retains saved app data and remembered grants. */
+  invalidate(key: string): void {
+    this.revisions.set(key, (this.revisions.get(key) ?? 0) + 1);
+    for (const [token, value] of this.tokens) if (value.key === key) this.tokens.delete(token);
     for (const k of [...this.cache.keys()]) if (k.startsWith(`${key}\u0000`)) this.cache.delete(k);
   }
 

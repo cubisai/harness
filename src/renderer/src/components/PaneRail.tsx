@@ -9,7 +9,7 @@ import { useStore } from "../store";
 const WORKSPACE_MODES: { id: WorkspaceMode; label: string; desc: string }[] = [
   { id: "chat", label: "Chat", desc: "Code and conversation" },
   { id: "design", label: "Design", desc: "Pages and components on a canvas" },
-  { id: "creator", label: "Creator", desc: "Add skills and MCP connectors" },
+  { id: "creator", label: "Creator", desc: "Build apps, skills and connectors" },
 ];
 
 /** Workspace mode menu where the three-part switch doesn't fit (the rail, a narrow sidebar). */

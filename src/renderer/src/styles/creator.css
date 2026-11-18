@@ -1,0 +1,9 @@
+.creator-token-list li { flex-wrap: wrap; }
+.proposal-kind-theme :is(.proposal-status, .proposal-error),
+.proposal-kind-automation :is(.proposal-status, .proposal-error) { color: var(--text); }
+.creator-token-list code { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+.creator-theme-preview { min-width: 0; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.creator-theme-preview .segmented { align-self: flex-start; }
+.creator-theme-preview .sp-specimen { flex: none; aspect-ratio: 8 / 5; min-height: 0; }
+.creator-automation-prompt { min-width: 0; max-height: 220px; overflow: auto; padding: 8px; border: 1px solid var(--hairline); border-radius: var(--radius-m); background: var(--bg-subtle); }
+.creator-automation-prompt pre { margin: 0; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.5 var(--mono); color: var(--text); }

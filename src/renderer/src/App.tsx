@@ -452,21 +452,24 @@ export function App() {
   );
 }
 
-/** Empty state for Creator mode: three starter prompts that insert into the Composer without sending. */
+/** Creator starter prompts insert into the Composer without sending. */
 function CreatorEmptyState() {
   const { setComposerDraft } = useStore.getState();
   return (
     <>
       <h1>Extend CubiQ</h1>
-      <p>Create reusable skills and add MCP connectors for this project or all projects.</p>
+      <p>Build apps, reusable skills and MCP connectors for CubiQ.</p>
       <div className="empty-actions" style={{ marginTop: 16 }}>
+        <button type="button" className="button ghost" onClick={() => setComposerDraft("Build an app that ")}>
+          Build an app
+        </button>
         <button type="button" className="button ghost" onClick={() => setComposerDraft("Create a skill that ")}>
           Create a skill
         </button>
         <button type="button" className="button ghost" onClick={() => setComposerDraft("Add an MCP connector for ")}>
           Add a connector
         </button>
-        <button type="button" className="button ghost" onClick={() => setComposerDraft("What skills and connectors are installed, and what can I add?")}>
+        <button type="button" className="button ghost" onClick={() => setComposerDraft("What apps, skills and connectors are installed, and what can I add?")}>
           What can I add?
         </button>
       </div>
@@ -543,4 +546,3 @@ function Notice() {
     </div>
   ) : null;
 }
-

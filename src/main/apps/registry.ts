@@ -2,8 +2,8 @@
 // data folder; project apps in the project's `.cubiq/apps`. Nothing is ever read from or written to another agent's
 // config. app.json is re-read only when its mtime changes.
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { AppInfo } from "../../shared/types";
 import { APP_MANIFEST, APP_MAX_FILE_BYTES, APP_MAX_FILES, type AppManifest, parseAppManifest } from "./manifest";
 import { appUrl } from "./serve";
@@ -32,6 +32,8 @@ export function decodeAppKey(key: string): AppKey | null {
 export interface AppRegistryDeps {
   /** `<userData>/apps`. */
   globalDir: string;
+  /** Enable state lives outside app files so it doesn't change their install hashes. */
+  stateFile?: string;
   /** A real project's folder (not the Chats root), or null. */
   projectPath(projectId: string): string | null;
   /** A Creator thread's drafts folder (`<thread folder>/.cubiq/app-drafts`), or null when it isn't a Creator thread. */
@@ -40,11 +42,51 @@ export interface AppRegistryDeps {
 
 export const projectAppsDir = (projectPath: string): string => join(projectPath, ".cubiq", "apps");
 export const appDraftsDir = (threadFolder: string): string => join(threadFolder, ".cubiq", "app-drafts");
+/** Edit sessions must not overwrite another Creator thread's draft of the same installed app. */
+export const appEditDraftsDir = (threadFolder: string, threadId: string): string => join(appDraftsDir(threadFolder), ".edits", threadId);
 
 export class AppRegistry {
   private cache = new Map<string, { mtime: number; manifest: AppManifest | null; error: string | null }>();
+  private disabled = new Set<string>();
 
-  constructor(private deps: AppRegistryDeps) {}
+  constructor(private deps: AppRegistryDeps) {
+    if (deps.stateFile) {
+      try {
+        const keys: unknown = JSON.parse(readFileSync(deps.stateFile, "utf-8"));
+        if (Array.isArray(keys)) for (const key of keys) if (typeof key === "string" && decodeAppKey(key)?.scope !== "draft" && decodeAppKey(key)) this.disabled.add(key);
+      } catch {
+        // A new profile has no enable state yet.
+      }
+    }
+  }
+
+  isEnabled(key: string): boolean {
+    return !this.disabled.has(key);
+  }
+
+  setEnabled(key: string, enabled: boolean): void {
+    const k = decodeAppKey(key);
+    if (!k || k.scope === "draft") throw new Error("Only installed apps can be enabled or disabled.");
+    const dir = this.dirOf(k);
+    if (!dir || !existsSync(dir)) throw new Error("App not found.");
+    this.writeEnabled(key, enabled);
+  }
+
+  resetEnabled(key: string): void {
+    if (this.disabled.has(key)) this.writeEnabled(key, true);
+  }
+
+  private writeEnabled(key: string, enabled: boolean): void {
+    const next = new Set(this.disabled);
+    if (enabled) next.delete(key); else next.add(key);
+    if (this.deps.stateFile) {
+      mkdirSync(dirname(this.deps.stateFile), { recursive: true });
+      const tmp = `${this.deps.stateFile}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify([...next].sort()), { mode: 0o600 });
+      renameSync(tmp, this.deps.stateFile);
+    }
+    this.disabled = next;
+  }
 
   dirOf(k: AppKey): string | null {
     if (k.scope === "global") return join(this.deps.globalDir, k.name);
@@ -71,12 +113,14 @@ export class AppRegistry {
 
   /** The folder a frame key serves, only for an app whose app.json is valid. */
   root(key: string): string | null {
+    if (!this.isEnabled(key)) return null;
     const k = decodeAppKey(key);
     const dir = k ? this.dirOf(k) : null;
     return dir && this.read(dir, k!.scope !== "draft").manifest ? dir : null;
   }
 
   manifest(key: string): AppManifest | null {
+    if (!this.isEnabled(key)) return null;
     const k = decodeAppKey(key);
     const dir = k ? this.dirOf(k) : null;
     return dir ? this.read(dir, k!.scope !== "draft").manifest : null;
@@ -118,6 +162,7 @@ export class AppRegistry {
       description: manifest?.description ?? "",
       ...(manifest?.icon ? { icon: manifest.icon } : {}),
       grants: manifest?.grants ?? [],
+      ...(this.isEnabled(encodeAppKey(k)) ? {} : { enabled: false }),
       path: dir,
       url: appUrl(encodeAppKey(k), manifest?.entry ?? "index.html"),
       ...(error ? { error } : {}),

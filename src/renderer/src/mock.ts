@@ -23,10 +23,11 @@ export function installMock(): void {
   const mockProposals = new Map<string, ExtensionProposalView>();
   // The dashboard template as an installed app; vite.preview.config.ts serves it under /__app/ with the bridge.
   const mockApps: AppInfo[] = [
-    { key: "p~p1~sales-dashboard", name: "sales-dashboard", scope: "project", projectId: "p1", title: "Sales", description: "Revenue, orders and top products for a chosen period.", icon: "chart-bar", grants: [{ server: "shop", tools: ["sales_summary"] }], path: "/Users/you/acme-web/.cubiq/apps/sales-dashboard", url: "/__app/dashboard/index.html" },
+    { key: "g~sales-dashboard", name: "sales-dashboard", scope: "global", title: "Sales", description: "Revenue, orders and top products for a chosen period.", icon: "chart-bar", grants: [{ server: "shop", tools: ["sales_summary"] }], path: "/Users/you/Library/Application Support/CubiQ/apps/sales-dashboard", url: "/__app/dashboard/index.html" },
   ];
   const mockAppStore = new Map<string, unknown>();
   const mockInstalls = new Map<string, ExtensionInstallView>();
+  if (scene === "creator" || scene === "app") mockInstalls.set("installed-sales", { id: "installed-sales", proposalId: "demo-sales", scope: { kind: "global" }, kind: "app", name: "sales-dashboard", targetPath: mockApps[0]!.path, installedAt: now });
   let settings: SettingsView = {
     theme: "system",
     defaultAgent: null,
@@ -662,10 +663,11 @@ export function installMock(): void {
       return mcp;
     },
     getExtensionProposal: async (id) => mockProposals.get(id) ?? null,
+    getExtensionThemePreview: async () => { throw new Error("Page theme previews require the desktop app."); },
     installExtension: async (id, pick) => {
       const p = mockProposals.get(id);
       if (!p) throw new Error("Extension proposal not found.");
-      const scope: ExtensionProposalView["scope"] = pick === "global" ? { kind: "global" } : pick === "project" && p.projectChoice ? { kind: "project", projectId: p.projectChoice.id } : p.scope;
+      const scope: ExtensionProposalView["scope"] = p.draft.kind === "app" || pick === "global" ? { kind: "global" } : pick === "project" && p.projectChoice ? { kind: "project", projectId: p.projectChoice.id } : p.scope;
       const updated: ExtensionProposalView = { ...p, scope, status: "installed", installId: `inst-${id}`, updatedAt: Date.now(), error: undefined, retryable: false };
       mockProposals.set(id, updated);
       mockInstalls.set(updated.installId!, {
@@ -689,6 +691,17 @@ export function installMock(): void {
     listExtensionInstalls: async () => [...mockInstalls.values()],
     listApps: async () => (scene === "creator" || scene === "app" ? mockApps : []),
     appInfo: async (key) => mockApps.find((a) => a.key === key) ?? (key.startsWith("d~") ? { ...mockApps[0]!, key, scope: "draft" as const } : null),
+    setAppEnabled: async (key, enabled) => {
+      const i = mockApps.findIndex((a) => a.key === key);
+      if (i < 0) throw new Error("App not found.");
+      mockApps[i] = { ...mockApps[i]!, enabled };
+      emit({ type: "apps-changed" });
+    },
+    prepareAppEdit: async (key, threadId) => {
+      const app = mockApps.find((a) => a.key === key);
+      if (!app) throw new Error("App not found.");
+      return { app: { ...app, key: `d~${threadId}~${app.name}`, scope: "draft", enabled: true }, prompt: `Help me edit ${app.title}. Preview and check the draft, then propose a reviewed Update.\n\nRequested changes: ` };
+    },
     callApp: async (_key, _projectId, server, tool, args) => {
       if (server !== "shop" || tool !== "sales_summary") return { ok: false, error: `"${server}.${tool}" is not in this app's grants (app.json).` };
       const days = Math.min(90, Math.max(1, Number(args.days) || 7));
@@ -717,7 +730,13 @@ export function installMock(): void {
     appStoreGet: async (key, name) => mockAppStore.get(`${key}:${name}`) ?? null,
     appStoreSet: async (key, name, value) => (mockAppStore.set(`${key}:${name}`, value), { ok: true, result: null }),
     uninstallExtension: async (installId) => {
+      const inst = mockInstalls.get(installId);
       mockInstalls.delete(installId);
+      if (inst?.kind === "app") {
+        const i = mockApps.findIndex((a) => a.name === inst.name);
+        if (i >= 0) mockApps.splice(i, 1);
+        emit({ type: "apps-changed" });
+      }
     },
     setMcpServerEnabled: async (name, enabled, projectId) => {
       const set = (x: McpOverview["servers"][number]) => (x.name === name ? { ...x, enabled } : x);

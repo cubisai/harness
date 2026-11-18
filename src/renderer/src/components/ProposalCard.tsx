@@ -1,9 +1,11 @@
 import { type Ref, useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, ChevronRight, LayoutGrid, Plug, Puzzle } from "lucide-react";
+import { AlertTriangle, CalendarClock, ChevronRight, LayoutGrid, Palette, Plug, Puzzle } from "lucide-react";
 import type { ExtensionProposalView } from "../../../shared/types";
 import { api } from "../api";
 import { Markdown } from "../markdown";
 import { useStore } from "../store";
+import "../styles/creator.css";
+import { StyleSpecimen } from "./StyleSpecimen";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -24,6 +26,8 @@ export function ProposalCard({ proposalId, threadId }: { proposalId: string; thr
   const [busy, setBusy] = useState<"install" | "reject" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [previewBusy, setPreviewBusy] = useState(false);
   // Where Install puts it: the user's pick, starting from the scope the agent proposed.
   const [pick, setPick] = useState<"project" | "global" | null>(null);
   const inFlightRef = useRef(false);
@@ -47,6 +51,9 @@ export function ProposalCard({ proposalId, threadId }: { proposalId: string; thr
     setProposal(undefined);
     setActionError(null);
     setPick(null);
+    setPreviewOpen(false);
+    setPreviewBusy(false);
+    setConfirmRemove(false);
     seenNoticesRef.current = null;
     void api()
       .getExtensionProposal(proposalId)
@@ -60,6 +67,12 @@ export function ProposalCard({ proposalId, threadId }: { proposalId: string; thr
       cancelled = true;
     };
   }, [proposalId]);
+
+  useEffect(() => {
+    if (!confirmRemove) return;
+    const timer = setTimeout(() => setConfirmRemove(false), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmRemove]);
 
   useEffect(() => {
     if (seenNoticesRef.current === null) {
@@ -162,12 +175,34 @@ export function ProposalCard({ proposalId, threadId }: { proposalId: string; thr
       busy={busy}
       actionError={actionError}
       previewOpen={previewOpen}
-      onTogglePreview={() => setPreviewOpen((v) => !v)}
+      onTogglePreview={() => {
+        if (draft.kind !== "theme" || previewOpen) { setPreviewOpen((v) => !v); return; }
+        if (previewBusy) return;
+        setPreviewBusy(true);
+        setActionError(null);
+        void api().getExtensionThemePreview(proposal.id).then(() => setPreviewOpen(true)).catch((err) => setActionError(err instanceof Error ? err.message : String(err))).finally(() => setPreviewBusy(false));
+      }}
+      previewBusy={previewBusy}
       onInstall={handleInstall}
       onReject={handleReject}
       scopePick={pick ?? proposal.scope.kind}
       onScopePick={setPick}
       {...appProps}
+      onUninstall={proposal.installId && (draft.kind === "theme" || draft.kind === "automation") ? async () => {
+        if (!confirmRemove) { setConfirmRemove(true); return; }
+        if (inFlightRef.current) return;
+        inFlightRef.current = true;
+        setActionError(null);
+        setBusy("install");
+        try {
+          await api().uninstallExtension(proposal.installId!);
+          setConfirmRemove(false);
+          await load();
+        } catch (err) { setActionError(err instanceof Error ? err.message : String(err)); }
+        finally { inFlightRef.current = false; setBusy(null); }
+      } : undefined}
+      confirmRemove={confirmRemove}
+      onCancelUninstall={() => setConfirmRemove(false)}
     />
   );
 }
@@ -187,29 +222,35 @@ export interface ProposalCardViewProps {
   onPreview?(): void;
   /** Opens the installed app in the App tab. */
   onOpenApp?(): void;
+  onUninstall?(): void;
+  confirmRemove?: boolean;
+  previewBusy?: boolean;
+  onCancelUninstall?(): void;
   ref?: Ref<HTMLDivElement>;
 }
 
 /** The card itself, stateless: every status renders from props (tests render it directly). */
-export function ProposalCardView({ proposal, busy, actionError, previewOpen, onTogglePreview, onInstall, onReject, scopePick, onScopePick, onPreview, onOpenApp, ref }: ProposalCardViewProps) {
+export function ProposalCardView({ proposal, busy, actionError, previewOpen, onTogglePreview, onInstall, onReject, scopePick, onScopePick, onPreview, onOpenApp, onUninstall, confirmRemove, previewBusy, onCancelUninstall, ref }: ProposalCardViewProps) {
   const { draft, scope, status } = proposal;
   const scopeLabel = scope.kind === "project" ? `Project${proposal.projectName ? `: ${proposal.projectName}` : ""}` : "Global";
   const waiting = status === "staged" || (status === "failed" && proposal.retryable !== false);
   // The picker replaces the head's scope chip while the user can still choose; Chats threads have only Global.
-  const choice = waiting && onScopePick ? proposal.projectChoice : null;
+  const choice = waiting && onScopePick && (draft.kind === "skill" || draft.kind === "connector") ? proposal.projectChoice : null;
   const picked = scopePick ?? scope.kind;
-  const KindIcon = draft.kind === "skill" ? Puzzle : draft.kind === "app" ? LayoutGrid : Plug;
-  const kindLabel = draft.kind === "skill" ? "Skill" : draft.kind === "app" ? "App" : "Connector";
-  const libraryTarget = draft.kind === "skill" ? "skills" : "connectors";
+  const KindIcon = draft.kind === "skill" ? Puzzle : draft.kind === "app" ? LayoutGrid : draft.kind === "theme" ? Palette : draft.kind === "automation" ? CalendarClock : Plug;
+  const kindLabel = draft.kind === "skill" ? "Skill" : draft.kind === "app" ? "App" : draft.kind === "theme" ? "Page theme" : draft.kind === "automation" ? "Automation" : "Connector";
+  const libraryTarget = draft.kind === "skill" ? "skills" : draft.kind === "automation" ? "automations" : "connectors";
   const errorText = actionError ?? (status === "failed" ? (proposal.error ?? "Installation failed.") : null);
 
   return (
-    <div ref={ref} tabIndex={-1} className={`proposal-card status-${status}`} data-proposal-id={proposal.id}>
+    <div ref={ref} tabIndex={-1} className={`proposal-card proposal-kind-${draft.kind} status-${status}`} data-proposal-id={proposal.id} onKeyDown={(e) => {
+      if (e.key === "Escape" && confirmRemove) { e.preventDefault(); e.stopPropagation(); onCancelUninstall?.(); }
+    }}>
       <div className="proposal-head">
         <span className="proposal-icon" aria-hidden>
           <KindIcon size={15} strokeWidth={1.75} />
         </span>
-        <span className="proposal-name">{draft.kind === "app" ? draft.title : draft.name}</span>
+        <span className="proposal-name">{draft.kind === "app" || draft.kind === "theme" ? draft.title : draft.kind === "automation" ? draft.input.name : draft.name}</span>
         <span className="proposal-chip">{kindLabel}</span>
         {!choice && <span className="proposal-chip">{scopeLabel}</span>}
         {status !== "staged" && (
@@ -288,6 +329,23 @@ export function ProposalCardView({ proposal, busy, actionError, previewOpen, onT
               ))}
             </ul>
           </>
+        ) : draft.kind === "theme" ? (
+          <>
+            {draft.description && <p className="proposal-desc">{draft.description}</p>}
+            <p className="proposal-desc">Based on {draft.baseName}. Installing changes no page; choose it in Design → Style.</p>
+            <ul className="proposal-files creator-token-list">
+              {draft.tokens.map((t) => <li key={`${t.scheme}:${t.name}`}><code>{t.name}</code><span>{t.scheme}</span><code>{t.before} → {t.value}</code></li>)}
+            </ul>
+            {waiting && <button type="button" className="button ghost" disabled={previewBusy} aria-expanded={previewOpen} onClick={onTogglePreview}>{previewBusy ? "Preparing preview…" : previewOpen ? "Hide preview" : "Preview page theme"}</button>}
+            {waiting && previewOpen && <ThemeSpecimen url={draft.previewUrl} title={draft.title} />}
+          </>
+        ) : draft.kind === "automation" ? (
+          <>
+            <p className="proposal-desc">{draft.scheduleText} · {draft.input.agent} · {draft.input.model ?? "default model"}</p>
+            <p className="proposal-desc">{draft.input.budgetUsd === null ? "No per-run budget limit" : `$${draft.input.budgetUsd} per run`} · Missed runs: {draft.input.missed === "skip" ? "skip" : "run once to catch up"}</p>
+            <div className="creator-automation-prompt"><pre>{draft.input.prompt}</pre></div>
+            <p className="proposal-desc">Saved Off, with Ask permissions. Enable it or Run now in Library → Automations. Installing starts no run.</p>
+          </>
         ) : (
           <>
             <div className="proposal-target">
@@ -346,10 +404,10 @@ export function ProposalCardView({ proposal, busy, actionError, previewOpen, onT
             </button>
             <button type="button" className="button primary" disabled={busy !== null} onClick={onInstall}>
               {busy === "install"
-                ? draft.kind === "app" && draft.update
+                 ? (draft.kind === "app" || draft.kind === "theme" || draft.kind === "automation") && draft.update
                   ? "Updating…"
                   : "Installing…"
-                : draft.kind === "app" && draft.update
+                : (draft.kind === "app" || draft.kind === "theme" || draft.kind === "automation") && draft.update
                   ? "Update"
                   : "Install"}
             </button>
@@ -361,6 +419,11 @@ export function ProposalCardView({ proposal, busy, actionError, previewOpen, onT
               <button type="button" className="button" onClick={onOpenApp}>
                 Open app
               </button>
+            ) : draft.kind === "theme" ? (
+              <>
+                <span className="proposal-desc">{proposal.installId ? "Available in Design → Style" : "No longer managed by this card"}</span>
+                {onUninstall && <button type="button" className="button ghost danger" disabled={busy !== null} onClick={onUninstall}>{busy ? "Uninstalling…" : confirmRemove ? "Confirm uninstall" : "Uninstall"}</button>}
+              </>
             ) : (
               <button type="button" className="button" onClick={() => useStore.setState({ libraryTab: libraryTarget })}>
                 Open in Library
@@ -385,7 +448,18 @@ export function ProposalCardView({ proposal, busy, actionError, previewOpen, onT
             )}
           </>
         )}
+        {status === "installed" && draft.kind === "automation" && onUninstall && <button type="button" className="button ghost danger" disabled={busy !== null} onClick={onUninstall}>{busy ? "Uninstalling…" : confirmRemove ? "Confirm uninstall" : "Uninstall"}</button>}
       </div>
     </div>
   );
+}
+
+function ThemeSpecimen({ url, title }: { url: string; title: string }) {
+  const [scheme, setScheme] = useState<"light" | "dark">("light");
+  return <div className="creator-theme-preview">
+    <div className="segmented compact" role="group" aria-label="Page theme preview scheme">
+      {(["light", "dark"] as const).map((s) => <button type="button" key={s} className={scheme === s ? "on" : ""} aria-pressed={scheme === s} onClick={() => setScheme(s)}>{s === "light" ? "Light" : "Dark"}</button>)}
+    </div>
+    <StyleSpecimen title={`${title} ${scheme} page theme preview`} url={url.replace(/theme=light/, `theme=${scheme}`)} />
+  </div>;
 }
