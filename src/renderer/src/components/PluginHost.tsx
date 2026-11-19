@@ -52,10 +52,33 @@ const viewSize = () => ({ width: window.innerWidth, height: window.innerHeight }
 /** Below the 46px header; widgets the user hasn't moved sit top right, stacked, clear of the composer at the bottom. */
 const HEADER = 46;
 
-/** Where a widget the user never moved sits: the top-right corner, the i-th one a strip lower. */
-export function defaultPlace(index: number, box: { width: number; height: number }, view: { width: number; height: number }): { x: number; y: number } {
-  return clampPlace({ x: view.width - box.width - EDGE - 4, y: HEADER + EDGE + index * (STRIP + 8) }, box, view);
+type Box = { width: number; height: number };
+const GAP = 12;
+
+/**
+ * Where a widget the user never moved sits: tiled side by side from the top-right corner leftwards, under the header,
+ * starting a new row below when the next one wouldn't fit. Widgets never cover each other until the user moves them.
+ */
+export function defaultPlace(index: number, boxes: Box[], view: Box): { x: number; y: number } {
+  let right = view.width - EDGE - 4;
+  let top = HEADER + EDGE;
+  let rowHeight = 0;
+  for (let i = 0; i <= index && i < boxes.length; i++) {
+    const b = boxes[i]!;
+    // A new row when this one would cross the left edge (the first in a row always stays, however wide).
+    if (rowHeight > 0 && right - b.width < EDGE) {
+      right = view.width - EDGE - 4;
+      top += rowHeight + GAP;
+      rowHeight = 0;
+    }
+    if (i === index) return clampPlace({ x: right - b.width, y: top }, b, view);
+    right -= b.width + GAP;
+    rowHeight = Math.max(rowHeight, b.height);
+  }
+  return clampPlace({ x: view.width - EDGE - 4, y: top }, boxes[index] ?? { width: 0, height: 0 }, view);
 }
+
+const boxOf = (app: AppInfo): Box => ({ width: sizeOf(app).width + 2, height: sizeOf(app).height + STRIP + 2 });
 
 /** The top bar's tray, where a minimised widget docks as a chip (like a macOS menu-bar extra). */
 const useTray = create<{ el: HTMLElement | null }>(() => ({ el: null }));
@@ -146,17 +169,18 @@ export function FloatingPlugins() {
   useEffect(() => {
     if (focus) setOrder((o) => [...o.filter((k) => k !== focus.key), focus.key]);
   }, [focus]);
+  const boxes = useMemo(() => shown.map(boxOf), [shown]);
   if (!shown.length) return null;
   return (
     <div className="floating-layer">
       {shown.map((app, i) => (
-        <FloatingWidget key={app.key} app={app} index={i} z={order.indexOf(app.key) + 1} onFront={() => setOrder((o) => [...o.filter((k) => k !== app.key), app.key])} />
+        <FloatingWidget key={app.key} app={app} index={i} boxes={boxes} z={order.indexOf(app.key) + 1} onFront={() => setOrder((o) => [...o.filter((k) => k !== app.key), app.key])} />
       ))}
     </div>
   );
 }
 
-function FloatingWidget({ app, index, z, onFront }: { app: AppInfo; index: number; z: number; onFront(): void }) {
+function FloatingWidget({ app, index, boxes, z, onFront }: { app: AppInfo; index: number; boxes: Box[]; z: number; onFront(): void }) {
   const closeFloating = useStore((s) => s.closeFloating);
   const focus = useStore((s) => (s.floatingFocus?.key === app.key ? s.floatingFocus.n : 0));
   const size = sizeOf(app);
@@ -167,7 +191,7 @@ function FloatingWidget({ app, index, z, onFront }: { app: AppInfo; index: numbe
     const saved = readPlace(app.key);
     const box = { width: size.width + 2, height: size.height + STRIP + 2 };
     anchored.current = !saved;
-    return saved ? { ...clampPlace(saved, box, viewSize()), collapsed: saved.collapsed } : { ...defaultPlace(index, box, viewSize()), collapsed: false };
+    return saved ? { ...clampPlace(saved, box, viewSize()), collapsed: saved.collapsed } : { ...defaultPlace(index, boxes, viewSize()), collapsed: false };
   });
   const placeRef = useRef(place);
   placeRef.current = place;
@@ -197,14 +221,14 @@ function FloatingWidget({ app, index, z, onFront }: { app: AppInfo; index: numbe
   useEffect(() => {
     const fit = () => {
       const p = placeRef.current;
-      const next = anchored.current ? defaultPlace(index, box(), viewSize()) : clampPlace(p, box(), viewSize());
+      const next = anchored.current ? defaultPlace(index, boxes, viewSize()) : clampPlace(p, box(), viewSize());
       if (next.x !== p.x || next.y !== p.y) setPlace({ ...p, ...next });
     };
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [place.collapsed]);
+  }, [place.collapsed, index, boxes]);
 
   const onPointerDown = (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0 || (e.target as HTMLElement).closest(".floating-action")) return;

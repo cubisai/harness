@@ -175,8 +175,13 @@ describe("floating widget placement", () => {
     const box = { width: 262, height: 182 };
     const view = { width: 900, height: 700 };
     expect(clampPlace({ x: 2000, y: -50 }, box, view)).toEqual({ x: 900 - 262 - 12, y: 12 });
-    expect(defaultPlace(0, box, view)).toEqual({ x: 900 - 262 - 16, y: 58 });
-    expect(defaultPlace(1, box, view).y).toBe(58 + 38);
+    expect(defaultPlace(0, [box], view)).toEqual({ x: 900 - 262 - 16, y: 58 });
+    // Side by side, no overlap: the second sits left of the first with a gap.
+    const two = [box, { width: 182, height: 122 }];
+    expect(defaultPlace(1, two, view)).toEqual({ x: 900 - 16 - 262 - 12 - 182, y: 58 });
+    // No room left in the row: a new row under the tallest of the first.
+    const narrow = { width: 400, height: 700 };
+    expect(defaultPlace(1, two, narrow)).toEqual({ x: 400 - 16 - 182, y: 58 + 182 + 12 });
     expect(clampPlace({ x: 100, y: 100 }, { width: 2000, height: 2000 }, view)).toEqual({ x: 12, y: 12 });
   });
 });

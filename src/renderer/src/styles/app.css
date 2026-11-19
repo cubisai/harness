@@ -2872,8 +2872,8 @@ button.qc-option.other { cursor: pointer; }
 .plugin-star.on svg { fill: currentColor; }
 .plugin-more { position: relative; display: inline-flex; }
 .plugin-more .thread-menu { top: calc(100% + 2px); right: 0; }
-.toggle { position: relative; flex: none; width: 28px; height: 16px; padding: 0; border: 1px solid var(--hairline-strong); border-radius: 999px; background: var(--bg-chip); cursor: pointer; transition: background 120ms var(--ease), border-color 120ms var(--ease); }
-.toggle-thumb { position: absolute; top: 1px; left: 1px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-tertiary); transition: transform 120ms var(--ease), background 120ms var(--ease); }
+.toggle { position: relative; flex: none; width: 28px; height: 16px; padding: 0; border: 1px solid var(--text-tertiary); border-radius: 999px; background: var(--bg-chip); cursor: pointer; transition: background 120ms var(--ease), border-color 120ms var(--ease); }
+.toggle-thumb { position: absolute; top: 1px; left: 1px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-secondary); transition: transform 120ms var(--ease), background 120ms var(--ease); }
 .toggle.on { background: var(--primary); border-color: var(--primary); }
 .toggle.on .toggle-thumb { transform: translateX(12px); background: var(--on-primary); }
 .toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
