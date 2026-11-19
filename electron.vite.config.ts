@@ -1,8 +1,9 @@
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
+import { releasedEntries } from "./scripts/release.mjs";
 
 // Dev runs the branded clone scripts/brand-dev-electron.mjs makes: macOS names the Dock after the bundle's file name.
 if (process.platform === "darwin" && !process.env.ELECTRON_EXEC_PATH) {
@@ -12,13 +13,14 @@ if (process.platform === "darwin" && !process.env.ELECTRON_EXEC_PATH) {
 
 /**
  * The git build stamp baked into the main bundle: the short commit, its date,
- * and the last 20 merged-away commits. Anything a git command can't answer
+ * the last 20 merged-away commits, and the last 10 releases from CHANGELOG.md. Anything a git command can't answer
  * (no checkout, no git) comes back null/[], so the build never fails on it.
  */
 function buildStamp(): {
   commit: string | null;
   date: string | null;
   changelog: { hash: string; date: string; subject: string }[];
+  releases: ReturnType<typeof releasedEntries>;
 } {
   const git = (args: string): string | null => {
     try {
@@ -35,7 +37,9 @@ function buildStamp(): {
     const [hash, when, ...rest] = line.split("\t");
     if (hash && when) changelog.push({ hash, date: when, subject: rest.join("\t") });
   }
-  return { commit, date, changelog };
+  // The release notes from CHANGELOG.md: what the About sheet leads with.
+  const releases = existsSync("CHANGELOG.md") ? releasedEntries(readFileSync("CHANGELOG.md", "utf8"), 10) : [];
+  return { commit, date, changelog, releases };
 }
 
 export default defineConfig({

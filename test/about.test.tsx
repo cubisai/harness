@@ -19,6 +19,7 @@ const fakeAbout: AboutInfo = {
     { hash: "abc1234", date: "2026-09-27", subject: "Add the About sheet with a git build stamp" },
     { hash: "def5678", date: "2026-09-26", subject: "Keep the composer focused after a permission prompt" },
   ],
+  releases: [],
 };
 
 describe("store apply open-about", () => {
@@ -63,6 +64,17 @@ describe("AboutSheet", () => {
     expect(html).toContain("Add the About sheet with a git build stamp");
     expect(html).toContain("Electron 44.4.5");
     expect(html).toContain("Copy info");
+  });
+
+  it("leads with CHANGELOG releases when the build has them, instead of commits", async () => {
+    const html = await render({
+      ...fakeAbout,
+      releases: [{ version: "0.1.2", date: "2026-11-19", groups: [{ title: "Fixed", items: ["Updates install on unsigned Macs"] }] }],
+    });
+    expect(html).toContain("about-release-version\">0.1.2");
+    expect(html).toContain("Installed");
+    expect(html).toContain("Updates install on unsigned Macs");
+    expect(html).not.toContain("Add the About sheet with a git build stamp");
   });
 
   it("shows Development build when the commit is null", async () => {

@@ -66,7 +66,19 @@ Agent features—including vision, MCP transport, sandboxing, and permission enf
 
 ## Download
 
-Get the available installers from [GitHub Releases](https://github.com/cubisai/harness/releases).
+Install the latest release with one line:
+
+```bash
+# macOS (Apple Silicon) and Linux; also works from Git Bash on Windows
+curl -fsSL https://raw.githubusercontent.com/cubisai/harness/main/scripts/install/install.sh | bash
+```
+
+```powershell
+# Windows PowerShell
+irm https://raw.githubusercontent.com/cubisai/harness/main/scripts/install/install.ps1 | iex
+```
+
+Set `VERSION=0.1.3` to pin a release. Or get the installers from [GitHub Releases](https://github.com/cubisai/harness/releases).
 
 | Platform | Release architecture | Installer |
 | :--- | :--- | :--- |
@@ -74,7 +86,7 @@ Get the available installers from [GitHub Releases](https://github.com/cubisai/h
 | Windows | x64 | `CubiQ-Setup-<version>.exe` |
 | Linux | x64 | `.AppImage` |
 
-If an installer is not available, [build from source](#build-from-source). Automatic updates are supported by packaged releases; macOS updates require a signed build.
+If an installer is not available, [build from source](#build-from-source). Installed releases update themselves (Settings → Updates); macOS builds without a Developer ID swap in the new version when you restart.
 
 <details>
 <summary>Opening an unsigned build</summary>
@@ -156,9 +168,11 @@ Use [GitHub Issues](https://github.com/cubisai/harness/issues) for bugs and feat
 <details>
 <summary>Maintainer release and signing instructions</summary>
 
-1. Bump `version` in `package.json` on `main`.
-2. Push a matching `cubiq-v<version>` tag, or run **Actions → release-cubiq → Run workflow** with **publish** enabled.
-3. The workflow builds macOS ARM64, Windows x64, and Linux x64 installers and publishes the updater’s `latest*.yml` files. An existing release or a mismatched version tag is rejected.
+1. Add what changed under `## [Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md). After the first release, the script can draft this section from the commits since the last tag and open your editor on it.
+2. On a clean `main`, run `bun run release` (patch), or `bun run release minor|major|<x.y.z>`. For the very first release of the version already in `package.json`, run `bun run release current`. The script bumps `package.json`, moves the notes into a dated section, commits `Release CubiQ <version>` and creates the tag `cubiq-v<version>`. Add `--dry-run` to preview the release, or `--push` to push the branch and tag (it asks first).
+3. The pushed tag runs the workflow. It builds macOS ARM64, Windows x64 and Linux x64 installers, publishes the updater’s `latest*.yml` files, and uses that version’s `CHANGELOG.md` section as the release notes. The app shows the same notes in **About CubiQ** and on the update card. An existing release or a mismatched version tag is rejected.
+
+You can also run **Actions → release-cubiq → Run workflow** with **publish** ticked.
 
 Without **publish**, installers remain workflow artifacts for seven days. Do not mark unrelated releases as “latest”—the app’s updater uses that release.
 
@@ -174,7 +188,7 @@ Signing is enabled separately for each platform when these repository secrets ar
 | `WIN_CSC_LINK` | Base64 `.pfx` code-signing certificate |
 | `WIN_CSC_KEY_PASSWORD` | Password for the Windows certificate |
 
-Unsigned macOS builds use ad-hoc signing; Windows builds show a SmartScreen warning. macOS auto-update requires a signed build. Packaging configuration lives in [`electron-builder.yml`](electron-builder.yml), and the publishing workflow in [`.github/workflows/release-cubiq.yml`](.github/workflows/release-cubiq.yml).
+Unsigned macOS builds use ad-hoc signing and update by swapping the app bundle after a sha512 and signature check. Signed builds use the standard updater. Unsigned Windows builds show a SmartScreen warning. Packaging configuration lives in [`electron-builder.yml`](electron-builder.yml), and the publishing workflow in [`.github/workflows/release-cubiq.yml`](.github/workflows/release-cubiq.yml).
 
 </details>
 

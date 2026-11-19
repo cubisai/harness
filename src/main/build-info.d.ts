@@ -7,4 +7,5 @@ declare const __CUBIQ_BUILD__: {
   commit: string | null;
   date: string | null;
   changelog: { hash: string; date: string; subject: string }[];
+  releases: import("../shared/types").AboutRelease[];
 };

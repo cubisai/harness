@@ -478,7 +478,12 @@ export function Sidebar() {
         <div className="update-ready">
           <span>
             <strong>Update ready</strong>
-            <span className="version">Version {readyVersion}</span>
+            <span className="version">
+              Version {readyVersion} ·{" "}
+              <button className="link-button" onClick={() => useStore.getState().setAboutOpen(true)}>
+                What's new
+              </button>
+            </span>
           </span>
           <button className="button primary" onClick={() => void api().installUpdate()}>
             Restart

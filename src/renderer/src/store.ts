@@ -997,7 +997,7 @@ export const useStore = create<State>((set, get) => ({
       const threads: Record<string, Thread[]> = {};
       for (const p of projects) threads[p.id] = allThreads[p.id] ?? [];
       const limits = Object.fromEntries(limitList.map((l) => [l.agent, l]));
-      set((s) => ({ projects, skills, agents, threads, settings, paneLayout: sanitizeLayout(settings.paneLayout), appUpdate, limits: { ...limits, ...s.limits } }));
+      set((s) => ({ projects, skills, agents, threads, settings, paneLayout: sanitizeLayout(settings.paneLayout), appUpdate, aboutOpen: s.aboutOpen || Boolean(appUpdate?.updatedFrom), limits: { ...limits, ...s.limits } }));
       // A window that loads mid-turn picks up what's live: running threads and the cards waiting on the user.
       const now = Date.now();
       set((s) => ({

@@ -2352,6 +2352,7 @@ button.qc-option.other { cursor: pointer; }
 .update-ready > span { display: flex; flex-direction: column; min-width: 0; }
 .update-ready strong { font-weight: 600; }
 .update-ready .version { color: var(--text-secondary); font-size: 11px; }
+.update-ready .link-button { min-height: 0; font-size: inherit; }
 .sidebar-foot .button.block { flex: 1; }
 
 .limit-meter {

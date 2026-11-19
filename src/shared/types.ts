@@ -447,8 +447,12 @@ export interface AppUpdateStatus {
   current: string;
   /** A downloaded version waiting for a restart. */
   ready: string | null;
+  /** The ready version's release notes as plain text lines ("- " bullets), when the release has any. */
+  notes: string | null;
   /** False in dev builds and packages that can't update themselves. */
   supported: boolean;
+  /** Only in the first status after an update: the version that ran before. */
+  updatedFrom?: string | null;
 }
 
 /** Settings as the renderer sees them: API keys only as set / not set. */
@@ -1837,6 +1841,15 @@ export interface AboutInfo {
   node: string;
   os: string;
   changelog: { hash: string; date: string; subject: string }[];
+  /** Release notes from CHANGELOG.md, newest first; empty in a build without it. */
+  releases: AboutRelease[];
+}
+
+/** One CHANGELOG.md release: its version, date and grouped bullets. */
+export interface AboutRelease {
+  version: string;
+  date: string | null;
+  groups: { title: string; items: string[] }[];
 }
 
 /** What the harness itself adds to a fresh session's context, estimated at ~4 chars per token. */

@@ -786,7 +786,12 @@ export function installMock(): void {
       (window as unknown as { __opened?: unknown[] }).__opened = [...((window as unknown as { __opened?: unknown[] }).__opened ?? []), { ...target, editor }];
       return target.path.includes("missing") ? { ok: false, error: `${target.path} doesn't exist.` } : { ok: true, editor: editor ?? "cursor" };
     },
-    updateStatus: async () => ({ current: "0.1.0", ready: scene === "update" ? "0.2.0" : null, supported: true }),
+    updateStatus: async () => ({
+      current: "0.1.0",
+      ready: scene === "update" ? "0.2.0" : null,
+      notes: scene === "update" ? "Added\n- Release notes in About and the update card\nFixed\n- macOS builds without a Developer ID update themselves" : null,
+      supported: true,
+    }),
     aboutInfo: async () => ({
       name: "CubiQ",
       version: "0.1.2",
@@ -800,6 +805,16 @@ export function installMock(): void {
         { hash: "abc1234", date: "2026-09-27", subject: "Add the About sheet with a git build stamp" },
         { hash: "def5678", date: "2026-09-26", subject: "Keep the composer focused after a permission prompt" },
         { hash: "9a0b1c2", date: "2026-09-25", subject: "Show rate limits in the Message Center" },
+      ],
+      releases: [
+        {
+          version: "0.1.2",
+          date: "2026-11-19",
+          groups: [
+            { title: "Added", items: ["One-line installers for macOS, Linux and Windows", "Release notes in About and the update card"] },
+            { title: "Fixed", items: ["macOS builds without a Developer ID update themselves"] },
+          ],
+        },
       ],
     }),
     uiImage: async () => null,

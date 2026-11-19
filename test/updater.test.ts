@@ -38,7 +38,7 @@ describe("Updater", () => {
     const u = new Updater(null, "0.1.0", () => true, () => {});
     u.start();
     u.install();
-    expect(u.status()).toEqual({ current: "0.1.0", ready: null, supported: false });
+    expect(u.status()).toEqual({ current: "0.1.0", ready: null, notes: null, supported: false });
   });
 
   it("checks when enabled, reports a downloaded update, and installs it on request", async () => {
@@ -50,8 +50,8 @@ describe("Updater", () => {
     expect(backend.installs).toBe(0);
     await u.check();
     expect(backend.checks).toBe(1);
-    backend.emit("update-downloaded", { version: "0.2.0" });
-    expect(seen).toEqual([{ current: "0.1.0", ready: "0.2.0", supported: true }]);
+    backend.emit("update-downloaded", { version: "0.2.0", releaseNotes: "<h3>Fixed</h3><ul><li>Faster &amp; safer</li></ul>" });
+    expect(seen).toEqual([{ current: "0.1.0", ready: "0.2.0", notes: "Fixed\n- Faster & safer", supported: true }]);
     await u.check(); // an update is already waiting
     expect(backend.checks).toBe(1);
     u.install();

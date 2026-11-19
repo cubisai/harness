@@ -27,7 +27,7 @@ return {
     listSkills: vi.fn(async () => []),
     listAgents: vi.fn(async () => agents),
     getSettings: vi.fn(async () => ({ theme: "system", defaultAgent: null, defaultPermissionMode: "ask", autoUpdate: false, editor: null, providers: [], providerCredential: {}, migratedProviders: [], secretsEncrypted: false })),
-    updateStatus: vi.fn(async () => ({ current: "0.1.0", ready: null, supported: false })),
+    updateStatus: vi.fn(async () => ({ current: "0.1.0", ready: null, notes: null, supported: false })),
     listLimits: vi.fn(async () => []),
     pendingState: vi.fn(async () => ({ running: [], permissions: [], plans: [], questions: [] })),
     listEditors: vi.fn(async () => []),

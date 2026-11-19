@@ -1,10 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants as fsConstants, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { createHash } from "node:crypto";
 import { homedir, release, tmpdir, type as osType } from "node:os";
-import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignIntent, DesignKitEdit, DesignKitSampleRequest, DesignSystemEdit, DesignSystemOption, DevicePreset, IssueSummary, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, AppUpdateStatus, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignIntent, DesignKitEdit, DesignKitSampleRequest, DesignSystemEdit, DesignSystemOption, DevicePreset, IssueSummary, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { CHATS_NAME, chatsRoot, isChatsRoot } from "./chats";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
@@ -43,7 +45,7 @@ import { DOC_SCHEME, documentUrl, pdfPageCount, serveDocument } from "./document
 import { documentTools } from "./documents/tools";
 import { designTools, imageBudget } from "./design/tools";
 import { selectorFor } from "./browser/picker";
-import { spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { setBinaryPins, warmBinaries } from "./agents/binaries";
 import { createDoctor, pinsByCommand } from "./doctor";
@@ -130,6 +132,8 @@ import { creatorAppTools } from "./creator/app-tools";
 import { prepareAppEdit } from "./apps/manage";
 import { providerWarning } from "../shared/provider-rules";
 import { Updater, type UpdaterBackend } from "./updater";
+import { MacSwapBackend, bundlePath, isAdHocSigned, type FoundUpdate } from "./mac-swap-updater";
+import { checkFolder, privacyMessage, type PrivacyBlock } from "./mac-privacy";
 import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
 import { codexCoveredSkills, withoutCodexCovered } from "./skills/codex-plugins";
 import { discoverSkills } from "./skills/discover";
@@ -175,7 +179,75 @@ async function updaterBackend(): Promise<UpdaterBackend | null> {
   if (!app.isPackaged || smoke || process.env.UNSKILLED_NO_UPDATE) return null;
   if (process.platform === "linux" && !process.env.APPIMAGE) return null;
   const { default: updater } = await import("electron-updater");
-  return updater.autoUpdater;
+  const auto = updater.autoUpdater;
+  // A local feed for testing an update end to end without publishing a release.
+  // Only a loopback URL counts, so the variable can't point the app elsewhere.
+  const feed = process.env.CUBIQ_UPDATE_FEED;
+  const localFeed = feed && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(feed) ? feed : null;
+  if (localFeed) auto.setFeedURL({ provider: "generic", url: localFeed });
+  if (process.platform !== "darwin") return auto;
+  const appPath = bundlePath(process.execPath);
+  if (!appPath) return auto;
+  const run = (cmd: string, args: string[]) =>
+    new Promise<{ stdout: string; stderr: string }>((done, fail) =>
+      execFile(cmd, args, { encoding: "utf8" }, (err, stdout, stderr) => (err ? fail(err) : done({ stdout, stderr }))),
+    );
+  const signature = await run("/usr/bin/codesign", ["-dv", appPath]).then(
+    (r) => r.stderr,
+    (err: { stderr?: string }) => err.stderr ?? "not signed at all",
+  );
+  if (!isAdHocSigned(signature)) return auto; // a Developer ID build: Squirrel.Mac installs it
+  // Swapping needs to replace the bundle where it is; a translocated or read-only copy can't update.
+  if (appPath.includes("/AppTranslocation/") || !writable(dirname(appPath)) || !writable(appPath)) {
+    console.warn(`update: ${appPath} can't be replaced in place, so this copy doesn't update itself`);
+    return null;
+  }
+  auto.autoDownload = false;
+  auto.autoInstallOnAppQuit = false;
+  auto.logger = null;
+  return new MacSwapBackend({
+    check: () => auto.checkForUpdates() as Promise<FoundUpdate | null>,
+    fileUrl: (info, file) =>
+      localFeed
+        ? new URL(file, localFeed).toString()
+        : `https://github.com/cubisai/harness/releases/download/${info.tag ?? `cubiq-v${info.version}`}/${file}`,
+    download: async (url, dest) => {
+      const res = await net.fetch(url);
+      if (!res.ok || !res.body) throw new Error(`update download failed: HTTP ${res.status}`);
+      await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), createWriteStream(dest));
+    },
+    sha512: (path) =>
+      new Promise((done, fail) => {
+        const hash = createHash("sha512");
+        createReadStream(path)
+          .on("data", (chunk) => hash.update(chunk))
+          .on("error", fail)
+          .on("end", () => done(hash.digest("base64")));
+      }),
+    run,
+    spawnDetached: (cmd, args) => spawn(cmd, args, { detached: true, stdio: "ignore" }).unref(),
+    writeFile: (path, text) => writeFileSync(path, text, { mode: 0o755 }),
+    resetDir: (path) => {
+      rmSync(path, { recursive: true, force: true });
+      mkdirSync(path, { recursive: true });
+    },
+    exists: existsSync,
+    quit: () => app.quit(),
+    onWillQuit: (listener) => app.on("will-quit", listener),
+    pid: process.pid,
+    appPath,
+    bundleId: "dev.aiharness.app",
+    stagingDir: join(app.getPath("userData"), "pending-update"),
+  });
+}
+
+function writable(path: string): boolean {
+  try {
+    accessSync(path, fsConstants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** build/icon.png, shipped next to the app's resources in a packaged build. */
@@ -2113,6 +2185,21 @@ async function main(): Promise<void> {
     if (typeof path === "string" && existsSync(path)) shell.showItemInFolder(path);
   });
 
+  // The version that ran before this one, once, so the renderer opens What's new
+  // after an update. A first install (no record yet) and dev builds stay quiet.
+  let updatedFrom: string | null = null;
+  if (app.isPackaged && !smoke) {
+    const seenFile = join(userData, "last-version");
+    const seen = existsSync(seenFile) ? readFileSync(seenFile, "utf8").trim() : null;
+    if (seen !== app.getVersion()) {
+      try {
+        writeFileSync(seenFile, app.getVersion());
+        updatedFrom = seen;
+      } catch {
+        // Unwritable data folder: skip What's new rather than show it every launch.
+      }
+    }
+  }
   const updater = new Updater(
     await updaterBackend(),
     app.getVersion(),
@@ -2186,7 +2273,7 @@ async function main(): Promise<void> {
   ipcMain.handle("app:open-data-folder", () => shell.openPath(userData));
   ipcMain.handle("app:about", (): AboutInfo => {
     // Read lazily: vitest runs this module without electron-vite's define.
-    const build = typeof __CUBIQ_BUILD__ !== "undefined" ? __CUBIQ_BUILD__ : { commit: null, date: null, changelog: [] };
+    const build = typeof __CUBIQ_BUILD__ !== "undefined" ? __CUBIQ_BUILD__ : { commit: null, date: null, changelog: [], releases: [] };
     return {
       name: "CubiQ",
       version: app.getVersion(),
@@ -2197,6 +2284,7 @@ async function main(): Promise<void> {
       node: process.versions.node,
       os: process.platform === "darwin" ? `macOS ${process.getSystemVersion()}` : `${osType()} ${release()}`,
       changelog: build.changelog,
+      releases: build.releases ?? [],
     };
   });
   // MCP tool search defers schemas to a lookup: still on for Claude's own login
@@ -2291,7 +2379,11 @@ async function main(): Promise<void> {
   ipcMain.handle("automation:delete", (_e, id: string) => automations.remove(id));
   ipcMain.handle("automation:run-now", (_e, id: string) => automations.runNow(id));
   ipcMain.handle("automation:runs", (_e, id: string) => automations.runs(id));
-  ipcMain.handle("app:update-status", () => updater.status());
+  ipcMain.handle("app:update-status", (): AppUpdateStatus => {
+    const status = { ...updater.status(), updatedFrom };
+    updatedFrom = null; // one window opens What's new, not every new one
+    return status;
+  });
   ipcMain.handle("limits:list", () => limits.all());
   ipcMain.handle("app:install-update", () => updater.install());
 
@@ -2306,6 +2398,22 @@ async function main(): Promise<void> {
     mkdirSync(chats, { recursive: true });
     return projectView(store.addProject(chats));
   });
+  // macOS privacy: a project folder CubiQ was refused (Desktop, Documents, iCloud…) gets one
+  // dialog per folder per run that opens the System Settings pane holding the switch.
+  const privacyAsked = new Set<string>();
+  const checkPrivacy = async (paths: string[], owner?: BrowserWindow | null) => {
+    if (process.platform !== "darwin" || smoke) return;
+    const blocks = paths
+      .filter((p) => !privacyAsked.has(p) && !isChatsRoot(p, chats))
+      .map((p) => checkFolder(p, homedir()))
+      .filter((b): b is PrivacyBlock => b !== null);
+    if (!blocks.length) return;
+    for (const b of blocks) privacyAsked.add(b.path);
+    const { message, detail } = privacyMessage(blocks);
+    const options: Electron.MessageBoxOptions = { type: "warning", message, detail, buttons: ["Open System Settings", "Not Now"], defaultId: 0, cancelId: 1 };
+    const res = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
+    if (res.response === 0) void shell.openExternal(blocks[0]!.pane);
+  };
   ipcMain.handle("projects:add", async (event) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     const options: Electron.OpenDialogOptions = {
@@ -2314,7 +2422,9 @@ async function main(): Promise<void> {
     };
     const res = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
     const path = res.filePaths[0];
-    return res.canceled || !path ? null : projectView(store.addProject(path));
+    if (res.canceled || !path) return null;
+    void checkPrivacy([path], owner);
+    return projectView(store.addProject(path));
   });
   ipcMain.handle("projects:relocate", async (event, id: string) => {
     if (isChatsRoot(store.getProject(id).path, chats)) throw new Error("Chats live in the app's own folder and can't be moved.");
@@ -2326,6 +2436,7 @@ async function main(): Promise<void> {
     const res = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
     const path = res.filePaths[0];
     if (res.canceled || !path) return null;
+    void checkPrivacy([path], owner);
     return { ...store.setProjectPath(id, path), missing: false };
   });
   ipcMain.handle("projects:delete", async (_e, id: string) => {
@@ -2631,6 +2742,8 @@ async function main(): Promise<void> {
     return win;
   };
   const first = open();
+  // Projects opened before access was refused: say so once the window is up.
+  first.webContents.once("did-finish-load", () => void checkPrivacy(store.listProjects().map((p) => p.path), first));
 
   const smokeBrowser = () => smokeBrowserWith(tools, browser);
   // A real shell through node-pty: proves the native module loads (packaged too) on every OS.

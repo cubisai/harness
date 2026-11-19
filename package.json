@@ -29,6 +29,7 @@
     "test": "vitest run",
     "smoke": "electron . --smoke",
     "dist": "bun run build && electron-builder --publish never",
+    "release": "node scripts/release.mjs",
     "preview:ui": "vite --config vite.preview.config.ts",
     "eval": "bun --env-file=.env evals/run.ts",
     "eval:optimize": "bun --env-file=.env evals/optimize.ts",
