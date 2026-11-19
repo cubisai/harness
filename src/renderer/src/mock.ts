@@ -701,6 +701,13 @@ export function installMock(): void {
       mockApps[i] = { ...mockApps[i]!, enabled };
       emit({ type: "apps-changed" });
     },
+    setAppFavorite: async (key, on) => {
+      const i = mockApps.findIndex((a) => a.key === key);
+      if (i < 0) throw new Error("App not found.");
+      const { favorite: _drop, ...rest } = mockApps[i]!;
+      mockApps[i] = on ? { ...rest, favorite: Date.now() } : rest;
+      emit({ type: "apps-changed" });
+    },
     prepareAppEdit: async (key, threadId) => {
       const app = mockApps.find((a) => a.key === key);
       if (!app) throw new Error("App not found.");

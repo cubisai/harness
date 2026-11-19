@@ -1469,6 +1469,8 @@ export interface AppInfo {
   grants: { server: string; tools: string[] }[];
   /** Disabled apps stay in Library but cannot open or call connectors. Omitted means enabled. */
   enabled?: boolean;
+  /** When the user starred it (the sidebar lists favourites first); omitted means not a favourite. */
+  favorite?: number;
   path: string;
   /** The entry page's `cubiq-app://` URL. */
   url: string;
@@ -1699,6 +1701,8 @@ export interface UnskilledApi {
   /** One app by frame key (an installed app or a Creator thread's draft), or null when there is none. */
   appInfo(key: string): Promise<AppInfo | null>;
   setAppEnabled(key: string, enabled: boolean): Promise<void>;
+  /** Star or unstar an installed app. */
+  setAppFavorite(key: string, on: boolean): Promise<void>;
   prepareAppEdit(key: string, threadId: string): Promise<{ app: AppInfo; prompt: string }>;
   /** A bridge call from an app's frame; `approval` resends a call the user said yes to. */
   callApp(key: string, projectId: string | null, server: string, tool: string, args: Record<string, unknown>, approval?: { token: string; remember?: boolean }): Promise<AppCallResult>;

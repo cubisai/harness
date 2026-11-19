@@ -2053,7 +2053,7 @@ async function main(): Promise<void> {
       return null;
     }
   };
-  const appRegistry = new AppRegistry({ globalDir: join(userData, "apps"), stateFile: join(userData, "app-state.json"), projectPath: realProjectPath, draftsDir: creatorDraftsDir });
+  const appRegistry = new AppRegistry({ globalDir: join(userData, "apps"), stateFile: join(userData, "app-state.json"), favoritesFile: join(userData, "app-favorites.json"), projectPath: realProjectPath, draftsDir: creatorDraftsDir });
   const appCalls = new AppCalls({
     registry: appRegistry,
     dataDir: join(userData, "app-data"),
@@ -2096,6 +2096,12 @@ async function main(): Promise<void> {
     const id = str(key);
     appRegistry.setEnabled(id, enabled);
     appCalls.invalidate(id);
+    broadcast({ type: "apps-changed" });
+  });
+  ipcMain.handle("apps:favorite", (e, key: unknown, on: unknown) => {
+    assertMainWindow(e);
+    if (typeof on !== "boolean") throw new Error("Invalid favourite state.");
+    appRegistry.setFavorite(str(key), on);
     broadcast({ type: "apps-changed" });
   });
   ipcMain.handle("apps:edit", (e, key: unknown, threadId: unknown) => {

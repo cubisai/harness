@@ -118,6 +118,7 @@ const api: UnskilledApi = {
   listApps: (projectId) => ipcRenderer.invoke("apps:list", projectId),
   appInfo: (key) => ipcRenderer.invoke("apps:info", key),
   setAppEnabled: (key, enabled) => ipcRenderer.invoke("apps:enable", key, enabled),
+  setAppFavorite: (key, on) => ipcRenderer.invoke("apps:favorite", key, on),
   prepareAppEdit: (key, threadId) => ipcRenderer.invoke("apps:edit", key, threadId),
   callApp: (key, projectId, server, tool, args, approval) => ipcRenderer.invoke("apps:call", key, projectId, server, tool, args, approval),
   appStoreGet: (key, name) => ipcRenderer.invoke("apps:store-get", key, name),

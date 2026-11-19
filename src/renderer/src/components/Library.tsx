@@ -19,7 +19,7 @@ const TABS: { id: Exclude<LibraryTab, "agents" | "mcp">; label: string; icon: Lu
   { id: "experts", label: "Experts", icon: BriefcaseBusiness },
   { id: "skills", label: "Skills", icon: Puzzle },
   { id: "connectors", label: "Connectors", icon: Plug },
-  { id: "apps", label: "Apps", icon: LayoutGrid },
+  { id: "apps", label: "Plugins", icon: LayoutGrid },
   { id: "memory", label: "Memory", icon: Brain },
   { id: "automations", label: "Automations", icon: CalendarClock },
   { id: "learned", label: "Learned", icon: GraduationCap },

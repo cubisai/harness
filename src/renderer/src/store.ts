@@ -37,6 +37,7 @@ import type { DocumentStatus } from "../../shared/design-mutation";
 import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
+import { readAppRecents, writeAppRecents } from "./plugins";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { waitingThreads, workspaceModeOf } from "./sections";
@@ -362,6 +363,8 @@ interface State {
   floatingDrafts: AppInfo[];
   /** Asks a floating widget to expand and come to the front (bumped on every open). */
   floatingFocus: { key: string; n: number } | null;
+  /** When each installed app was last opened (orders the sidebar's Apps after favourites). Kept in localStorage. */
+  appRecents: Record<string, number>;
   /** Open an app where its manifest says: the modal, or its floating widget. */
   openApp(app: AppInfo): void;
   /** Close a floating widget: a draft preview goes away, an installed widget hides until opened again. */
@@ -780,6 +783,7 @@ export const useStore = create<State>((set, get) => ({
   floatingHidden: readFloatingHidden(),
   floatingDrafts: [],
   floatingFocus: null,
+  appRecents: readAppRecents(),
   artifactFiles: {},
   turnScores: {},
   browserMounted: false,
@@ -1600,8 +1604,13 @@ export const useStore = create<State>((set, get) => ({
   openApp(app) {
     const s = get();
     if (app.enabled === false || app.error) {
-      s.showNotice(app.error ?? "This app is disabled. Enable it in Library → Apps.");
+      s.showNotice(app.error ?? "This app is off. Turn it on in Library → Plugins.");
       return;
+    }
+    if (app.scope !== "draft") {
+      const appRecents = { ...s.appRecents, [app.key]: Date.now() };
+      writeAppRecents(appRecents);
+      set({ appRecents });
     }
     if (app.placement === "floating") {
       const n = (s.floatingFocus?.n ?? 0) + 1;

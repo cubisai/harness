@@ -17,22 +17,41 @@ describe("Library apps", () => {
     expect(library).toContain('id="library-tab-apps"');
     expect(library).toContain('role="tabpanel"');
     const html = view();
-    for (const text of ["Open app", "Edit with Creator", "Disable", "Uninstall", "shop.summary", "shop.refund", "Update card"]) expect(html).toContain(text);
+    for (const text of ["Open app", "Edit with Creator", "Turn off", "Uninstall", "shop.summary", "shop.refund", "Update card"]) expect(html).toContain(text);
     expect(html).not.toContain("scope picker");
   });
 
   it("lists disabled apps, disables Open, and explains how to enable them", () => {
     const html = view({ apps: [{ ...app, enabled: false }] });
-    expect(html).toContain("Disabled · ");
+    expect(html).toContain("Off · ");
     expect(html).toMatch(/disabled=""[^>]*>Open app/);
-    expect(html).toContain(">Enable</button>");
+    expect(html).toContain(">Turn on</button>");
     expect(html).toContain("Its saved data is kept");
     expect(html).not.toMatch(/disabled=""[^>]*>Edit with Creator/);
   });
 
+  it("gives each plugin row a star, an on/off switch, Open and a menu, and lists built-in features with their switches", async () => {
+    const { builtinsOf, builtinPatch } = await import("../src/renderer/src/components/AppsTab");
+    const builtins = builtinsOf({ memory: { enabled: true, disabledProjects: [] }, codeMode: "off", uiBlocks: true } as never);
+    const html = view({ apps: [{ ...app, favorite: 5 }], builtins });
+    expect(html).toContain('aria-label="Favourite Sales"');
+    expect(html).toMatch(/aria-pressed="true"[^>]*aria-label="Favourite Sales"/);
+    expect(html).toMatch(/role="switch" aria-checked="true" aria-label="Sales on"/);
+    expect(html).toContain('aria-label="Open Sales"');
+    expect(html).toContain('aria-label="Sales options"');
+    expect(html).toContain(">Built in<");
+    expect(html).toMatch(/aria-checked="true" aria-label="Memory on"/);
+    expect(html).toMatch(/aria-checked="false" aria-label="Code mode off"/);
+    expect(html).toMatch(/aria-checked="true" aria-label="Inline UI on"/);
+    expect(builtinPatch("codeMode", true)).toEqual({ codeMode: "on" });
+    expect(builtinPatch("memory", false)).toEqual({ memory: { enabled: false } });
+    expect(builtinPatch("uiBlocks", false)).toEqual({ uiBlocks: false });
+    expect(renderToStaticMarkup(<LibrarySheet tab="apps" />)).toContain(">Plugins<");
+  });
+
   it("shows loading, empty, filtered, error, busy and uninstall confirmation states", () => {
     expect(view({ apps: [], loading: true })).toContain("Loading apps…");
-    expect(view({ apps: [] })).toContain("No apps yet. Ask Creator");
+    expect(view({ apps: [] })).toContain("No apps yet. Turn on Creator");
     expect(view({ query: "no-match" })).toContain("No matching apps.");
     expect(view({ error: "The file was modified" })).toContain('role="alert"');
     expect(view({ busy: { key: app.key, action: "edit" } })).toContain("Preparing draft…");
@@ -191,5 +210,15 @@ describe("Creator toggle", () => {
     useStore.setState({ threadKind: "design" });
     await useStore.getState().toggleCreator();
     expect(useStore.getState().threadKind).toBe("design");
+  });
+});
+
+describe("sidebar apps", () => {
+  it("lists favourites first (oldest star first), then recently opened, at most three, never off or drafts", async () => {
+    const { sidebarApps } = await import("../src/renderer/src/plugins");
+    const mk = (key: string, extra: Partial<AppInfo> = {}): AppInfo => ({ ...app, key, name: key, title: key, ...extra });
+    const list = [mk("g~a"), mk("g~b", { favorite: 20 }), mk("g~c"), mk("g~d", { favorite: 10 }), mk("g~e", { enabled: false, favorite: 1 }), mk("d~t~f", { scope: "draft" })];
+    expect(sidebarApps(list, { "g~c": 5, "g~a": 2 }).map((a) => a.key)).toEqual(["g~d", "g~b", "g~c"]);
+    expect(sidebarApps(list, {}).map((a) => a.key)).toEqual(["g~d", "g~b", "g~a"]);
   });
 });
