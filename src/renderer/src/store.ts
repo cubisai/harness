@@ -1,7 +1,7 @@
 import type { ExpertDef } from "../../shared/experts";
 import type { AutomationNotice } from "../../shared/automations";
 import { create } from "zustand";
-import type { AppInfo } from "../../shared/types";
+import type { AppInfo, Attachment, AttachmentSource } from "../../shared/types";
 import type {
   BackgroundShell,
   ArtifactFile,
@@ -301,11 +301,11 @@ interface State {
   /** Change a design thread's prototype tier. */
   setPrototypeTier(threadId: string, tier: PrototypeTier): Promise<void>;
   /** Start `text` as a new thread in the open project without leaving the current one; it reports through the Message Center. */
-  sendInBackground(text: string, skills?: string[], opts?: { worktree?: boolean }, mentions?: string[]): Promise<void>;
+  sendInBackground(text: string, skills?: string[], opts?: { worktree?: boolean }, mentions?: string[], files?: AttachmentSource[]): Promise<void>;
   /** Start a chat thread (same project and agent, in the background) that builds a design thread's design into the codebase. */
   buildDesignInCode(designThreadId: string): Promise<void>;
   /** From the project's start screen: open a new thread and send `text` in it. */
-  startThread(text: string, skills?: string[], mentions?: string[]): Promise<void>;
+  startThread(text: string, skills?: string[], mentions?: string[], files?: AttachmentSource[]): Promise<void>;
   /** Add skills for the composer to pick up (deduped, in order). */
   addPendingSkills(names: string[]): void;
   takePendingSkills(): string[];
@@ -316,13 +316,16 @@ interface State {
   updateThread(patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent">>): Promise<void>;
   /** Step the open thread's reasoning effort down (-1) or up (+1), wrapping through Default. */
   cycleEffort(dir: 1 | -1): void;
-  /** Start a turn on the open thread (or `threadId`); resolves false when it couldn't start (no thread, already running, or the send failed). */
-  send(text: string, skills?: string[], threadId?: string, mentions?: string[], opts?: { background?: boolean }): Promise<boolean>;
+  /**
+   * Start a turn on the open thread (or `threadId`); resolves false when it couldn't start (no thread, already running, or the send failed).
+   * `files` are copied into the thread first; `attachments` are ones it already holds (Retry).
+   */
+  send(text: string, skills?: string[], threadId?: string, mentions?: string[], opts?: { background?: boolean; files?: AttachmentSource[]; attachments?: Attachment[] }): Promise<boolean>;
   /** Compact a thread's session now (/compact), with an optional focus for the summary. */
   compact(threadId: string, focus: string | null): Promise<void>;
   /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
-  outbox: Record<string, { text: string; skills?: string[]; mentions?: string[] }[]>;
-  enqueue(threadId: string, text: string, skills?: string[], mentions?: string[]): void;
+  outbox: Record<string, { text: string; skills?: string[]; mentions?: string[]; files?: AttachmentSource[] }[]>;
+  enqueue(threadId: string, text: string, skills?: string[], mentions?: string[], files?: AttachmentSource[]): void;
   /** Remove the queued message at `index`; drops the thread's key once its queue is empty. */
   dequeue(threadId: string, index: number): void;
   interrupt(): Promise<void>;
@@ -1279,7 +1282,7 @@ export const useStore = create<State>((set, get) => ({
     if (ok) get().showNotice("Building it in a new chat thread. The Message Center says when it's done.");
   },
 
-  async sendInBackground(text, skills, opts, mentions) {
+  async sendInBackground(text, skills, opts, mentions, files) {
     const projectId = get().selectedProjectId;
     if (!projectId) return;
     let thread: Thread;
@@ -1304,14 +1307,14 @@ export const useStore = create<State>((set, get) => ({
       draft: {},
       lastAgent: thread.agent,
     }));
-    await get().send(text, skills, thread.id, mentions, { background: true });
+    await get().send(text, skills, thread.id, mentions, { background: true, ...(files?.length ? { files } : {}) });
     get().showNotice("Started in the background. The Message Center says when it's done.");
   },
 
-  async startThread(text, skills, mentions) {
+  async startThread(text, skills, mentions, files) {
     // Send only to the thread newThread made: the selection can change while it awaits.
     const id = await get().newThread();
-    if (id) await get().send(text, skills, id, mentions);
+    if (id) await get().send(text, skills, id, mentions, files?.length ? { files } : undefined);
   },
 
   addPendingSkills(names) {
@@ -1389,11 +1392,11 @@ export const useStore = create<State>((set, get) => ({
   },
 
   outbox: {},
-  enqueue(threadId, text, skills, mentions) {
+  enqueue(threadId, text, skills, mentions, files) {
     set((s) => ({
       outbox: {
         ...s.outbox,
-        [threadId]: [...(s.outbox[threadId] ?? []), { text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}) }],
+        [threadId]: [...(s.outbox[threadId] ?? []), { text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}), ...(files?.length ? { files } : {}) }],
       },
     }));
   },
@@ -1415,7 +1418,17 @@ export const useStore = create<State>((set, get) => ({
     if (!id || get().running[id]) return false;
     set((s) => ({ running: { ...s.running, [id]: true } }));
     try {
-      await api().send({ threadId: id, text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}), ...(opts?.background ? { background: true } : {}) });
+      // New files are copied into the thread before the turn starts, so the message can point at them.
+      const saved = opts?.files?.length ? await api().saveAttachments(id, opts.files) : [];
+      const attachments = [...(opts?.attachments ?? []), ...saved];
+      await api().send({
+        threadId: id,
+        text,
+        ...(skills?.length ? { skills } : {}),
+        ...(mentions?.length ? { mentions } : {}),
+        ...(attachments.length ? { attachments } : {}),
+        ...(opts?.background ? { background: true } : {}),
+      });
       return true;
     } catch (err) {
       set((s) => ({ running: { ...s.running, [id]: false } }));
@@ -1735,7 +1748,7 @@ export const useStore = create<State>((set, get) => ({
           const next = get().outbox[update.threadId]?.[0];
           if (next) {
             set((s) => ({ outbox: { ...s.outbox, [update.threadId]: s.outbox[update.threadId]!.slice(1) } }));
-            void get().send(next.text, next.skills, update.threadId, next.mentions);
+            void get().send(next.text, next.skills, update.threadId, next.mentions, next.files?.length ? { files: next.files } : undefined);
           }
         }
         if (!update.running && get().takeOver.mode !== "idle") {

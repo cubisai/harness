@@ -70,6 +70,8 @@ export interface TurnInput {
   /** The folder holding the thread's expert's private package skills (read-only for the agent); absent = none. */
   expertRoot?: string;
   prompt: string;
+  /** Images the user attached, to send as image input where the agent takes it (absolute paths; png, jpeg, gif or webp, ≤ 5 MB). The prompt already lists every attachment's path. */
+  images?: { path: string; mediaType: string }[];
   /** Compact the session instead of prompting (/compact); the focus steers the summary where the agent supports it. */
   compact?: { focus: string | null };
   /** The agent's session to resume, or null for a new conversation. */

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { LiveUpdate, UnskilledApi } from "../shared/types";
 
 const api: UnskilledApi = {
@@ -32,6 +32,15 @@ const api: UnskilledApi = {
   listSkills: (projectId) => ipcRenderer.invoke("skills:list", projectId),
   listAgents: () => ipcRenderer.invoke("agents:list"),
   send: (request) => ipcRenderer.invoke("turn:send", request),
+  saveAttachments: (threadId, sources) => ipcRenderer.invoke("attachments:save", threadId, sources),
+  pickAttachments: () => ipcRenderer.invoke("attachments:pick"),
+  pathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return "";
+    }
+  },
   interrupt: (threadId) => ipcRenderer.invoke("turn:interrupt", threadId),
   respondPermission: (requestId, decision) => ipcRenderer.invoke("permission:respond", requestId, decision),
   respondPlan: (requestId, decision) => ipcRenderer.invoke("plan:respond", requestId, decision),

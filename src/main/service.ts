@@ -96,6 +96,7 @@ import {
 import type { Catalog } from "./skills/catalog";
 import { composePrompt } from "./skills/compose";
 import { mentionNote } from "./mentions";
+import { attachmentNote, checkedAttachments, inlineImages } from "./attachments";
 import { providerOfModel } from "../shared/provider-rules";
 import { memoryScopeCheck } from "./inject/memory-scope";
 import { redactDeep, redactSecrets } from "./inject/redact";
@@ -916,16 +917,19 @@ export class Service {
     const maxRounds = project.checkFixRounds ?? 1;
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
     const skills = skillsOf(req);
+    // Only files this thread really holds; a compact carries none.
+    const attachments = compact ? [] : checkedAttachments(cwd, req.attachments);
+    const images = inlineImages(cwd, attachments);
     // A design thread's system is copied into its folder before each turn; a switch is said once, in this prompt.
     const systemNote = compact ? "" : this.prepareDesignSystem(thread) + this.prepareDesignTier(thread);
     const prompt = compact
       ? `/compact${compact.focus ? ` ${compact.focus}` : ""}`
-      : composePrompt(this.catalogFor(cwd, thread.id), req.text, skills, driver.skillsDelivery) + mentionNote(cwd, req.mentions) + systemNote;
+      : composePrompt(this.catalogFor(cwd, thread.id), req.text, skills, driver.skillsDelivery) + mentionNote(cwd, req.mentions) + attachmentNote(attachments) + systemNote;
 
-    const userEvent = this.emit(thread.id, { kind: "user", text: req.text, ...(skills.length ? { skills } : {}) });
+    const userEvent = this.emit(thread.id, { kind: "user", text: req.text, ...(skills.length ? { skills } : {}), ...(attachments.length ? { attachments } : {}) });
     // An automatic fix round never names the thread; the user's message does.
     if (thread.title === "New thread" && !req.checkRound && !req.designFixRound && !compact) {
-      const title = titleFrom(req.text, skills);
+      const title = titleFrom(req.text || (attachments[0]?.name ?? ""), skills);
       this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { title }) });
     }
 
@@ -1050,6 +1054,7 @@ export class Service {
         ...this.expertInput(thread),
         ...this.presetInput(thread),
         prompt: turnPrompt,
+        ...(images.length ? { images } : {}),
         ...(compact ? { compact } : {}),
         sessionId: current.sessionId,
         ...(current.sessionId !== null ? { priorSessionCostUsd: this.store.lastSessionCost(thread.id, current.sessionId) } : {}),

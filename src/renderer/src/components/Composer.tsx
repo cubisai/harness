@@ -1,11 +1,13 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { AtSign, Blocks, BriefcaseBusiness, Check, CircleDot, File, Folder, ImagePlus, Puzzle, Slash, Sparkles } from "lucide-react";
+import { AtSign, Blocks, BriefcaseBusiness, Check, CircleDot, File, Folder, ImagePlus, Paperclip, Puzzle, Slash, Sparkles } from "lucide-react";
 import type { PermissionMode, SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
 import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../composer";
 import { MAX_REFS, imageFiles, refLabel, refThumb, withRefs } from "../design/refs";
+import { MAX_ATTACHMENTS, type PendingAttachment, pendingFrom, pendingFromPicked, shortName, sizeLabel } from "../attachments";
+import { FileIcon } from "./FileIcon";
 import { designChipLabel, designIntent, designPlaceholder, systemChips } from "../design/intent";
 import { elementLabel, withScope } from "../../../shared/selection";
 import { designDirName } from "../../../shared/design";
@@ -93,6 +95,10 @@ export function Composer({
   // Reference images pasted or dropped into a design thread: saved in its design folder, sent as mentions.
   const [refs, setRefs] = useState<{ path: string; thumb: string }[]>([]);
   const [addingRefs, setAddingRefs] = useState(false);
+  // Files pasted, dropped or picked in a chat or Creator thread: copied into the thread's folder when the message is sent.
+  const [files, setFiles] = useState<PendingAttachment[]>([]);
+  // Files are being dragged over the window: the box shows it takes them.
+  const [dropping, setDropping] = useState(false);
   // Images handed over by the canvas (Draw → Attach) join the reference chips, up to the cap.
   const pendingRefs = useStore((s) => (threadId ? s.pendingRefs[threadId] : undefined));
   useEffect(() => {
@@ -111,7 +117,7 @@ export function Composer({
   const [droppedSystem, setDroppedSystem] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => setDroppedSystem(new Set()), [systemWhere?.page, systemWhere?.theme]);
   const system = systemChips(systemWhere, droppedSystem);
-  const hasChips = Boolean(issue || picked.length || chips.length || refs.length || selection || designChip || system.length);
+  const hasChips = Boolean(issue || picked.length || chips.length || refs.length || files.length || selection || designChip || system.length);
   const screenshotInput = useRef<HTMLInputElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
@@ -194,6 +200,7 @@ export function Composer({
     setCaret(0);
     setChips([]);
     setRefs([]);
+    setFiles([]);
     setPicked(entriesOf(useStore.getState().takePendingSkills()));
   }, [threadId]);
 
@@ -226,6 +233,69 @@ export function Composer({
     })();
     return true;
   };
+
+  const addPending = (added: PendingAttachment[], refused: string[]) => {
+    if (added.length) setFiles((list) => [...list, ...added].slice(0, MAX_ATTACHMENTS));
+    if (refused.length) useStore.getState().showNotice(`Not attached: ${refused.join(", ")}.`);
+    area.current?.focus();
+  };
+
+  /** Pasted or dropped files: a design thread's images become references; anywhere else any file is attached. True when handled. */
+  const takeFiles = (list: ArrayLike<File> | null | undefined): boolean => {
+    if (takeImages(list)) return true;
+    if (designKind || !list?.length) return false;
+    const room = MAX_ATTACHMENTS - files.length;
+    void pendingFrom(list, room, (f) => api().pathForFile(f)).then(({ added, refused }) => addPending(added, refused));
+    return true;
+  };
+
+  const pickFiles = () => {
+    void api()
+      .pickAttachments()
+      .then((picked) => {
+        const { added, refused } = pendingFromPicked(picked, MAX_ATTACHMENTS - files.length);
+        addPending(added, refused);
+      })
+      .catch((err) => useStore.getState().showNotice(`Couldn't open the file picker: ${err instanceof Error ? err.message : String(err)}`));
+  };
+
+  // Files dropped anywhere in the window (outside a dialog or another drop zone) come here; the box lights up while they're dragged.
+  const takeFilesRef = useRef(takeFiles);
+  takeFilesRef.current = takeFiles;
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    const inDialog = (e: DragEvent) => e.target instanceof Element && e.target.closest('[role="dialog"]') !== null;
+    const enter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth++;
+      setDropping(true);
+    };
+    const leave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setDropping(false);
+    };
+    const over = (e: DragEvent) => {
+      if (hasFiles(e) && !inDialog(e)) e.preventDefault();
+    };
+    const drop = (e: DragEvent) => {
+      depth = 0;
+      setDropping(false);
+      if (e.defaultPrevented || !hasFiles(e) || inDialog(e)) return;
+      if (takeFilesRef.current(e.dataTransfer?.files)) e.preventDefault();
+    };
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("dragover", over);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragenter", enter);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("drop", drop);
+    };
+  }, []);
 
   // Skills picked from the command palette or the Library while this thread is open join the chips.
   const pendingSkills = useStore((s) => s.pendingSkills);
@@ -358,7 +428,7 @@ export function Composer({
     }
     const refPaths = refs.map((r) => r.path);
     const message = withRefs(composeMessage(text, chips), refPaths);
-    if (!message && !picked.length) return;
+    if (!message && !picked.length && !files.length) return;
     if (designChip?.kind === "match-screenshot" && !refs.length) {
       useStore.getState().showNotice("Add the screenshot first: paste it, drop it here, or pick it from + → Match a screenshot….");
       return;
@@ -368,12 +438,16 @@ export function Composer({
     const mentions = [...mentionsIn(text, knownSet), ...refPaths];
     const names = picked.map((p) => p.name);
     if (selection && threadId) useStore.getState().setDesignSelection(threadId, null);
+    const pending = files;
+    const sources = pending.map((f) => f.source);
     const go = () => {
-      if (!threadId) void startThread(body, names, mentions);
-      else if (running) enqueue(threadId, body, names, mentions);
+      if (!threadId) void startThread(body, names, mentions, sources);
+      else if (running) enqueue(threadId, body, names, mentions, sources);
       else
-        void send(body, names, undefined, mentions).then((ok) => {
-          if (!ok) setText((cur) => cur || text);
+        void send(body, names, undefined, mentions, sources.length ? { files: sources } : undefined).then((ok) => {
+          if (ok) return;
+          setText((cur) => cur || text);
+          setFiles((cur) => (cur.length ? cur : pending));
         });
     };
     // The intent reaches the main process before the message, which takes it into the turn.
@@ -384,6 +458,7 @@ export function Composer({
     setText("");
     setChips([]);
     setRefs([]);
+    setFiles([]);
     setPicked([]);
     setCaret(0);
   };
@@ -408,12 +483,13 @@ export function Composer({
     }
     const refPaths = refs.map((r) => r.path);
     const body = withRefs(composeMessage(text, chips), refPaths);
-    if (!body && !picked.length) return;
+    if (!body && !picked.length && !files.length) return;
     const mentions = [...mentionsIn(text, knownSet), ...refPaths];
-    void sendInBackground(body, picked.map((p) => p.name), undefined, mentions);
+    void sendInBackground(body, picked.map((p) => p.name), undefined, mentions, files.map((f) => f.source));
     setText("");
     setChips([]);
     setRefs([]);
+    setFiles([]);
     setPicked([]);
     setCaret(0);
   };
@@ -557,7 +633,7 @@ export function Composer({
     area.current?.focus();
   };
 
-  const canSend = Boolean(text.trim() || picked.length || chips.length || refs.length) && !addingRefs;
+  const canSend = Boolean(text.trim() || picked.length || chips.length || refs.length || files.length) && !addingRefs;
 
   // The controls stay one row. When the chips wrap or the actions run into them, the bar folds a step at a time:
   // 1 the chips drop their labels (icons), 2 they merge into `compactMode` (a design thread's one chip), and 3 only if
@@ -626,7 +702,7 @@ export function Composer({
 
   return (
     <div className="composer-wrap">
-      <div className={`composer${running ? " running" : ""}`}>
+      <div className={`composer${running ? " running" : ""}${dropping ? " dropping" : ""}`}>
         {running && <Beam />}
         {lip}
         {menuOpen && (
@@ -698,10 +774,11 @@ export function Composer({
         <div
           className={`composer-input${hasChips ? " has-chips" : ""}`}
           onDragOver={(e) => {
-            if (designKind && Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+            if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
           }}
           onDrop={(e) => {
-            if (takeImages(e.dataTransfer.files)) e.preventDefault();
+            setDropping(false);
+            if (takeFiles(e.dataTransfer.files)) e.preventDefault();
           }}
         >
           {issue && (
@@ -761,6 +838,16 @@ export function Composer({
             </span>
           ))}
           {addingRefs && <span className="skill-chip context-chip ref-chip">Adding image…</span>}
+          {files.map((f) => (
+            <span key={f.id} className="skill-chip context-chip ref-chip attach-chip" title={`${f.name} · ${sizeLabel(f.size)}`}>
+              {f.thumb ? <img className="attach-thumb" src={f.thumb} alt="" /> : <FileIcon name={f.name} className="attach-icon" />}
+              <span className="chip-label">{shortName(f.name)}</span>
+              <span className="attach-size">{sizeLabel(f.size)}</span>
+              <button className="chip-x" aria-label={`Remove ${f.name}`} onClick={() => setFiles((list) => list.filter((x) => x.id !== f.id))}>
+                ×
+              </button>
+            </span>
+          ))}
           {picked.map((p) => (
             <span key={p.name} className="skill-chip" title={p.description}>
               ${p.name}
@@ -788,7 +875,7 @@ export function Composer({
             }}
             onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
             onPaste={(e) => {
-              if (takeImages(e.clipboardData.files)) e.preventDefault();
+              if (takeFiles(e.clipboardData.files)) e.preventDefault();
             }}
             onKeyDown={onKeyDown}
           />
@@ -801,6 +888,7 @@ export function Composer({
                 { id: "experts", label: "Experts", icon: <BriefcaseBusiness size={14} />, onSelect: () => {}, submenu: (close) => <ExpertsSubmenu close={close} /> },
                 { id: "skills", label: "Skills", icon: <Puzzle size={14} />, onSelect: () => {}, submenu: (close) => <SkillsSubmenu close={close} /> },
                 { id: "issues", label: "Issues", icon: <CircleDot size={14} />, onSelect: () => {}, submenu: (close) => <IssuesSubmenu close={close} /> },
+                ...(designKind ? [] : [{ id: "attach", label: "Attach files…", icon: <Paperclip size={14} />, onSelect: pickFiles }]),
                 { id: "mention", label: "Mention a file or folder (@)", icon: <AtSign size={14} />, onSelect: () => startTrigger("@") },
                 { id: "skill", label: "Use a skill ($)", icon: <Sparkles size={14} />, onSelect: () => startTrigger("$") },
                 { id: "command", label: "Run a command (/)", icon: <Slash size={14} />, onSelect: () => startTrigger("/") },
@@ -841,7 +929,7 @@ export function Composer({
                 <IconStop />
               </button>
             )}
-            {(!running || text.trim() || chips.length > 0) && (
+            {(!running || text.trim() || chips.length > 0 || files.length > 0) && (
               <button className="send" title={running ? "Queue for the next turn" : "Send"} disabled={!canSend} onClick={submit}>
                 {/* Ready to send: the beam invites the click. */}
                 {canSend && <Beam />}

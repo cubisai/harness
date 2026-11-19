@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { BoundedMap, BoundedSet } from "../bounded";
 import { CODE_HINT } from "../code-hint";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { CodeMode, ModelOption, PermissionMode, Provider } from "../../shared/types";
@@ -250,7 +250,15 @@ async function runTurn(
     }
     sid = sessionId;
     messages = repairHistory(history);
-    const userMessage: LlmMessage = { role: "user", content: [{ type: "text", text: prompt }] };
+    // Attached images go as image parts to a model that sees images; the prompt lists their paths either way.
+    const images = entry.capabilities.vision ? (input.images ?? []).flatMap((img) => {
+      try {
+        return [{ type: "image" as const, mediaType: img.mediaType, data: readFileSync(img.path).toString("base64") }];
+      } catch {
+        return [];
+      }
+    }) : [];
+    const userMessage: LlmMessage = { role: "user", content: [...images, { type: "text", text: prompt }] };
     messages.push(userMessage);
     deps.sessions.append(sid, userMessage);
   }

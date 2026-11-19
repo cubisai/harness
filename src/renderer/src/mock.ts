@@ -529,6 +529,10 @@ export function installMock(): void {
       },
     ],
     send: async () => {},
+    saveAttachments: async (_threadId, sources) =>
+      sources.map((src, i) => ({ path: `.cubiq/attachments/mock${i}-${src.name}`, name: src.name, size: "bytes" in src ? src.bytes.length : 0, mediaType: "application/octet-stream" })),
+    pickAttachments: async () => [],
+    pathForFile: () => "",
     interrupt: async () => {},
     respondPermission: async () => {},
     respondPlan: async () => {},

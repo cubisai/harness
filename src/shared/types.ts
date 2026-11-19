@@ -703,6 +703,18 @@ export interface RunUsage {
  */
 export type CodeMode = "off" | "on";
 
+/** A file the user attached to a message, copied into the thread's folder. */
+export interface Attachment {
+  /** Relative to the thread's folder, posix: `.cubiq/attachments/<id>-<name>`. */
+  path: string;
+  name: string;
+  size: number;
+  mediaType: string;
+}
+
+/** A file to attach, before it is copied: a path on disk (dropped or picked) or pasted bytes. */
+export type AttachmentSource = { name: string; path: string } | { name: string; bytes: Uint8Array };
+
 export interface EventIds {
   messageId?: string;
   turnId?: string;
@@ -716,7 +728,7 @@ export interface EventIds {
  * never persisted.
  */
 export type ThreadEvent = (
-  | { kind: "user"; text: string; /** Older events: one skill. */ skill?: string; /** The skills the user picked, in order. */ skills?: string[] }
+  | { kind: "user"; text: string; /** Older events: one skill. */ skill?: string; /** The skills the user picked, in order. */ skills?: string[]; /** Files the user attached, copied into the thread's folder. */ attachments?: Attachment[] }
   | { kind: "assistant-text"; text: string }
   | { kind: "thinking"; text: string; signature?: string; opaque?: boolean }
   | { kind: "tool-use"; toolUseId: string; name: string; summary: string; payload?: unknown }
@@ -1255,6 +1267,8 @@ export interface SendRequest {
   skills?: string[];
   /** Project-relative files and folders the user @-mentioned. */
   mentions?: string[];
+  /** Files attached to this message, already copied into the thread's folder (saveAttachments). */
+  attachments?: Attachment[];
   /** Internal: which automatic fix round this send is (0 or absent = the user's). */
   checkRound?: number;
   /** Internal: this send is the one automatic design-lint fix round after a design turn. */
@@ -1529,6 +1543,12 @@ export interface UnskilledApi {
   listSkills(projectId?: string): Promise<SkillEntry[]>;
   listAgents(): Promise<AgentInfo[]>;
   send(request: SendRequest): Promise<void>;
+  /** Copy files into a thread's `.cubiq/attachments/` (at most 10, 20 MB each) for the next send. */
+  saveAttachments(threadId: string, sources: AttachmentSource[]): Promise<Attachment[]>;
+  /** The native file picker for attachments; [] when cancelled. */
+  pickAttachments(): Promise<{ name: string; path: string; size: number }[]>;
+  /** The path on disk of a dropped file ("" for one that has none, e.g. pasted). */
+  pathForFile(file: File): string;
   interrupt(threadId: string): Promise<void>;
   respondPermission(requestId: string, decision: PermissionDecision): Promise<void>;
   respondPlan(requestId: string, decision: PlanDecision): Promise<void>;

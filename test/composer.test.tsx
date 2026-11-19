@@ -7,7 +7,9 @@ import { DesignFenceChip } from "../src/renderer/src/components/DesignSettingsMe
 import { facetLabel } from "../src/renderer/src/components/DesignSystemMenu";
 import { ThreadView } from "../src/renderer/src/components/ThreadView";
 import { useStore } from "../src/renderer/src/store";
-import type { SendRequest, Thread } from "../src/shared/types";
+import type { AttachmentSource, SendRequest, StoredEvent, Thread } from "../src/shared/types";
+import { EventRow } from "../src/renderer/src/components/ThreadView";
+import { MAX_ATTACHMENT_BYTES, fileKind, pendingFrom, pendingFromPicked, shortName } from "../src/renderer/src/attachments";
 
 const element: PickedElement = { selector: "button.primary", tag: "button", text: "Save", html: "<button class=\"primary\">Save</button>", rect: { x: 0, y: 0, width: 1, height: 1 } };
 const picked = describePick(element, "http://localhost:3000/");
@@ -73,6 +75,8 @@ describe("queued send", () => {
     unskilled: new Proxy(
       {
         send: async (r: SendRequest) => void sent.push(r),
+        saveAttachments: async (_threadId: string, sources: AttachmentSource[]) =>
+          sources.map((src, i) => ({ path: `.cubiq/attachments/id${i}-${src.name}`, name: src.name, size: 1, mediaType: "text/plain" })),
         interrupt: async (id: string) => void interrupted.push(id),
         createThread: async (pid: string, _agent?: string, opts?: { worktree?: boolean }) => ({
           id: "t-bg",
@@ -109,6 +113,21 @@ describe("queued send", () => {
     s.apply({ type: "running", threadId: "t", running: true });
     s.apply({ type: "running", threadId: "t", running: false });
     expect(sent).toHaveLength(1);
+  });
+
+  it("copies a queued message's files into the thread, then sends them as attachments", async () => {
+    const s = useStore.getState();
+    s.enqueue("t", "see file", undefined, undefined, [{ name: "a.txt", path: "/x/a.txt" }]);
+    s.apply({ type: "running", threadId: "t", running: false });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sent).toEqual([{ threadId: "t", text: "see file", attachments: [{ path: ".cubiq/attachments/id0-a.txt", name: "a.txt", size: 1, mediaType: "text/plain" }] }]);
+  });
+
+  it("Retry re-sends the attachments the thread already holds, without copying again", async () => {
+    useStore.setState({ running: {} });
+    const held = { path: ".cubiq/attachments/k-r.pdf", name: "r.pdf", size: 4, mediaType: "application/pdf" };
+    await useStore.getState().send("again", undefined, "t", undefined, { attachments: [held] });
+    expect(sent).toEqual([{ threadId: "t", text: "again", attachments: [held] }]);
   });
 
   it("sends queued messages one turn at a time, in order", () => {
@@ -360,5 +379,74 @@ describe("facetLabel", () => {
   it("labels a style's facets in one line", () => {
     expect(facetLabel({ theme: "light", darkPair: true, display: "sans", shape: "sharp" })).toBe("Light + dark · Sans type · Sharp corners");
     expect(facetLabel({ theme: "dark", darkPair: false, display: "mono", shape: "round" })).toBe("Dark · Mono type · Round corners");
+  });
+});
+
+describe("attachments in the composer and transcript", () => {
+  it("keeps to 10 files and 20 MB, naming what it left out", async () => {
+    const files = [new File(["a"], "a.txt"), new File(["b"], "b.txt"), { name: "big.bin", size: MAX_ATTACHMENT_BYTES + 1, type: "" } as File];
+    const { added, refused } = await pendingFrom(files, 1, () => "");
+    expect(added.map((a) => a.name)).toEqual(["a.txt"]);
+    expect("bytes" in added[0]!.source).toBe(true);
+    expect(refused).toEqual(["b.txt (at most 10 files per message)", "big.bin (over 20 MB)"]);
+  });
+
+  it("takes a dropped file by its path, not its bytes", async () => {
+    const { added } = await pendingFrom([new File(["a"], "a.txt")], 10, () => "/Users/me/a.txt");
+    expect(added[0]!.source).toEqual({ name: "a.txt", path: "/Users/me/a.txt" });
+    expect(pendingFromPicked([{ name: "p.pdf", path: "/p.pdf", size: 3 }], 10).added[0]).toMatchObject({ name: "p.pdf", size: 3, source: { name: "p.pdf", path: "/p.pdf" } });
+  });
+
+  it("cuts long names in the middle so the extension stays", () => {
+    expect(shortName("short.png")).toBe("short.png");
+    const cut = shortName("redacted-screenshot-of-the-quarterly-dashboard.png");
+    expect(cut.length).toBe(26);
+    expect(cut).toMatch(/^redacted-scree.*….*board\.png$/);
+    expect(shortName("a".repeat(40)).length).toBe(26);
+  });
+
+  it("gives Word, Excel, slides, archives and code their own kind", () => {
+    expect(fileKind("plan.docx")).toBe("doc");
+    expect(fileKind("Budget.XLSX")).toBe("sheet");
+    expect(fileKind("data.csv")).toBe("sheet");
+    expect(fileKind("deck.pptx")).toBe("slides");
+    expect(fileKind("src.zip")).toBe("archive");
+    expect(fileKind("main.py")).toBe("code");
+    expect(fileKind("report.pdf")).toBe("pdf");
+    expect(fileKind("pasted", "image/png")).toBe("image");
+    expect(fileKind("blob.bin", "application/octet-stream")).toBe("file");
+  });
+
+  it("shows a sent message's attachments as chips above the bubble: image thumbnail or type icon, name, size", () => {
+    const stored: StoredEvent = {
+      seq: 1,
+      createdAt: 0,
+      event: {
+        kind: "user",
+        text: "look",
+        attachments: [
+          { path: ".cubiq/attachments/k-shot.png", name: "shot.png", size: 2048, mediaType: "image/png" },
+          { path: ".cubiq/attachments/k-r.pdf", name: "r.pdf", size: 10, mediaType: "application/pdf" },
+          { path: ".cubiq/attachments/k-budget.xlsx", name: "budget.xlsx", size: 10, mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+        ],
+      },
+    } as StoredEvent;
+    const html = renderToStaticMarkup(<EventRow stored={stored} results={new Map()} running={false} threadId="t 1" />);
+    expect(html).toContain('class="msg-attachments"');
+    expect(html).toContain('src="cubiq-file://f/t%201/.cubiq/attachments/k-shot.png"');
+    expect(html).toContain('aria-label="Open r.pdf"');
+    expect(html).toContain("10 B");
+    expect(html).toContain('class="attach-thumb"');
+    expect(html).toContain(">shot.png<");
+    expect(html).toContain('data-kind="sheet"');
+    expect(html).toContain(">XLS</text>");
+    expect(html).toContain(">PDF</text>");
+    expect(html).toContain('data-kind="pdf"');
+    expect(html.indexOf("msg-attachments")).toBeLessThan(html.indexOf('class="bubble"'));
+  });
+
+  it("a files-only message has no empty bubble", () => {
+    const stored = { seq: 1, createdAt: 0, event: { kind: "user", text: "", attachments: [{ path: ".cubiq/attachments/k-r.pdf", name: "r.pdf", size: 10, mediaType: "application/pdf" }] } } as StoredEvent;
+    expect(renderToStaticMarkup(<EventRow stored={stored} results={new Map()} running={false} threadId="t" />)).not.toContain('class="bubble"');
   });
 });

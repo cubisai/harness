@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage, StopHookInput } from "@anthropic-ai/claude-agent-sdk";
+import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage, SDKUserMessage, StopHookInput } from "@anthropic-ai/claude-agent-sdk";
 import type { CodeMode, McpServerEntry, ModelOption, ModelPricing, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
 import { canonicalTool, clipAgentSummary, clipSummary, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../shared/diff";
@@ -55,6 +55,29 @@ export const STALE_LIST = `Your ${TODO_TOOL} list still shows unfinished parts. 
 
 /** The Stop hook's one nudge when a multi-part request changed files and got no list. */
 export const NO_LIST = `This request has several parts and you changed files without a ${TODO_TOOL} list. Call ${TODO_TOOL} once with each part and its real status, then end your turn.`;
+
+type ImageMediaType = "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+
+/**
+ * A turn's query prompt: the text alone, or, with attached images, one streamed user
+ * message holding the images then the text. An image that can't be read is left out
+ * (the prompt still lists its path).
+ */
+export function claudePrompt(text: string, images?: { path: string; mediaType: string }[]): string | AsyncIterable<SDKUserMessage> {
+  const blocks = (images ?? []).flatMap((img) => {
+    try {
+      const data = readFileSync(img.path).toString("base64");
+      return [{ type: "image" as const, source: { type: "base64" as const, media_type: img.mediaType as ImageMediaType, data } }];
+    } catch {
+      return [];
+    }
+  });
+  if (!blocks.length) return text;
+  const message: SDKUserMessage = { type: "user", message: { role: "user", content: [...blocks, { type: "text", text }] }, parent_tool_use_id: null };
+  return (async function* () {
+    yield message;
+  })();
+}
 
 /** Whether a prompt lists three or more parts on their own numbered or bulleted lines. */
 export function multiPartRequest(prompt: string): boolean {
@@ -709,7 +732,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         // so a breakdown requested there would always reject.
         let breakdown: Promise<{ rows: { label: string; tokens: number }[]; total: number } | null> | null = null;
         try {
-          const q = query({ prompt, options: opts });
+          const q = query({ prompt: claudePrompt(prompt, input.images), options: opts });
           for await (const message of q) {
             if (message.type === "rate_limit_event") config.onLimits?.(claudeLimitsPatch(message.rate_limit_info));
             else if (

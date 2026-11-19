@@ -2,7 +2,7 @@ import type { AgentCapabilities, CodeMode, McpServerEntry, ModelOption, Permissi
 import { CODE_HINT, OWN_CODE_MODE_HINT } from "../../code-hint";
 import type { TeamAgent } from "../../../shared/experts";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { clipAgentSummary, clipSummary } from "../../../shared/tools";
@@ -133,10 +133,27 @@ interface InitializeResult {
   agentCapabilities?: {
     loadSession?: boolean;
     mcpCapabilities?: { http?: boolean };
+    /** Content the agent takes in session/prompt besides text. */
+    promptCapabilities?: { image?: boolean; embeddedContext?: boolean };
     sessionCapabilities?: { resume?: object | null; close?: object | null };
   };
   authMethods?: { id: string; name: string }[];
   agentInfo?: { name?: string; version?: string };
+}
+
+/**
+ * Attached images as ACP image blocks, only for an agent that says it takes them
+ * (promptCapabilities.image); otherwise none, and the prompt's path list stands in.
+ */
+export function acpImageBlocks(init: Pick<InitializeResult, "agentCapabilities">, images?: { path: string; mediaType: string }[]): { type: "image"; mimeType: string; data: string }[] {
+  if (!images?.length || init.agentCapabilities?.promptCapabilities?.image !== true) return [];
+  return images.flatMap((img) => {
+    try {
+      return [{ type: "image" as const, mimeType: img.mediaType, data: readFileSync(img.path).toString("base64") }];
+    } catch {
+      return [];
+    }
+  });
 }
 
 /** OpenCode 2 and later bring their own Code Mode (`execute`), so CubiQ's run_code isn't attached there. */
@@ -1456,7 +1473,7 @@ export function createAcpDriver(
             usage?: { inputTokens?: number; outputTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number } | null;
           }>("session/prompt", {
             sessionId: l.sessionId,
-            prompt: [...(round === 0 ? lead : []), { type: "text", text: prefix + prompt }],
+            prompt: [...(round === 0 ? lead : []), { type: "text", text: prefix + prompt }, ...(round === 0 ? acpImageBlocks(l.init, input.images) : [])],
           });
           // Whether the turn produced anything visible; flushText clears the
           // buffers this reads, so decide before flushing.

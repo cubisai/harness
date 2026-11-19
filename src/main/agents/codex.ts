@@ -1408,7 +1408,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         return;
       }
 
-      const runOne = async (prompt: string, mode: PermissionMode): Promise<{ turn: Turn; planText: string | null }> => {
+      const runOne = async (prompt: string, mode: PermissionMode, images?: { path: string }[]): Promise<{ turn: Turn; planText: string | null }> => {
         const policy = turnPolicy(mode, input.design);
         // Plan mode is a native collaboration mode; leaving it must say so
         // explicitly, since the mode sticks to the thread between turns.
@@ -1434,7 +1434,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         try {
           const res = await conn.request<{ turn: Turn }>("turn/start", {
             threadId,
-            input: [{ type: "text", text: prompt, text_elements: [] }],
+            input: [{ type: "text", text: prompt, text_elements: [] }, ...(images ?? []).map((img) => ({ type: "localImage", path: img.path }))],
             model,
             approvalPolicy: policy.approvalPolicy,
             // Summarized reasoning streams back as `summary: "auto"`.
@@ -1477,7 +1477,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         for (let round = 0; round < 6; round++) {
           // A Stop between rounds must end the run, never start another round.
           if (round > 0 && input.signal.aborted) break;
-          const r = await runOne(prompt, mode);
+          // Attached images go with the user's own message only, not a plan round's follow-up.
+          const r = await runOne(prompt, mode, round === 0 ? input.images : undefined);
           const alreadyStopped = r.turn.status === "interrupted";
           if (mode !== "plan" || !r.planText || r.turn.status !== "completed" || input.signal.aborted) break;
           const d = await input.requestPlanDecision({ plan: r.planText });

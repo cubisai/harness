@@ -67,6 +67,7 @@ import { assertContained, ExtensionService } from "./extensions/install";
 import { ExtensionStore } from "./extensions/store";
 import { artifactKind, resolveInside } from "./artifacts";
 import { createLinkPreviews, localImage } from "./link-preview";
+import { saveAttachments } from "./attachments";
 import { headContent } from "./git";
 import { PreviewHost, utilityFork } from "./preview/host";
 import { migrateLegacyData } from "./migrate-data";
@@ -306,6 +307,11 @@ function createWindow(): BrowserWindow {
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: "deny" };
+  });
+  // A file dropped outside a drop zone would load it in place of the app: the window only ever shows the app.
+  const appIndex = pathToFileURL(join(here, "../renderer/index.html")).toString();
+  win.webContents.on("will-navigate", (event, url) => {
+    if (url.startsWith("file:") && url.split(/[?#]/)[0] !== appIndex) event.preventDefault();
   });
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -2611,6 +2617,26 @@ async function main(): Promise<void> {
     service.send(req).catch((err: unknown) => {
       service.settleFailedSend(req.threadId);
       console.error(redactSecrets(err instanceof Error ? (err.stack ?? err.message) : String(err), knownSecrets()));
+    });
+  });
+  // Attachments read the user's own files: only the app window may ask, never a page or webview.
+  ipcMain.handle("attachments:save", (e, threadId: unknown, sources: unknown) => {
+    if (!isFromAppWindow(e) || e.sender.getType() === "webview") throw new Error("Not allowed from a page.");
+    return saveAttachments(service.threadFolder(str(threadId)), sources);
+  });
+  ipcMain.handle("attachments:pick", async (e) => {
+    if (!isFromAppWindow(e) || e.sender.getType() === "webview") throw new Error("Not allowed from a page.");
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const options: Electron.OpenDialogOptions = { title: "Attach files", properties: ["openFile", "multiSelections"] };
+    const res = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    if (res.canceled) return [];
+    return res.filePaths.flatMap((path) => {
+      try {
+        const stat = statSync(path);
+        return stat.isFile() ? [{ name: basename(path), path, size: stat.size }] : [];
+      } catch {
+        return [];
+      }
     });
   });
   ipcMain.handle("turn:interrupt", (_e, threadId: string) => service.interrupt(threadId));

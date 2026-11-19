@@ -54,6 +54,16 @@
   --danger: #e5484d;
   --success: #2f9e44;
   --warning: #c98500;
+  /* File-type badges on attachment icons (FileIcon.tsx): each family in the colour people know it by; ink is the badge text. */
+  --file-pdf: #d93a3f;
+  --file-doc: #2b6fd6;
+  --file-sheet: #1f8a4c;
+  --file-slides: #d4622a;
+  --file-archive: #a47515;
+  --file-code: #7a4fd0;
+  --file-media: #c2417f;
+  --file-plain: #6b7280;
+  --file-badge-ink: #ffffff;
 
   --bg: #ffffff;
   --bg-sidebar: #f7f8fa;
@@ -123,6 +133,15 @@
     --danger: #ff6369;
     --success: #3fb950;
     --warning: #f5a524;
+    --file-pdf: #e5484d;
+    --file-doc: #3b7ee8;
+    --file-sheet: #23964f;
+    --file-slides: #dc6a2e;
+    --file-archive: #a97a17;
+    --file-code: #8459dc;
+    --file-media: #cc4887;
+    --file-plain: #6e7681;
+    --file-badge-ink: #ffffff;
     --bg: #0e1013;
     --bg-sidebar: #0b0d10;
     --bg-elevated: #14171b;
@@ -180,6 +199,15 @@
   --danger: #ff6369;
   --success: #3fb950;
   --warning: #f5a524;
+  --file-pdf: #e5484d;
+  --file-doc: #3b7ee8;
+  --file-sheet: #23964f;
+  --file-slides: #dc6a2e;
+  --file-archive: #a97a17;
+  --file-code: #8459dc;
+  --file-media: #cc4887;
+  --file-plain: #6e7681;
+  --file-badge-ink: #ffffff;
   --bg: #0e1013;
   --bg-sidebar: #0b0d10;
   --bg-elevated: #14171b;
@@ -1971,6 +1999,48 @@ button.qc-option.other { cursor: pointer; }
 /* A design's reference image: a tiny thumbnail of it before its label. */
 .composer-input .ref-chip { padding-left: 2px; font-family: var(--font); }
 .ref-thumb { width: 16px; height: 16px; flex-shrink: 0; object-fit: cover; border-radius: 50%; }
+/* An attached file: its thumbnail (images) or a file icon, the name cut to fit, then its size in mono. */
+.composer-input .attach-chip { max-width: 260px; gap: 5px; font-size: 12px; }
+.attach-chip .attach-icon { flex-shrink: 0; margin-left: 4px; color: var(--text-tertiary); }
+.attach-chip .attach-size { flex-shrink: 0; font-family: var(--mono); font-size: 10.5px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+/* Files dragged over the window: the box is where they land. */
+.composer.dropping { border-style: dashed; border-color: var(--hairline-strong); background: var(--bg-subtle); }
+/* An attachment's image preview: a small rounded square, like the file icons beside it. */
+.attach-thumb { width: 16px; height: 16px; flex-shrink: 0; object-fit: cover; border-radius: 3px; border: 1px solid var(--hairline); }
+.composer-input .attach-chip:has(.attach-thumb) { padding-left: 4px; }
+/* A sent message's attachments sit above its bubble, right-aligned, as chips. */
+.msg-attachments { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 82%; margin-bottom: 4px; }
+.msg-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  transition: background 120ms var(--ease);
+}
+.msg-attachment:hover { background: var(--bg-hover); }
+.msg-attachment:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.msg-attachment .attach-icon { flex-shrink: 0; color: var(--text-tertiary); }
+.msg-attachment .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.msg-attachment .attach-size { flex-shrink: 0; font-family: var(--mono); font-size: 10.5px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.msg-attachment .attach-thumb { width: 18px; height: 18px; }
+/* A file's icon: the page in the icon colour, its extension on a badge in its family's colour (PDF red, Word blue, Excel green…). */
+.file-badge { fill: var(--file-plain); }
+.file-badge-icon[data-kind="pdf"] .file-badge { fill: var(--file-pdf); }
+.file-badge-icon[data-kind="doc"] .file-badge { fill: var(--file-doc); }
+.file-badge-icon[data-kind="sheet"] .file-badge { fill: var(--file-sheet); }
+.file-badge-icon[data-kind="slides"] .file-badge { fill: var(--file-slides); }
+.file-badge-icon[data-kind="archive"] .file-badge { fill: var(--file-archive); }
+.file-badge-icon[data-kind="code"] .file-badge { fill: var(--file-code); }
+.file-badge-icon:is([data-kind="image"], [data-kind="audio"], [data-kind="video"]) .file-badge { fill: var(--file-media); }
+.file-badge-text { fill: var(--file-badge-ink); font-family: var(--font); font-weight: 700; letter-spacing: .1px; }
 /* The thread's issue (/issue): its number in mono, then the title in the UI face, cut to one line. */
 .composer-input .issue-chip { max-width: 280px; gap: 5px; font-family: var(--font); font-size: 12px; }
 .issue-chip .issues-num { flex-shrink: 0; font-family: var(--mono); font-size: 11px; }

@@ -456,6 +456,23 @@ describe("Codex driver", () => {
     }
   });
 
+  it("sends attached images as localImage items after the text", async () => {
+    const probe = join(tempDir(), "images.json");
+    process.env.EFFORT_PROBE = probe;
+    const d = createCodexDriver({ command: process.execPath, args: ["-e", EFFORT_PROBE], clientVersion: "test" });
+    closeAfter(() => d.dispose?.());
+    try {
+      await d.runTurn(turn("look", { model: "gpt-5", images: [{ path: "/tmp/a.png", mediaType: "image/png" }] }).input);
+      const sent = JSON.parse(readFileSync(probe, "utf8")) as { input: unknown[] };
+      expect(sent.input).toEqual([
+        { type: "text", text: expect.stringContaining("look"), text_elements: [] },
+        { type: "localImage", path: "/tmp/a.png" },
+      ]);
+    } finally {
+      delete process.env.EFFORT_PROBE;
+    }
+  });
+
   it("passes on the rate limits Codex reports during a turn", async () => {
     const reports: LimitsPatch[] = [];
     const d = createCodexDriver({ command: process.execPath, args: [MOCK], clientVersion: "test", onLimits: (p) => reports.push(p) });
