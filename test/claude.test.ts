@@ -1222,6 +1222,13 @@ describe("harnessToolOptions", () => {
     expect(registered["browser_snapshot"]!._meta?.["anthropic/alwaysLoad"]).toBeUndefined();
   });
 
+  it("keeps a Creator thread's own tools out of tool search too", () => {
+    const opts = harnessToolOptions([tool("creator_inspect"), tool("creator_propose"), tool("creator_app_preview"), tool("browser_snapshot")]);
+    const registered = (opts.mcpServers?.[TOOL_SERVER] as unknown as { instance: { _registeredTools: Record<string, { _meta?: Record<string, unknown> }> } }).instance._registeredTools;
+    for (const name of ["creator_inspect", "creator_propose", "creator_app_preview"]) expect(registered[name]!._meta?.["anthropic/alwaysLoad"]).toBe(true);
+    expect(registered["browser_snapshot"]!._meta?.["anthropic/alwaysLoad"]).toBeUndefined();
+  });
+
   it("passes the tool context through to each tool's run", async () => {
     const seen: (ToolContext | undefined)[] = [];
     const record: HarnessTool = {

@@ -35,6 +35,20 @@ export function backgroundsItself(command: string): boolean {
 /** The names of the four background-shell tools. */
 export const SHELL_TOOL_NAMES = ["shell_start", "shell_output", "shell_stop", "shell_list"] as const;
 
+/** A Creator thread's own tools (creator_inspect, creator_propose, creator_app_*, …). */
+export function isCreatorTool(name: string): boolean {
+  return name.startsWith("creator_");
+}
+
+/**
+ * Whether a turn's tools include the thread's own tools that the tool server
+ * serves only on its `?s=` URL: the background shells, and Creator's tools, so
+ * a Creator thread keeps them even if shells are ever left out.
+ */
+export function carriesThreadOwnTools(tools: readonly { name: string }[]): boolean {
+  return tools.some((t) => (SHELL_TOOL_NAMES as readonly string[]).includes(t.name) || isCreatorTool(t.name));
+}
+
 function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
   return t as unknown as HarnessTool;
 }

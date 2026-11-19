@@ -17,7 +17,7 @@ import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
 import { TOOL_SERVER_NAME, withBrowserOnDemandFlag, withCode, withProject, withShells, withThread } from "../../mcp-http";
 import { BROWSER_CALL } from "../../browser/on-demand";
-import { SHELL_TOOL_NAMES } from "../../shell-tools";
+import { carriesThreadOwnTools } from "../../shell-tools";
 import { ASK_USER_TOOL } from "../../questions";
 import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
@@ -285,6 +285,8 @@ interface Live {
   droppedNotified: Set<string>;
   /** A freshly created session still owes its first prompt the harness guide. */
   guidePending: boolean;
+  /** A resumed, reloaded or compacted session owes its next prompt the thread's preset note (Creator) again. */
+  presetPending: boolean;
   /** The code-mode hint already went out in this session (with the guide, or on its own for a session that started without it). */
   codeHintSent: boolean;
   /** A freshly created session still owes its first prompt the seed's history prefix. */
@@ -975,7 +977,7 @@ export function createAcpDriver(
       clientInfo: { name: "cubiq", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, threadKey, command, env, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, codeHintSent: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null, approvedCalls: new Set() };
+    l = { conn, init, threadKey, command, env, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, presetPending: false, codeHintSent: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null, approvedCalls: new Set() };
     // No proactive authenticate: the server infers the method from its own
     // settings and refreshes the token itself, so calling it here only ever
     // launched a browser (including during the startup model probe). A signed-out
@@ -1004,7 +1006,7 @@ export function createAcpDriver(
         const skillsTarget = capabilities.skillsDelivery.mode === "tool" ? (skillsUrl ?? url) : url;
         const target = routed ? (routedUrl ?? skillsUrl ?? url) : skillsTarget;
         const code = (deps.codeMode?.(input.threadId) ?? "off") !== "off";
-        const shells = input.tools.some((t) => (SHELL_TOOL_NAMES as readonly string[]).includes(t.name)) ? input.threadId : undefined;
+        const shells = carriesThreadOwnTools(input.tools) ? input.threadId : undefined;
         const toolUrl = withBrowserOnDemandFlag(withShells(withCode(withThread(withProject(target, input.projectId), input.threadId), code ? input.threadId : undefined), shells), input.tools.some((t) => t.name === BROWSER_CALL));
         servers.push({ type: "http", name: TOOL_SERVER_NAME, url: toolUrl, headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
         l.askUser = true;
@@ -1100,6 +1102,7 @@ export function createAcpDriver(
         rememberConfig(l.configOptions, l.threadKey);
       }
       rememberModes(l, res?.modes);
+      l.presetPending = true;
       input.onSessionRebuilt?.();
       return;
     }
@@ -1114,6 +1117,7 @@ export function createAcpDriver(
         l.configOptions = res?.configOptions ?? [];
         rememberConfig(l.configOptions, l.threadKey);
         rememberModes(l, res?.modes);
+        l.presetPending = true;
         return;
       } catch (err) {
         // fall through to a new session
@@ -1126,6 +1130,7 @@ export function createAcpDriver(
         l.configOptions = res?.configOptions ?? [];
         rememberConfig(l.configOptions, l.threadKey);
         rememberModes(l, res?.modes);
+        l.presetPending = true;
         return;
       } catch (err) {
         // fall through
@@ -1358,7 +1363,8 @@ export function createAcpDriver(
       // earlier session was lost, the seed's history prefix; only then are they dropped.
       const g = l.guidePending ? deps.guide?.(input.cwd, input.design) ?? "" : "";
       const e = l.guidePending ? input.expert ?? "" : "";
-      const p = l.guidePending ? input.preset ?? "" : "";
+      // The preset note (Creator) also goes out again after a resume, reload or compaction, which may have dropped it.
+      const p = l.guidePending || l.presetPending ? input.preset ?? "" : "";
       const m = l.guidePending && input.projectId ? deps.memory?.(input.projectId, input.threadId, null) ?? "" : "";
       const fresh = l.guidePending;
       // Code mode (run_code attached): one fixed line inside the guide; OpenCode v2's points at run_code in its own Code Mode catalog.
@@ -1371,6 +1377,7 @@ export function createAcpDriver(
       // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.
       if (fresh) deps.extensions?.(input.cwd, input.projectId ?? null);
       if (g || e || p || m) l.guidePending = false;
+      l.presetPending = false;
       const h = l.historyPending;
       l.historyPending = null;
       const lead = [
@@ -1416,7 +1423,10 @@ export function createAcpDriver(
           turn.text = "";
           turn.thought = "";
           if (res.stopReason === "cancelled") input.onEvent({ kind: "notice", text: "Stopped." });
-          else input.onEvent({ kind: "compaction", trigger: "manual", preTokens: null, postTokens: null });
+          else {
+            l.presetPending = true;
+            input.onEvent({ kind: "compaction", trigger: "manual", preTokens: null, postTokens: null });
+          }
           input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 0, outputTokens: 0, durationMs: Date.now() - started });
           return;
         }

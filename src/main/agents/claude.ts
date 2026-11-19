@@ -15,7 +15,7 @@ import { CODE_TOOL } from "../code-mode";
 import { CODE_HINT } from "../code-hint";
 import { todoResult, todosOf, todoTool } from "../harness/tools/todo";
 import { ToolError } from "../harness/tools/types";
-import { BACKGROUND_BASH_DENY, backgroundsItself, SHELL_TOOL_NAMES } from "../shell-tools";
+import { BACKGROUND_BASH_DENY, backgroundsItself, isCreatorTool, SHELL_TOOL_NAMES } from "../shell-tools";
 import { checkCommand } from "../guard";
 import type { InjectionPlan } from "../inject";
 import { normalizeUsage } from "../usage";
@@ -120,7 +120,8 @@ export function harnessToolOptions(tools: HarnessTool[], ctx?: ToolContext): Pic
         // The todo list too: headless Claude Code has none of its own, and one behind tool search goes unused.
         // A design thread's own tools too: deferred, Sonnet searched `design_tokens_apply` without the MCP prefix,
         // found nothing and stopped (2026-11-09 live test). Only design threads have them, so other threads pay nothing.
-        ...(t.name === CODE_TOOL || t.name === TODO_TOOL || (SHELL_TOOL_NAMES as readonly string[]).includes(t.name) || t.name.startsWith("design_") ? { alwaysLoad: true } : {}),
+        // A Creator thread's tools too: deferred, Claude built plain files and never staged a proposal (2026-11-19).
+        ...(t.name === CODE_TOOL || t.name === TODO_TOOL || (SHELL_TOOL_NAMES as readonly string[]).includes(t.name) || t.name.startsWith("design_") || isCreatorTool(t.name) ? { alwaysLoad: true } : {}),
       }),
     ),
   });

@@ -335,6 +335,25 @@ describe("ACP driver", () => {
     expect(second.deltas.join("")).not.toContain("# Creator mode");
   });
 
+  it("sends the preset note again once after a session is resumed in a new process (app restart), not the guide", async () => {
+    // OpenCode mode: the mock resumes a session it made in an earlier process.
+    const make = () => createAcpDriver({ id: "mock", label: "Mock", command: process.execPath, args: [MOCK], env: { MOCK_ACP_OPENCODE: "1" } }, { clientVersion: "test", guide: () => "GUIDE" });
+    const a = make();
+    closeAfter(() => a.dispose?.());
+    const first = turn("hello", { preset: "# Creator mode" });
+    await a.runTurn(first.input);
+    await a.dispose?.();
+    const b = make();
+    closeAfter(() => b.dispose?.());
+    const resumed = turn("hello", { sessionId: first.sessions[0]!, preset: "# Creator mode" });
+    await b.runTurn(resumed.input);
+    expect(resumed.deltas.join("")).toContain("# Creator mode");
+    expect(resumed.deltas.join("")).not.toContain("<harness-guide>");
+    const next = turn("hello", { sessionId: first.sessions[0]!, preset: "# Creator mode" });
+    await b.runTurn(next.input);
+    expect(next.deltas.join("")).not.toContain("# Creator mode");
+  });
+
   it("opens a fresh session when the thread asks for one while a session is still live", async () => {
     const d = createAcpDriver(
       { id: "mock", label: "Mock", command: process.execPath, args: [MOCK] },

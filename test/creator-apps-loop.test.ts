@@ -290,6 +290,19 @@ describe("Creator app tools", () => {
     expect(watched).toEqual([`d~${env.thread.id}~my-sales`]);
   });
 
+  it("makes an empty draft folder on a first call without a template, as a normal step, and shows nothing yet", async () => {
+    const env = setup();
+    const { byName, opened } = toolsFor(env);
+    const r = await byName[CREATOR_APP_PREVIEW_TOOL]!.run({ name: "clock" });
+    expect(r.isError).not.toBe(true);
+    expect(JSON.parse(r.text)).toMatchObject({ path: join(env.draftsDir, "clock"), files: [], shown: false });
+    expect(existsSync(join(env.draftsDir, "clock"))).toBe(true);
+    expect(opened).toEqual([]);
+    env.store.updateThread(env.thread.id, { permissionMode: "plan" });
+    expect((await byName[CREATOR_APP_PREVIEW_TOOL]!.run({ name: "later" })).isError).toBe(true);
+    expect(existsSync(join(env.draftsDir, "later"))).toBe(false);
+  });
+
   it("reports a broken draft instead of showing it, and won't seed in Plan mode", async () => {
     const env = setup();
     const { byName, opened } = toolsFor(env);

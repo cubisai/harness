@@ -107,8 +107,19 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
         if (!dir) return error("This thread has no folder for drafts.");
         let seeded = false;
         if (!existsSync(dir)) {
-          if (!args.template) return error(`No draft at ${dir} yet. Write app.json and its entry page there first, or pass template: "dashboard".`);
           if (thread.permissionMode === "plan") return error("Plan mode can't create files. Switch to Ask or Auto-edit first.");
+          // A first call without a template makes the empty draft folder and says where to write: a normal step, not a failure.
+          if (!args.template) {
+            mkdirSync(dir, { recursive: true });
+            return {
+              text: JSON.stringify({
+                path: dir,
+                files: [],
+                shown: false,
+                next: 'Empty draft created. Write app.json and its entry page here with your file tools (or call again with template: "dashboard"), then call creator_app_preview again to show it.',
+              }),
+            };
+          }
           const from = join(deps.templatesDir, args.template);
           if (!existsSync(from)) return error(`Template "${args.template}" is missing.`);
           mkdirSync(dir, { recursive: true });

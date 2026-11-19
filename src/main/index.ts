@@ -138,7 +138,7 @@ import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
 import { codexCoveredSkills, withoutCodexCovered } from "./skills/codex-plugins";
 import { discoverSkills } from "./skills/discover";
 import { ensureModelSkillsDir, ensurePlugin } from "./skills/plugin";
-import { SkillCatalogs, forAgent } from "./skills/sources";
+import { SkillCatalogs, forAgent, inScope } from "./skills/sources";
 import { skillTool } from "./skills/tool";
 import { shellTools } from "./shell-tools";
 import { ShellManager } from "./shells";
@@ -423,13 +423,13 @@ async function main(): Promise<void> {
    * skills. "tool" mode's list is built once, so the tool and the names it
    * lists can't disagree.
    */
-  const skillsInputFor = (delivery: SkillsDelivery | undefined, cwd: string | null, design = false) => {
+  const skillsInputFor = (delivery: SkillsDelivery | undefined, cwd: string | null, design = false, creator = false) => {
     if (!delivery) return null;
     const catalog = skillsFor(cwd);
-    const toolSkills = forAgent(catalog, { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design });
+    const toolSkills = forAgent(catalog, { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design, creator });
     return {
       mode: delivery.mode,
-      entries: catalog.modelSkills.filter((s) => design || s.mode !== "design")
+      entries: catalog.modelSkills.filter((s) => inScope(s, { design, creator }))
         .map(({ name, description }) => ({ name, description })),
       tool: delivery.mode === "tool" ? skillTool(() => toolSkills) : undefined,
       toolNames: toolSkills.map((s) => s.name),
@@ -539,10 +539,10 @@ async function main(): Promise<void> {
   function skillsFor(cwd: string | null) {
     return skills.forProject(cwd);
   }
-  /** A generated skills folder's key: cwd and design. */
-  const skillsKey = (cwd: string, design: boolean | undefined) =>
+  /** A generated skills folder's key: cwd, design and Creator. */
+  const skillsKey = (cwd: string, design: boolean | undefined, creator = false) =>
     createHash("sha256")
-      .update([cwd, ...(design ? ["design"] : [])].join("\0"))
+      .update([cwd, ...(design ? ["design"] : []), ...(creator ? ["creator"] : [])].join("\0"))
       .digest("hex")
       .slice(0, 12);
   const driver = createClaudeDriver({
@@ -550,18 +550,20 @@ async function main(): Promise<void> {
     codeMode: (threadId) => codeModeOf(threadId),
     codeTool: (threadId) => codeServer.tool(threadId),
     guide: (cwd, design) => guide.forCwd(cwd, design),
-    pluginDir: (cwd, design) =>
-      ensurePlugin(
+    pluginDir: (cwd, design, threadId) => {
+      const creator = isCreatorThread(threadId);
+      return ensurePlugin(
         forAgent(
           skillsFor(cwd),
           CLAUDE_CAPABILITIES.skillsDelivery,
           // Claude Code loads these itself; the plugin would list them twice.
           skills.namesIn([join(homedir(), ".claude", "skills"), join(cwd, ".claude", "skills")]),
-          { design },
+          { design, creator },
         ),
-        // Design threads get their own plugin (with the design-only skills), so a chat thread's never changes.
-        join(userData, "harness-plugin", skillsKey(cwd, design)),
-      ),
+        // Design and Creator threads get their own plugin (with their mode-only skills), so a chat thread's never changes.
+        join(userData, "harness-plugin", skillsKey(cwd, design, creator)),
+      );
+    },
     skillDirs: () => [skills.dirs(null).bundled, skills.dirs(null).harness],
     ownSkillDirs: (cwd) => [join(homedir(), ".claude", "skills"), join(cwd, ".claude", "skills")],
     guardScript,
@@ -966,9 +968,9 @@ async function main(): Promise<void> {
     (toolServer ??= startToolServer(
       harnessTools,
       // The project's skills too (.cubiq, .claude), which tool-mode agents don't read themselves.
-      // A design thread's (named by `?t=`) list adds the design-only skills.
+      // A design or Creator thread's (named by `?t=`) list adds its mode-only skills.
       (pid, tid) => [
-        skillTool(() => forAgent(skillsFor(projectPathOf(pid ?? null)), { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design: isDesignThread(tid) })),
+        skillTool(() => forAgent(skillsFor(projectPathOf(pid ?? null)), { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design: isDesignThread(tid), creator: isCreatorThread(tid) })),
       ],
       (pid) => routedTools(pid),
       () => threadTools,
@@ -1001,11 +1003,11 @@ async function main(): Promise<void> {
             // Per project: Codex reads .agents/skills itself, but not .cubiq or .claude.
             // A design thread's set adds the design-only skills, in a folder of its own.
             // The bundled Office skills that Codex's own document plugins cover stay out (skills/codex-plugins.ts).
-            skillsDir: (cwd, design) =>
+            skillsDir: (cwd, design, threadId) =>
               cwd
                 ? ensureModelSkillsDir(
-                    withoutCodexCovered(forAgent(skillsFor(cwd), CODEX_CAPABILITIES.skillsDelivery, new Set(), { design }), codexCoveredSkills()),
-                    join(`${modelSkillsDir}-projects`, skillsKey(cwd, design)),
+                    withoutCodexCovered(forAgent(skillsFor(cwd), CODEX_CAPABILITIES.skillsDelivery, new Set(), { design, creator: isCreatorThread(threadId) }), codexCoveredSkills()),
+                    join(`${modelSkillsDir}-projects`, skillsKey(cwd, design, isCreatorThread(threadId))),
                   )
                 : ensureModelSkillsDir(withoutCodexCovered(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), codexCoveredSkills()), modelSkillsDir),
             toolServer: getToolServer,
@@ -1224,8 +1226,8 @@ async function main(): Promise<void> {
     // The project's MCP servers through the app's router (search_tools / call_mcp_tool).
     mcpTools: (projectId) => (mcpScopes.effective(projectId ?? null).length ? routedTools(projectId) : []),
     // The project's model-invoked skills as a `skill` tool, when it has any.
-    skills: (cwd, design) => {
-      const list = forAgent(skillsFor(cwd), { mode: "tool", reads: [] }, new Set(), { design });
+    skills: (cwd, design, threadId) => {
+      const list = forAgent(skillsFor(cwd), { mode: "tool", reads: [] }, new Set(), { design, creator: isCreatorThread(threadId) });
       return list.length ? skillTool(() => list) : null;
     },
     codeMode: codeModeOf,
@@ -1830,6 +1832,16 @@ async function main(): Promise<void> {
       custom: customAgents,
       liveCapabilities: (id) => service.listAgents().find((a) => a.id === id)?.capabilities,
     });
+  /** Whether a thread is a Creator thread (its skills then include the Creator-only ones). */
+  const isCreatorThread = (threadId: string | undefined): boolean => {
+    try {
+      if (!threadId) return false;
+      const t = store.getThread(threadId);
+      return t.kind !== "design" && t.preset === "creator";
+    } catch {
+      return false;
+    }
+  };
   /** Whether the tool server's `?t=` names a design thread (its skill tool then lists the design-only skills). */
   const isDesignThread = (threadId: string | undefined): boolean => {
     try {
@@ -2357,7 +2369,7 @@ async function main(): Promise<void> {
       guideParts: cwd ? guide.partsForCwd(cwd) : [],
       // An agent that keeps the shared memory itself doesn't need the memory tools.
       tools: turnTools(thread ?? undefined).filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && (t.name === MEMORY_READ_TOOL || t.name === MEMORY_WRITE_TOOL))),
-      skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design") : null,
+      skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design", thread.kind !== "design" && thread.preset === "creator") : null,
       mcp: servers.map((s) => ({ name: s.name, listed: mcpTools.peek(s.spec), deferred })),
       memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memoryBlockFor(pid)) : null,
     });

@@ -76,7 +76,7 @@ export function creatorTools(deps: CreatorToolsDeps, threadId: string): HarnessT
   return [
     define({
       name: CREATOR_INSPECT_TOOL,
-      description: "Read a Creator reference or inspect installed extensions.",
+      description: "Creator's references (how to build apps, skills, connectors, page themes, scheduled prompts) and what is already installed. Call it before building anything in a Creator thread.",
       input: {
         topic: z.enum(["overview", "skill-format", "connector-format", "app-format", "app-bridge", "app-check", "theme-format", "theme-tokens", "automation-format", "installed"]),
         name: z.string().optional(),

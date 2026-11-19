@@ -16,7 +16,16 @@ describe("toolLabel: tool rows read as words, not ids", () => {
     expect(toolLabel("Bash")).toBe("Run");
     expect(toolLabel("Edit")).toBe("Edit");
     expect(toolLabel("Agent")).toBe("Agent");
-    expect(toolLabel("Skill")).toBe("Skill");
+  });
+
+  it("reads a skill load and Creator's steps as what they do", () => {
+    expect(toolLabel("Skill")).toBe("Load skill");
+    expect(toolLabel("skill")).toBe("Load skill");
+    expect(toolLabel("mcp__cubiq__creator_inspect")).toBe("Inspect");
+    expect(toolLabel("creator_app_preview")).toBe("Preview app");
+    expect(toolLabel("creator_app_check")).toBe("Check app");
+    expect(toolLabel("creator_connector_test")).toBe("Test connector");
+    expect(toolLabel("creator_propose")).toBe("Propose");
   });
 
   it("keeps another MCP server's name and words its tool", () => {

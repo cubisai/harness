@@ -117,9 +117,23 @@ export class SkillCatalogs {
 /**
  * Model skills to deliver, minus the origins the agent already loads itself
  * and any name it already has from its own folders (`native`). Design-only
- * skills are left out unless `opts.design` is set.
+ * skills are left out unless `opts.design` is set, Creator-only ones unless
+ * `opts.creator` is.
  */
-export function forAgent(catalog: Catalog, delivery: SkillsDelivery, native: Set<string> = new Set(), opts: { design?: boolean } = {}): SkillEntry[] {
+export function forAgent(catalog: Catalog, delivery: SkillsDelivery, native: Set<string> = new Set(), opts: SkillScope = {}): SkillEntry[] {
   const reads = delivery.reads ?? [];
-  return catalog.modelSkills.filter((s) => !(s.origin && reads.includes(s.origin)) && !native.has(s.name) && (opts.design === true || s.mode !== "design"));
+  return catalog.modelSkills.filter((s) => !(s.origin && reads.includes(s.origin)) && !native.has(s.name) && inScope(s, opts));
+}
+
+/** Which mode-only skills a thread gets: design threads the design ones, Creator threads the Creator ones. */
+export interface SkillScope {
+  design?: boolean;
+  creator?: boolean;
+}
+
+/** Whether a skill reaches a thread with this scope: unmoded skills always, moded ones only in their own kind of thread. */
+export function inScope(s: { mode?: "design" | "creator" }, opts: SkillScope): boolean {
+  if (s.mode === "design") return opts.design === true;
+  if (s.mode === "creator") return opts.creator === true;
+  return true;
 }

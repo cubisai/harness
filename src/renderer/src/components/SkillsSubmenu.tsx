@@ -5,13 +5,14 @@ import { useStore } from "../store";
 
 /**
  * The skills a query matches: user-invocable ones, design-only skills only in a
- * design thread, filtered on name or description, name-prefix matches first.
+ * design thread, never Creator's own (the model loads it), filtered on name or
+ * description, name-prefix matches first.
  */
 export function filterSkills(skills: SkillEntry[], query: string, design: boolean): SkillEntry[] {
   const q = query.trim().toLowerCase();
   return skills
     .filter((s) => s.userInvocable !== false && !isCommandSkill(s))
-    .filter((s) => design || s.mode !== "design")
+    .filter((s) => s.mode !== "creator" && (design || s.mode !== "design"))
     .filter((s) => !q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q))
     .sort((a, b) => Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)));
 }

@@ -37,8 +37,8 @@ export interface SkillEntry {
   dir?: string;
   /** False when the frontmatter says `user-invocable: false`. */
   userInvocable?: boolean;
-  /** "design" = delivered to design threads only (frontmatter `mode: design`). */
-  mode?: "design";
+  /** "design" / "creator" = delivered to design / Creator threads only (frontmatter `mode: design` / `mode: creator`). */
+  mode?: "design" | "creator";
   /** False when the user turned it off in Settings. */
   enabled?: boolean;
   /** The origin of the higher-precedence same-name skill that won. */

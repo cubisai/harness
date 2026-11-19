@@ -72,7 +72,7 @@ export function Composer({
   // Design-only skills are offered in design threads (and a design draft) only; threadKind follows the open thread.
   const designKind = useStore((s) => s.threadKind) === "design";
   // The issue skills run as "/" commands, so "$" leaves them out.
-  const skills = useMemo(() => allSkills.filter((s) => !isCommandSkill(s) && (designKind || s.mode !== "design")), [allSkills, designKind]);
+  const skills = useMemo(() => allSkills.filter((s) => !isCommandSkill(s) && s.mode !== "creator" && (designKind || s.mode !== "design")), [allSkills, designKind]);
   const running = useStore((s) => (threadId ? Boolean(s.running[threadId]) : false));
   const insert = useStore((s) => s.composerInsert);
   const { send, interrupt, enqueue, startThread, sendInBackground } = useStore.getState();
