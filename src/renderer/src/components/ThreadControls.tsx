@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ClipboardList, Hand, Pencil, Zap } from "lucide-react";
+import { Check, ChevronDown, ClipboardList, Hand, Pencil, Wand2, Zap } from "lucide-react";
 import type { AgentInfo, ModelOption, PermissionMode, Thread } from "../../../shared/types";
 import { MODE_ORDER } from "../modes";
 import { useStore } from "../store";
@@ -22,7 +22,18 @@ function modelOptions(agents: AgentInfo[], agent: string, current: string): Mode
  * The permission mode as one chip that opens a menu (DESIGN.md §7.3). Shift+Tab
  * still cycles in the message box; Full access reads in the danger colour.
  */
-export function ModeMenu({ mode, disabled, onPick }: { mode: PermissionMode; disabled?: boolean; onPick(mode: PermissionMode): void }) {
+export function ModeMenu({
+  mode,
+  disabled,
+  onPick,
+  creator,
+}: {
+  mode: PermissionMode;
+  disabled?: boolean;
+  onPick(mode: PermissionMode): void;
+  /** The Creator toggle (Chat only): on builds things for CubiQ itself. */
+  creator?: { on: boolean; onToggle(): void };
+}) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -47,18 +58,38 @@ export function ModeMenu({ mode, disabled, onPick }: { mode: PermissionMode; dis
     >
       <button
         className={`chip-button mode-chip${mode === "full" ? " danger" : ""}`}
-        title={`${m.title} (Shift+Tab cycles)`}
+        title={`${creator?.on ? "Creator: build apps, widgets, skills and connectors for CubiQ. " : ""}${m.title} (Shift+Tab cycles)`}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        <m.Icon size={13} />
-        <span className="mode-chip-label">{m.label}</span>
+        {creator?.on ? <Wand2 size={13} aria-hidden /> : <m.Icon size={13} />}
+        <span className="mode-chip-label">{creator?.on ? `Creator · ${m.label}` : m.label}</span>
         <ChevronDown size={12} className="chev" />
       </button>
       {open && (
         <div className="model-menu up mode-menu" role="listbox" aria-label="Permissions">
+          {creator && (
+            <>
+              <div className="model-group">Mode</div>
+              <button
+                role="option"
+                aria-selected={creator.on}
+                className={`model-item two-line${creator.on ? " current" : ""}`}
+                onClick={() => {
+                  setOpen(false);
+                  creator.onToggle();
+                }}
+              >
+                <Check size={13} className="check" />
+                <span className="label">
+                  Creator
+                  <span className="desc">Build apps, widgets, skills and connectors for CubiQ</span>
+                </span>
+              </button>
+            </>
+          )}
           <div className="model-group">Permissions</div>
           {MODE_ORDER.map((id) => {
             const o = MODES[id];
@@ -155,7 +186,10 @@ function useDraftPicks(): Picks | null {
 }
 
 function Mode({ p }: { p: Picks }) {
-  return <ModeMenu mode={p.permissionMode} disabled={p.disabled} onPick={p.onPermission} />;
+  const kind = useStore((s) => s.threadKind);
+  // Design threads have their own settings menu; Creator is a toggle inside Chat.
+  const creator = kind === "design" ? undefined : { on: kind === "creator", onToggle: () => void useStore.getState().toggleCreator() };
+  return <ModeMenu mode={p.permissionMode} disabled={p.disabled} onPick={p.onPermission} creator={creator} />;
 }
 
 function Model({ p }: { p: Picks }) {

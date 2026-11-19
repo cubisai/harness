@@ -34,17 +34,17 @@ describe("Chats in the sidebar", () => {
     expect(html).toContain("Chats with no project folder");
   });
 
-  it("hides New chat in Design and Creator modes and renders the three-way mode switch", () => {
+  it("hides New chat in Design, renders a Chat | Design switch, and shows Creator as Chat (it is a composer toggle)", () => {
     vi.stubGlobal("window", { unskilled: { platform: "darwin" } });
     const designHtml = render({ projects: [APP], threads: { p1: [] }, threadKind: "design" });
     expect(designHtml).not.toContain("New chat");
     expect(designHtml).toContain(">Chat</button>");
     expect(designHtml).toContain(">Design</button>");
-    expect(designHtml).toContain(">Creator</button>");
+    expect(designHtml).not.toContain(">Creator</button>");
 
     const creatorHtml = render({ projects: [APP], threads: { p1: [] }, threadKind: "creator" });
-    expect(creatorHtml).not.toContain("New chat");
-    expect(creatorHtml).toContain('class="on" aria-pressed="true">Creator</button>');
+    expect(creatorHtml).toContain("New chat");
+    expect(creatorHtml).toContain('class="on" aria-pressed="true">Chat</button>');
   });
 });
 

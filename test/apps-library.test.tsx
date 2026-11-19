@@ -176,3 +176,20 @@ describe("draft reloads", () => {
     expect(useStore.getState().appOpen).toEqual(modal);
   });
 });
+
+describe("Creator toggle", () => {
+  it("flips a new thread's kind, and leaves an open thread of the other kind for a fresh draft", async () => {
+    const selectThread = vi.fn(async () => {});
+    useStore.setState({ threadKind: "chat", selectedThreadId: null, selectThread });
+    await useStore.getState().toggleCreator();
+    expect(useStore.getState().threadKind).toBe("creator");
+    expect(selectThread).not.toHaveBeenCalled();
+    useStore.setState({ selectedProjectId: "p", selectedThreadId: "c1", threads: { p: [{ ...thread, id: "c1", preset: "creator" }] } });
+    await useStore.getState().toggleCreator();
+    expect(useStore.getState().threadKind).toBe("chat");
+    expect(selectThread).toHaveBeenCalledWith(null);
+    useStore.setState({ threadKind: "design" });
+    await useStore.getState().toggleCreator();
+    expect(useStore.getState().threadKind).toBe("design");
+  });
+});

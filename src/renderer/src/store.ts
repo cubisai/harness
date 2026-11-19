@@ -154,6 +154,8 @@ interface State {
   threadKind: WorkspaceMode;
   /** Switch workspace mode; a selected thread of another mode gives way to the project's latest of this mode, if any. */
   setThreadKind(kind: WorkspaceMode): Promise<void>;
+  /** The composer's Creator toggle: a new thread follows it; an open thread of the other kind gives way to a fresh draft (a session's tools are fixed). */
+  toggleCreator(): Promise<void>;
   events: Record<string, StoredEvent[]>; // by thread id
   /** Each thread's loaded history window: where it starts, whether older events exist, and its whole-thread totals. */
   history: Record<string, { firstSeq: number; hasMore: boolean; loadingOlder: boolean; totals: ThreadTotals | null }>;
@@ -685,6 +687,14 @@ export const useStore = create<State>((set, get) => ({
       .filter((t) => !t.archived && workspaceModeOf(t) === kind)
       .sort((a, b) => b.updatedAt - a.updatedAt)[0];
     await get().selectThread(latest?.id ?? null);
+  },
+  async toggleCreator() {
+    const s = get();
+    if (s.threadKind === "design") return;
+    const next: WorkspaceMode = s.threadKind === "creator" ? "chat" : "creator";
+    set({ threadKind: next });
+    const current = s.selectedThreadId ? findThread(s.threads, s.selectedThreadId) : undefined;
+    if (current && workspaceModeOf(current) !== next) await get().selectThread(null);
   },
   events: {},
   history: {},

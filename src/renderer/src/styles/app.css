@@ -2221,7 +2221,8 @@ button.qc-option.other { cursor: pointer; }
 .plugin-head-title { font-size: 13px; font-weight: 600; color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plugin-head .proposal-chip { flex: none; }
 
-.floating-layer { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+/* Under menus and popovers (40) and sheets (50), over the page. */
+.floating-layer { position: fixed; inset: 0; z-index: 35; pointer-events: none; }
 .floating-plugin {
   position: absolute;
   pointer-events: auto;

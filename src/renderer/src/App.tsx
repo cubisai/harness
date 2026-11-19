@@ -35,7 +35,7 @@ import { usePaneLayout } from "./hooks/usePaneLayout";
 import { BOUNDS, DEFAULT_LAYOUT, DESIGN_FLOOR, designChatWidth, isWideInspector } from "./layout";
 import { ESCAPE_OWNERS, ESCAPE_OWNERS_OVER_DRAWER, escapeStopsTurn, type EscapeTarget } from "./escape";
 import { lastAgentLine } from "./prompt-bar";
-import { inboxModel, nthVisibleThread, threadKind, waitingThreads } from "./sections";
+import { inboxModel, nthVisibleThread, sidebarMode, threadKind, waitingThreads } from "./sections";
 import { useSelectedThread, useStore } from "./store";
 
 // Its own chunk: Chat never loads the design canvas.
@@ -111,7 +111,7 @@ export function App() {
         const model = inboxModel(
           s.projects.map((p) => p.id),
           s.threads,
-          { running: s.running, waiting: waitingThreads(s.permissions, s.plans, s.questions), mode: s.threadKind },
+          { running: s.running, waiting: waitingThreads(s.permissions, s.plans, s.questions), mode: sidebarMode(s.threadKind) },
         );
         const target = nthVisibleThread(model, Number(e.key), { groupByProject: s.settings?.sidebarGroupByProject ?? true, collapsed: s.collapsedProjects });
         if (target) {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Project, Thread } from "../../../shared/types";
 import { IconChat, IconChevron, IconCompose, IconFolder, IconGear, IconLibrary, IconMore, IconPlus, IconSearch } from "../icons";
 import { api } from "../api";
-import { elapsed, inboxModel, shortTime, waitingThreads } from "../sections";
+import { elapsed, inboxModel, shortTime, sidebarMode, waitingThreads } from "../sections";
 import { ThreadRow, type ThreadStatus } from "./ThreadRow";
 import { appIcon } from "./AppFrame";
 import { useStore } from "../store";
@@ -250,6 +250,8 @@ export function Sidebar() {
   const grouped = useStore((s) => s.settings?.sidebarGroupByProject ?? true);
   const collapsed = useStore((s) => s.collapsedProjects);
   const kind = useStore((s) => s.threadKind);
+  // Creator is a composer toggle inside Chat: the switch shows Chat for it, and its threads list with the chats.
+  const shownMode = sidebarMode(kind);
   const { setThreadKind, addProject, newChat, selectProject, selectThread, newThread, setSearchOpen, toggleProjectCollapsed } = useStore.getState();
   const [archivedOpen, setArchivedOpen] = useState<Record<string, boolean>>({});
   // The flat view's Projects list starts folded (Recent already lists every thread); opening a project there shows its threads.
@@ -268,7 +270,7 @@ export function Sidebar() {
   const model = inboxModel(
     ordered.map((p) => p.id),
     threads,
-    { running, waiting, mode: kind },
+    { running, waiting, mode: shownMode },
   );
   const now = useNow(model.running.length > 0);
   const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? "";
@@ -348,9 +350,9 @@ export function Sidebar() {
       </div>
       <div className="sidebar-mode">
         <div className="segmented compact mode-switch" role="group" aria-label="Mode">
-          {(["chat", "design", "creator"] as const).map((k) => (
-            <button key={k} type="button" className={kind === k ? "on" : undefined} aria-pressed={kind === k} onClick={() => void setThreadKind(k)}>
-              {k === "chat" ? "Chat" : k === "design" ? "Design" : "Creator"}
+          {(["chat", "design"] as const).map((k) => (
+            <button key={k} type="button" className={shownMode === k ? "on" : undefined} aria-pressed={shownMode === k} onClick={() => shownMode !== k && void setThreadKind(k)}>
+              {k === "chat" ? "Chat" : "Design"}
             </button>
           ))}
         </div>
@@ -362,7 +364,7 @@ export function Sidebar() {
           <span>{newLabel}</span>
           <kbd>{newThreadKey}</kbd>
         </button>
-        {kind === "chat" && (
+        {shownMode === "chat" && (
           <button className="nav-row" title="New chat, with no project folder" onClick={() => void newChat()}>
             <IconChat />
             <span>New chat</span>
