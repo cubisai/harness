@@ -25,6 +25,15 @@ export const FLOATING_MAX = { width: 480, height: 600 } as const;
 export const FLOATING_DEFAULT = { width: 280, height: 200 } as const;
 /** The size a modal app is checked at (the modal's largest size). */
 export const MODAL_SIZE = { width: 900, height: 700 } as const;
+/** A composer dock's and a sidebar panel's frame height bounds and default (their width is the host's). */
+export const DOCK_HEIGHT = { min: 32, max: 160, default: 48 } as const;
+export const PANEL_HEIGHT = { min: 80, max: 320, default: 160 } as const;
+/** The width a dock and a panel are checked at (a typical composer and sidebar). */
+export const DOCK_CHECK_WIDTH = 680;
+export const PANEL_CHECK_WIDTH = 232;
+
+export const APP_PLACEMENTS = ["modal", "floating", "page", "dock", "panel"] as const;
+export type AppPlacement = (typeof APP_PLACEMENTS)[number];
 
 export interface AppGrant {
   server: string;
@@ -43,10 +52,15 @@ export interface AppManifest {
   grants: AppGrant[];
   /** How long an identical call's result is reused, in seconds (default 0: every call goes out). */
   cacheSec?: number;
-  /** Where it opens: a centred modal (default) or a small floating widget over the app. */
-  placement?: "modal" | "floating";
+  /**
+   * Where it shows: a centred modal (default), a small floating widget over the app, a full page in the main area,
+   * a strip docked above the composer, or a panel in the left sidebar.
+   */
+  placement?: AppPlacement;
   /** A floating widget's size (default 280×200). */
   size?: { width: number; height: number };
+  /** A dock's or a panel's frame height (defaults 48 and 160). */
+  height?: number;
   /** "own": no CubiQ base sheet (font, background) and a transparent frame; the theme variables still arrive. */
   style?: "cubiq" | "own";
 }
@@ -70,7 +84,7 @@ export function parseAppManifest(text: string, paths: ReadonlySet<string>, expec
     return { manifest: null, errors: [`app.json is not valid JSON: ${(e as Error).message}`] };
   }
   if (!isRecord(raw)) return { manifest: null, errors: ["app.json must be a JSON object."] };
-  const known = new Set(["name", "title", "description", "icon", "entry", "grants", "cacheSec", "placement", "size", "style"]);
+  const known = new Set(["name", "title", "description", "icon", "entry", "grants", "cacheSec", "placement", "size", "height", "style"]);
   for (const k of Object.keys(raw)) if (!known.has(k)) errors.push(`Unknown app.json field "${k}". Fields: ${[...known].join(", ")}.`);
 
   const name = raw.name;
@@ -87,7 +101,7 @@ export function parseAppManifest(text: string, paths: ReadonlySet<string>, expec
     errors.push('app.json "cacheSec" must be a whole number of seconds from 0 to 3600.');
   }
 
-  if (raw.placement !== undefined && raw.placement !== "modal" && raw.placement !== "floating") errors.push('app.json "placement" must be "modal" or "floating".');
+  if (raw.placement !== undefined && !(APP_PLACEMENTS as readonly unknown[]).includes(raw.placement)) errors.push(`app.json "placement" must be one of ${APP_PLACEMENTS.map((p) => `"${p}"`).join(", ")}.`);
   if (raw.style !== undefined && raw.style !== "cubiq" && raw.style !== "own") errors.push('app.json "style" must be "cubiq" or "own".');
   let size: { width: number; height: number } | undefined;
   if (raw.size !== undefined) {
@@ -97,6 +111,15 @@ export function parseAppManifest(text: string, paths: ReadonlySet<string>, expec
     else if (!isRecord(sz) || Object.keys(sz).some((k) => k !== "width" && k !== "height") || !ok(sz.width, FLOATING_MIN.width, FLOATING_MAX.width) || !ok(sz.height, FLOATING_MIN.height, FLOATING_MAX.height)) {
       errors.push(`app.json "size" is { "width": ${FLOATING_MIN.width}-${FLOATING_MAX.width}, "height": ${FLOATING_MIN.height}-${FLOATING_MAX.height} } in whole pixels.`);
     } else size = { width: sz.width, height: sz.height };
+  }
+
+  let height: number | undefined;
+  if (raw.height !== undefined) {
+    const bounds = raw.placement === "dock" ? DOCK_HEIGHT : raw.placement === "panel" ? PANEL_HEIGHT : null;
+    if (!bounds) errors.push('app.json "height" only applies to "placement": "dock" or "panel" (a floating widget uses "size").');
+    else if (typeof raw.height !== "number" || !Number.isInteger(raw.height) || raw.height < bounds.min || raw.height > bounds.max) {
+      errors.push(`app.json "height" for a ${raw.placement} is a whole number of pixels from ${bounds.min} to ${bounds.max}.`);
+    } else height = raw.height;
   }
 
   const grants: AppGrant[] = [];
@@ -133,6 +156,9 @@ export function parseAppManifest(text: string, paths: ReadonlySet<string>, expec
       ...(typeof raw.cacheSec === "number" && raw.cacheSec > 0 ? { cacheSec: raw.cacheSec } : {}),
       // Defaults are left out, so an app written before these fields reads exactly as it did.
       ...(raw.placement === "floating" ? { placement: "floating" as const, size: size ?? { ...FLOATING_DEFAULT } } : {}),
+      ...(raw.placement === "page" ? { placement: "page" as const } : {}),
+      ...(raw.placement === "dock" ? { placement: "dock" as const, height: height ?? DOCK_HEIGHT.default } : {}),
+      ...(raw.placement === "panel" ? { placement: "panel" as const, height: height ?? PANEL_HEIGHT.default } : {}),
       ...(raw.style === "own" ? { style: "own" as const } : {}),
     },
     errors,
@@ -179,7 +205,19 @@ export function granted(manifest: AppManifest, server: string, tool: string): bo
   return manifest.grants.some((g) => g.server === server && g.tools.includes(tool));
 }
 
-/** The size an app shows at: a floating widget's own, else the modal's. */
-export function appSize(manifest: Pick<AppManifest, "placement" | "size">): { width: number; height: number } {
-  return manifest.placement === "floating" ? (manifest.size ?? { ...FLOATING_DEFAULT }) : { ...MODAL_SIZE };
+/** The size an app shows at: a floating widget's own, a dock's or panel's height at a typical width, else the modal's. */
+export function appSize(manifest: Pick<AppManifest, "placement" | "size" | "height">): { width: number; height: number } {
+  switch (manifest.placement) {
+    case "floating":
+      return manifest.size ?? { ...FLOATING_DEFAULT };
+    case "dock":
+      return { width: DOCK_CHECK_WIDTH, height: manifest.height ?? DOCK_HEIGHT.default };
+    case "panel":
+      return { width: PANEL_CHECK_WIDTH, height: manifest.height ?? PANEL_HEIGHT.default };
+    default:
+      return { ...MODAL_SIZE };
+  }
 }
+
+/** Small surfaces (widget, dock, panel) may show very little text and still be fine. */
+export const isSmallPlacement = (p: AppPlacement | undefined): boolean => p === "floating" || p === "dock" || p === "panel";

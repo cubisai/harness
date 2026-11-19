@@ -28,10 +28,11 @@ export function SidebarApps() {
 
 function AppRow({ app }: { app: AppInfo }) {
   const appOpen = useStore((s) => s.appOpen);
+  const appPage = useStore((s) => s.appPage);
   const [menu, setMenu] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const Icon = appIcon(app.icon);
-  const open = appOpen?.key === app.key;
+  const open = appOpen?.key === app.key || appPage?.key === app.key;
 
   useEffect(() => {
     if (!menu) return;

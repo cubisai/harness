@@ -5,6 +5,7 @@ import { api } from "../api";
 import { elapsed, inboxModel, shortTime, sidebarMode, waitingThreads } from "../sections";
 import { ThreadRow, type ThreadStatus } from "./ThreadRow";
 import { SidebarApps } from "./SidebarApps";
+import { SidebarPanels } from "./PluginHost";
 import { useStore } from "../store";
 import { InboxBell } from "./MessageCenter";
 import { SidebarToggle } from "./PaneRail";
@@ -398,6 +399,7 @@ export function Sidebar() {
             {model.pinned.map((t) => row(t))}
           </section>
         )}
+        <SidebarPanels />
         <SidebarApps />
         {projects.length > 0 && (
           <section className="inbox-section" aria-label="Recent">

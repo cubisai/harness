@@ -3,7 +3,8 @@ import { ChevronUp, PanelBottom } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
 import { SearchDialog } from "./components/SearchDialog";
 import { Library } from "./components/Library";
-import { FloatingPlugins, PluginModal, setPluginTray } from "./components/PluginHost";
+import { ComposerDocks, FloatingPlugins, PluginModal, PluginPage, setPluginPageSlot, setPluginTray } from "./components/PluginHost";
+import { appIcon } from "./components/AppFrame";
 import { Composer } from "./components/Composer";
 import { ComposerLip, StudioActions } from "./components/StudioComposer";
 import { RequestDock } from "./components/RequestDock";
@@ -153,6 +154,9 @@ export function App() {
     useStore.setState({ studioFold: studio ? true : null });
   }, [studio]);
   const studioFold = useStore((s) => s.studioFold);
+  const page = useStore((s) => s.appPage);
+  const appPage = page !== null && !canvasFirst;
+  const PageIcon = appIcon(page?.icon);
   const sidebarCollapsed = studioFold ?? layout.sidebarCollapsed;
   // The main header's slot the canvas puts its own header into (canvas-first only): one top bar, not two.
   const [headSlot, setHeadSlot] = useState<HTMLDivElement | null>(null);
@@ -204,12 +208,18 @@ export function App() {
           <>
             <header className="main-header drag">
               {sidebarCollapsed && <CollapsedHeaderControls />}
-              {!studio && (
+              {!studio && appPage && page ? (
+                <div className="main-title" title={page.description}>
+                  <PageIcon size={14} strokeWidth={1.75} aria-hidden className="main-title-icon" />
+                  {page.title}
+                </div>
+              ) : !studio && (
                 <div className="main-title">
                   {thread ? thread.title : project ? project.name : "CubiQ"}
                   {thread && project && <span className="sub">{project.name}</span>}
                 </div>
               )}
+              {appPage && <div className="plugin-page-controls" ref={setPluginPageSlot} />}
               {canvasFirst && <div className="main-header-design" ref={setHeadSlot} />}
               {thread?.expertId && <ExpertChip expertId={thread.expertId} />}
               {design && thread && !studio && (
@@ -257,7 +267,9 @@ export function App() {
               )}
             </header>
 
-            {!project ? (
+            {appPage ? (
+              <PluginPage />
+            ) : !project ? (
               initError ? (
                 <div className="empty" role="alert">
                   <div>
@@ -306,6 +318,7 @@ export function App() {
                     </>
                   )}
                 </div>
+                {!designMode && <ComposerDocks />}
                 <Composer
                   threadId={null}
                   mode={
@@ -355,6 +368,7 @@ export function App() {
                 <RequestDock threadId={thread.id} />
                 {thread.expertId && <TeamStrip threadId={thread.id} expertId={thread.expertId} agent={thread.agent} leadModel={thread.model} />}
                 {canvasFirst && !studio && <DrawerHandle buttonRef={drawerHandle} threadId={thread.id} open={drawerOpen} onToggle={() => setDrawerOpen(!drawerOpen)} />}
+                {!designThread && <ComposerDocks />}
                 <Composer
                   threadId={thread.id}
                   mode={

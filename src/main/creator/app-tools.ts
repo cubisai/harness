@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { HarnessTool, ToolOutput } from "../agents/types";
 import type { AppCheckReport, CheckOptions } from "../apps/check";
-import { APP_MANIFEST, appSize, validateApp } from "../apps/manifest";
+import { APP_MANIFEST, appSize, isSmallPlacement, validateApp } from "../apps/manifest";
 import { readAppFiles } from "../apps/registry";
 import type { McpToolInfo } from "../mcp/servers";
 import type { AppInfo, Thread } from "../../shared/types";
@@ -16,7 +16,9 @@ export const CREATOR_APP_CHECK_TOOL = "creator_app_check";
 export const CREATOR_CONNECTOR_TEST_TOOL = "creator_connector_test";
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
-export const APP_TEMPLATES = ["dashboard", "widget"] as const;
+const SHOWN_AS: Record<string, string> = { modal: "in a modal", floating: "as a floating widget", page: "as a page in the main area", dock: "docked above the composer", panel: "in the sidebar" };
+
+export const APP_TEMPLATES = ["dashboard", "widget", "page", "dock"] as const;
 const SAMPLE_BYTES = 3000;
 
 export interface CreatorAppToolsDeps {
@@ -91,7 +93,7 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
     define({
       name: CREATOR_APP_PREVIEW_TOOL,
       description:
-        "Open your draft app for the user the way it will open once installed: a modal, or a floating widget when app.json says placement \"floating\" (it reloads by itself on every file change). The draft lives in the folder this returns; write it with your file tools. Pass template to start a new draft from one (dashboard: a data modal; widget: a small floating widget).",
+        "Open your draft app for the user the way it will show once installed, by its app.json placement: a modal, a floating widget, a page in the main area, a strip docked above the composer, or a sidebar panel (it reloads by itself on every file change). The draft lives in the folder this returns; write it with your file tools. Pass template to start a new draft from one (dashboard: a data modal; widget: a small floating widget; page: a full-page workspace; dock: a composer strip).",
       input: {
         name: z.string().describe("The app's name: lowercase letters, digits and dashes"),
         template: z.enum(APP_TEMPLATES).optional().describe("Seed a new draft from this template (only when the folder doesn't exist yet)"),
@@ -151,7 +153,7 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
             ...(errors.length ? { errors, shown: false } : { shown: true }),
             next: errors.length
               ? "Fix these in the draft folder, then call creator_app_preview again."
-              : info?.placement === "floating" ? "Shown as a floating widget; it reloads when you save. Run creator_app_check before proposing." : "Shown in a modal; it reloads when you save. Run creator_app_check before proposing.",
+              : `Shown ${SHOWN_AS[info?.placement ?? "modal"]}; it reloads when you save. Run creator_app_check before proposing.`,
           }),
           ...(errors.length ? { isError: true } : {}),
         };
@@ -160,7 +162,7 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
     define({
       name: CREATOR_APP_CHECK_TOOL,
       description:
-        "Render your draft app off screen at the size it shows at (a floating widget's size, else 900x700) with real read-only connector data and report console errors, failed calls, whether it shows anything, its text, and a screenshot. Calls that can change data are not run. Run it before creator_propose.",
+        "Render your draft app off screen at the size it shows at (a floating widget's size, a dock's or panel's height at a typical width, else 900x700) with real read-only connector data and report console errors, failed calls, whether it shows anything, its text, and a screenshot. Calls that can change data are not run. Run it before creator_propose.",
       input: {
         name: z.string(),
         scheme: z.enum(["light", "dark"]).optional().describe("Theme to render in (default light)"),
@@ -181,7 +183,7 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
         if (!info) return error("The draft can't be opened.");
         const wantImage = args.screenshot !== false;
         const image = wantImage && deps.takeImage(threadId);
-        const r = await deps.check(key, info.url, { scheme: args.scheme ?? "light", screenshot: image, size: appSize(valid.manifest), ...(valid.manifest.placement === "floating" ? { minChars: 1 } : {}) });
+        const r = await deps.check(key, info.url, { scheme: args.scheme ?? "light", screenshot: image, size: appSize(valid.manifest), ...(isSmallPlacement(valid.manifest.placement) ? { minChars: 1 } : {}) });
         const { png, ...report } = r;
         const next = r.ok
           ? "Looks fine. Propose it with creator_propose kind: \"app\" when the user's ask is met."

@@ -56,6 +56,11 @@ export function appIcon(name?: string): LucideIcon {
 /** A frame message is small and plain: anything else is dropped before it reaches main. */
 const MAX_MESSAGE_CHARS = 256 * 1024;
 const MAX_PER_SECOND = 100;
+/** The fewest milliseconds between two toasts, plugin opens and chat starts from one frame (extra ones are dropped). */
+const NOTIFY_GAP_MS = 3000;
+const OPEN_GAP_MS = 1000;
+const ASK_GAP_MS = 5000;
+const PLUGIN_NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 interface Ask {
   id: number;
@@ -100,6 +105,13 @@ export function AppFrame({ app, head, onPill }: { app: AppInfo; head(controls: F
   const [logs, setLogs] = useState<Log[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const rate = useRef({ second: 0, count: 0 });
+  const lastUse = useRef<Record<string, number>>({});
+  const allow = useCallback((op: string, gap: number) => {
+    const now = performance.now();
+    if (now - (lastUse.current[op] ?? -Infinity) < gap) return false;
+    lastUse.current[op] = now;
+    return true;
+  }, []);
   // Answers for a frame that was since reloaded go nowhere.
   const loadRef = useRef(0);
   const pillRef = useRef(onPill);
@@ -171,6 +183,18 @@ export function AppFrame({ app, head, onPill }: { app: AppInfo; head(controls: F
         case "pill":
           if (typeof m.text === "string") pillRef.current?.(m.text.replace(/\s+/g, " ").trim().slice(0, 40));
           return;
+        case "notify":
+          if (typeof m.text === "string" && allow("notify", NOTIFY_GAP_MS)) useStore.getState().pluginNotify(app, m.text);
+          return;
+        case "open":
+          if (typeof m.name === "string" && PLUGIN_NAME_RE.test(m.name) && allow("open", OPEN_GAP_MS)) useStore.getState().pluginOpen(app, m.name);
+          return;
+        case "ask":
+          if (typeof m.prompt !== "string" || !m.prompt.trim() || !allow("ask", ASK_GAP_MS)) return;
+          // A Creator draft must not take the user away from the thread building it: say what it would do instead.
+          if (app.scope === "draft") useStore.getState().showNotice(`${app.title} would start a chat with: ${m.prompt.replace(/\s+/g, " ").trim().slice(0, 120)}`);
+          else void useStore.getState().pluginAsk(app, m.prompt);
+          return;
         case "call": {
           if (typeof m.server !== "string" || typeof m.tool !== "string") return;
           const args = m.args && typeof m.args === "object" && !Array.isArray(m.args) ? (m.args as Record<string, unknown>) : {};
@@ -204,7 +228,7 @@ export function AppFrame({ app, head, onPill }: { app: AppInfo; head(controls: F
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [app.key, projectId, postTheme, reply]);
+  }, [app, projectId, postTheme, reply, allow]);
 
   const answer = (ask: Ask, decision: "deny" | "once" | "always") => {
     setAsks((a) => a.filter((x) => x !== ask));

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { Minus } from "lucide-react";
+import { ChevronDown, ChevronRight, Minus } from "lucide-react";
 import type { AppInfo } from "../../../shared/types";
 import { IconClose, IconRefresh } from "../icons";
 import { create } from "zustand";
@@ -155,17 +155,22 @@ function PluginModalSheet({ app }: { app: AppInfo }) {
   );
 }
 
+/** One placement's surfaces: enabled installed apps (unless closed), then Creator draft previews not already shown. */
+export function shownSurfaces(apps: AppInfo[], hidden: string[], drafts: AppInfo[], placement: "floating" | "dock" | "panel"): AppInfo[] {
+  const installed = apps.filter((a) => a.placement === placement && a.scope !== "draft" && a.enabled !== false && !a.error && !hidden.includes(a.key));
+  return [...installed, ...drafts.filter((d) => d.placement === placement && !installed.some((a) => a.key === d.key))];
+}
+
 /** Floating widgets: enabled installed apps with placement "floating" (unless closed), plus Creator draft previews. */
 export function FloatingPlugins() {
   const apps = useStore((s) => s.apps);
-  const hidden = useStore((s) => s.floatingHidden);
-  const drafts = useStore((s) => s.floatingDrafts);
+  const hidden = useStore((s) => s.surfaceHidden);
+  const drafts = useStore((s) => s.surfaceDrafts);
   const shown = useMemo(() => {
-    const installed = apps.filter((a) => a.placement === "floating" && a.enabled !== false && !a.error && !hidden.includes(a.key));
-    return [...installed, ...drafts.filter((d) => !installed.some((a) => a.key === d.key))];
+    return shownSurfaces(apps, hidden, drafts, "floating");
   }, [apps, hidden, drafts]);
   const [order, setOrder] = useState<string[]>([]);
-  const focus = useStore((s) => s.floatingFocus);
+  const focus = useStore((s) => s.surfaceFocus);
   useEffect(() => {
     if (focus) setOrder((o) => [...o.filter((k) => k !== focus.key), focus.key]);
   }, [focus]);
@@ -181,8 +186,8 @@ export function FloatingPlugins() {
 }
 
 function FloatingWidget({ app, index, boxes, z, onFront }: { app: AppInfo; index: number; boxes: Box[]; z: number; onFront(): void }) {
-  const closeFloating = useStore((s) => s.closeFloating);
-  const focus = useStore((s) => (s.floatingFocus?.key === app.key ? s.floatingFocus.n : 0));
+  const closeSurface = useStore((s) => s.closeSurface);
+  const focus = useStore((s) => (s.surfaceFocus?.key === app.key ? s.surfaceFocus.n : 0));
   const size = sizeOf(app);
   const [pill, setPill] = useState("");
   // Never moved: it follows the window's top-right corner (the window may still be sizing up at first paint).
@@ -307,7 +312,7 @@ function FloatingWidget({ app, index, boxes, z, onFront }: { app: AppInfo; index
                 <Minus size={14} strokeWidth={1.75} aria-hidden />
               </button>
             )}
-            <button type="button" className="icon-button floating-action" title="Close" aria-label={`Close ${app.title}`} onClick={() => closeFloating(app.key)}>
+            <button type="button" className="icon-button floating-action" title="Close" aria-label={`Close ${app.title}`} onClick={() => closeSurface(app.key)}>
               <IconClose />
             </button>
           </div>
@@ -331,5 +336,157 @@ function FloatingWidget({ app, index, boxes, z, onFront }: { app: AppInfo; index
           tray,
         )}
     </div>
+  );
+}
+
+/** The installed plugin shown as a page in the main area, under the header, until the user goes to a thread. */
+export function PluginPage() {
+  const app = useStore((s) => s.appPage);
+  if (!app) return null;
+  return <PluginPageView key={app.key} app={app} />;
+}
+
+function PluginPageView({ app }: { app: AppInfo }) {
+  const close = useStore((s) => s.closePage);
+  const slot = usePageSlot((t) => t.el);
+  return (
+    <section className="plugin-page" aria-label={app.title}>
+      <AppFrame
+        app={app}
+        head={({ logsButton, reload }) =>
+          // The main header already names the page: its controls join that header, so there's one top bar.
+          slot &&
+          createPortal(
+            <>
+              {logsButton}
+              <button type="button" className="icon-button" title="Reload" aria-label={`Reload ${app.title}`} onClick={reload}>
+                <IconRefresh />
+              </button>
+              <button type="button" className="icon-button" title="Close" aria-label={`Close ${app.title}`} onClick={close}>
+                <IconClose />
+              </button>
+            </>,
+            slot,
+          )
+        }
+      />
+    </section>
+  );
+}
+
+/** The main header's slot a page's controls sit in. */
+const usePageSlot = create<{ el: HTMLElement | null }>(() => ({ el: null }));
+export const setPluginPageSlot = (el: HTMLElement | null): void => {
+  if (usePageSlot.getState().el !== el) usePageSlot.setState({ el });
+};
+
+/** Strips docked above the composer: enabled installed docks (unless closed), plus Creator draft previews. */
+export function ComposerDocks() {
+  const apps = useStore((s) => s.apps);
+  const hidden = useStore((s) => s.surfaceHidden);
+  const drafts = useStore((s) => s.surfaceDrafts);
+  const shown = useMemo(() => shownSurfaces(apps, hidden, drafts, "dock"), [apps, hidden, drafts]);
+  if (!shown.length) return null;
+  return (
+    <div className="plugin-docks">
+      {shown.map((app) => (
+        <PluginDock key={app.key} app={app} />
+      ))}
+    </div>
+  );
+}
+
+function PluginDock({ app }: { app: AppInfo }) {
+  const closeSurface = useStore((s) => s.closeSurface);
+  return (
+    <div className="plugin-dock" role="region" aria-label={app.title} style={{ "--frame-h": `${app.height ?? 48}px` } as CSSProperties}>
+      <AppFrame
+        app={app}
+        head={({ logsButton }) => (
+          <div className="plugin-dock-actions">
+            {app.scope === "draft" && <span className="proposal-chip">Draft</span>}
+            {logsButton}
+            <button type="button" className="icon-button" title={`Close ${app.title}`} aria-label={`Close ${app.title}`} onClick={() => closeSurface(app.key)}>
+              <IconClose />
+            </button>
+          </div>
+        )}
+      />
+    </div>
+  );
+}
+
+const PANEL_FOLD_PREFIX = "cubiq.panel.folded.";
+
+function readFolded(key: string): boolean {
+  try {
+    return localStorage.getItem(PANEL_FOLD_PREFIX + key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeFolded(key: string, folded: boolean): void {
+  try {
+    if (folded) localStorage.setItem(PANEL_FOLD_PREFIX + key, "1");
+    else localStorage.removeItem(PANEL_FOLD_PREFIX + key);
+  } catch {
+    // Not remembered: it opens unfolded next time.
+  }
+}
+
+/** Panels in the left sidebar, above Apps: enabled installed panels (unless closed), plus Creator draft previews. */
+export function SidebarPanels() {
+  const apps = useStore((s) => s.apps);
+  const hidden = useStore((s) => s.surfaceHidden);
+  const drafts = useStore((s) => s.surfaceDrafts);
+  const shown = useMemo(() => shownSurfaces(apps, hidden, drafts, "panel"), [apps, hidden, drafts]);
+  if (!shown.length) return null;
+  return (
+    <>
+      {shown.map((app) => (
+        <SidebarPanel key={app.key} app={app} />
+      ))}
+    </>
+  );
+}
+
+function SidebarPanel({ app }: { app: AppInfo }) {
+  const closeSurface = useStore((s) => s.closeSurface);
+  const focus = useStore((s) => (s.surfaceFocus?.key === app.key ? s.surfaceFocus.n : 0));
+  const [folded, setFolded] = useState(() => readFolded(app.key));
+  const rootRef = useRef<HTMLElement>(null);
+  const Icon = appIcon(app.icon);
+  const fold = (next: boolean) => {
+    setFolded(next);
+    writeFolded(app.key, next);
+  };
+  // Opened again from the sidebar's Apps: unfold and come into view.
+  useEffect(() => {
+    if (!focus) return;
+    fold(false);
+    rootRef.current?.scrollIntoView({ block: "nearest" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
+  return (
+    <section ref={rootRef} className={`plugin-panel${folded ? " folded" : ""}`} aria-label={app.title} style={{ "--frame-h": `${app.height ?? 160}px` } as CSSProperties}>
+      <AppFrame
+        app={app}
+        head={({ logsButton }) => (
+          <div className="plugin-panel-head">
+            <button type="button" className="plugin-panel-toggle" aria-expanded={!folded} title={folded ? `Show ${app.title}` : `Fold ${app.title}`} onClick={() => fold(!folded)}>
+              {folded ? <ChevronRight size={12} strokeWidth={2} aria-hidden /> : <ChevronDown size={12} strokeWidth={2} aria-hidden />}
+              <Icon size={13} strokeWidth={1.75} aria-hidden />
+              <span>{app.title}</span>
+            </button>
+            {app.scope === "draft" && <span className="proposal-chip">Draft</span>}
+            {!folded && logsButton}
+            <button type="button" className="icon-button plugin-panel-close" title={`Close ${app.title}`} aria-label={`Close ${app.title}`} onClick={() => closeSurface(app.key)}>
+              <IconClose />
+            </button>
+          </div>
+        )}
+      />
+    </section>
   );
 }

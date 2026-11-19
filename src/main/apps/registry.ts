@@ -203,6 +203,8 @@ export class AppRegistry {
       url: appUrl(encodeAppKey(k), manifest?.entry ?? "index.html"),
       ...(error ? { error } : {}),
       ...(manifest?.placement === "floating" ? { placement: "floating" as const, ...(manifest.size ? { size: manifest.size } : {}) } : {}),
+      ...(manifest?.placement === "page" ? { placement: "page" as const } : {}),
+      ...(manifest?.placement === "dock" || manifest?.placement === "panel" ? { placement: manifest.placement, ...(manifest.height ? { height: manifest.height } : {}) } : {}),
       ...(manifest?.style === "own" ? { style: "own" as const } : {}),
     };
   }

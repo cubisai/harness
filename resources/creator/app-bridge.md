@@ -40,6 +40,17 @@ cubiq.pill("Focus 12:30");  // the label while the widget is minimised; "" shows
 
 Up to 40 characters. Update it when the state the user glances at changes (a countdown, a count), not on every frame.
 
+## Notify, open another plugin, ask
+
+```js
+cubiq.notify("Saved 3 items");          // a short toast headed with your app's title (200 chars)
+cubiq.openPlugin("reading-list");       // open another installed, enabled plugin by its name
+cubiq.ask("Summarise these notes: …");  // a new chat with this text in the composer; the user reads and sends it
+```
+
+- All three return nothing. Call them from a clear user action, not on load or in a loop: extra calls within a few seconds are dropped.
+- `ask` never sends anything by itself. In a Creator preview it only shows what it would do, so the thread you're in stays open.
+
 ## Errors
 
 Uncaught errors, rejected promises, `console.error` and `console.warn` are reported to the app's window (its error count) and to `creator_app_check`. Don't swallow errors silently: show them in the page and log them.

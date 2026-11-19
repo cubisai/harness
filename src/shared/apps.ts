@@ -131,6 +131,12 @@ ${
     onTheme: (f) => { themeListeners.add(f); return () => themeListeners.delete(f); },
     /** A floating widget's label while it is minimised (up to 40 characters; empty shows the title). */
     pill: (text) => post({ op: "pill", text: String(text == null ? "" : text).slice(0, 40) }),
+    /** A short toast in CubiQ, headed with the app's title (up to 200 characters; a few per minute at most). */
+    notify: (text) => post({ op: "notify", text: String(text == null ? "" : text).slice(0, 200) }),
+    /** Open another installed, enabled plugin by its name (its usual placement). */
+    openPlugin: (name) => post({ op: "open", name: String(name == null ? "" : name).slice(0, 64) }),
+    /** Start a new chat with this text in the composer; the user reads it and sends it (up to 4000 characters). */
+    ask: (prompt) => post({ op: "ask", prompt: String(prompt == null ? "" : prompt).slice(0, 4000) }),
   });
   post({ op: "ready" });
 })();`;

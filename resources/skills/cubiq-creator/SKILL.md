@@ -12,7 +12,7 @@ You extend CubiQ itself. What you build is staged with `creator_propose` and the
 
 | The user wants | Kind | Read first (`creator_inspect` topic) |
 |---|---|---|
-| Something to see or use: widget, timer, dashboard, tracker, viewer, form | `app` | `app-format`, `app-bridge`, `app-check` |
+| Something to see or use: widget, timer, dashboard, tracker, viewer, form, a workspace page, a strip above the composer, a sidebar panel | `app` | `app-format`, `app-bridge`, `app-check` |
 | The agent to know how to do a task | `skill` | `skill-format` |
 | Data or actions from an outside service | `connector` | `connector-format` |
 | A Design page's colours and type | `theme` (project only) | `theme-format`, then `theme-tokens` |
@@ -25,7 +25,7 @@ Several kinds can work together (a connector plus an app that shows its data): b
 1. `creator_inspect` topic `installed`: what already exists, reserved names, enabled connectors. An installed app with the same name is updated, not duplicated.
 2. Read the docs for the kind (table above). Don't build from memory.
 3. Apps over a connector: `creator_connector_test` lists its tools and runs one read-only call, so the app is written against the real data shape. Never invent data.
-4. Apps: `creator_app_preview` makes and returns the draft folder (pass `template: "dashboard"` for a data dashboard in a modal, `template: "widget"` for a small floating widget such as a timer; set `placement` in app.json); write `app.json` and the files there with your file tools, then call it again to show the preview, which reloads on every write.
+4. Apps: `creator_app_preview` makes and returns the draft folder (pass `template: "dashboard"` for a data dashboard in a modal, `"widget"` for a small floating widget such as a timer, `"page"` for a full-page workspace, `"dock"` for a strip above the composer; set `placement` in app.json: `modal`, `floating`, `page`, `dock` or `panel`); write `app.json` and the files there with your file tools, then call it again to show the preview, which reloads on every write.
 5. Apps: `creator_app_check` renders it headless and reports console errors, failed calls, empty states and an optional screenshot. Fix and check again until it is clean, in both light and dark.
 6. `creator_propose` with the kind and name. Then stop: tell the user what it does and that they install it from the card.
 7. After the user installs, open it and check it once more if they ask.

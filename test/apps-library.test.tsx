@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppInfo, Thread } from "../src/shared/types";
 import { AppsTabView, type AppsTabViewProps } from "../src/renderer/src/components/AppsTab";
 import { LibrarySheet } from "../src/renderer/src/components/Library";
-import { useStore } from "../src/renderer/src/store";
+import { hostOf, useStore } from "../src/renderer/src/store";
+import { shownSurfaces } from "../src/renderer/src/components/PluginHost";
 
 const app: AppInfo = { key: "g~sales", name: "sales", title: "Sales", description: "Daily revenue", scope: "global", path: "/profile/apps/sales", url: "cubiq-app://a/g~sales/index.html", grants: [{ server: "shop", tools: ["summary", "refund"] }] };
 const thread: Thread = { id: "new", projectId: "p", kind: "chat", preset: "creator", title: "New", agent: "codex", model: "m", effort: null, sessionId: null, bindings: {}, permissionMode: "ask", createdAt: 0, updatedAt: 0 };
@@ -80,7 +81,7 @@ describe("app store actions", () => {
   });
 
   it("opens a modal app in the plugin modal and never in the right panel", () => {
-    useStore.setState({ appOpen: null, inspectorOpen: false, inspectorTab: "changes", floatingDrafts: [], floatingHidden: [] });
+    useStore.setState({ appOpen: null, inspectorOpen: false, inspectorTab: "changes", surfaceDrafts: [], surfaceHidden: [] });
     useStore.getState().openApp(app);
     expect(useStore.getState()).toMatchObject({ appOpen: app, inspectorOpen: false, inspectorTab: "changes" });
     useStore.getState().closeApp();
@@ -90,26 +91,69 @@ describe("app store actions", () => {
   it("shows a floating app as a widget: drafts until closed, installed ones hide and come back", () => {
     const widget = { ...app, key: "g~timer", name: "timer", placement: "floating" as const, size: { width: 260, height: 150 } };
     const draft = { ...widget, key: "d~t1~timer", scope: "draft" as const };
-    useStore.setState({ appOpen: null, inspectorOpen: false, floatingDrafts: [], floatingHidden: [], floatingFocus: null });
+    useStore.setState({ appOpen: null, inspectorOpen: false, surfaceDrafts: [], surfaceHidden: [], surfaceFocus: null });
     useStore.getState().openApp(draft);
-    expect(useStore.getState()).toMatchObject({ appOpen: null, inspectorOpen: false, floatingDrafts: [draft], floatingFocus: { key: draft.key, n: 1 } });
+    expect(useStore.getState()).toMatchObject({ appOpen: null, inspectorOpen: false, surfaceDrafts: [draft], surfaceFocus: { key: draft.key, n: 1 } });
     useStore.getState().openApp(draft);
-    expect(useStore.getState().floatingDrafts).toEqual([draft]);
-    useStore.getState().closeFloating(draft.key);
-    expect(useStore.getState().floatingDrafts).toEqual([]);
-    useStore.getState().closeFloating(widget.key);
-    expect(useStore.getState().floatingHidden).toEqual([widget.key]);
+    expect(useStore.getState().surfaceDrafts).toEqual([draft]);
+    useStore.getState().closeSurface(draft.key);
+    expect(useStore.getState().surfaceDrafts).toEqual([]);
+    useStore.getState().closeSurface(widget.key);
+    expect(useStore.getState().surfaceHidden).toEqual([widget.key]);
     useStore.getState().openApp(widget);
-    expect(useStore.getState().floatingHidden).toEqual([]);
-    expect(useStore.getState().floatingFocus?.key).toBe(widget.key);
+    expect(useStore.getState().surfaceHidden).toEqual([]);
+    expect(useStore.getState().surfaceFocus?.key).toBe(widget.key);
   });
 
   it("a draft that turns floating leaves the modal for its widget", () => {
     const modalDraft = { ...app, key: "d~t1~sales", scope: "draft" as const };
-    useStore.setState({ appOpen: modalDraft, floatingDrafts: [] });
+    useStore.setState({ appOpen: modalDraft, surfaceDrafts: [] });
     useStore.getState().openApp({ ...modalDraft, placement: "floating" });
     expect(useStore.getState().appOpen).toBeNull();
-    expect(useStore.getState().floatingDrafts).toHaveLength(1);
+    expect(useStore.getState().surfaceDrafts).toHaveLength(1);
+  });
+
+  it("opens an installed page in the main area, a draft page in the modal, and closes the page on a thread change", async () => {
+    const page = { ...app, key: "g~reading", name: "reading", placement: "page" as const };
+    useStore.setState({ appOpen: null, appPage: null, surfaceDrafts: [] });
+    useStore.getState().openApp(page);
+    expect(useStore.getState()).toMatchObject({ appPage: page, appOpen: null });
+    const draft = { ...page, key: "d~t1~reading", scope: "draft" as const };
+    useStore.getState().openApp(draft);
+    expect(useStore.getState()).toMatchObject({ appOpen: draft });
+    expect(hostOf(draft)).toBe("modal");
+    useStore.setState({ threads: {}, selectedOrder: [] });
+    await useStore.getState().selectThread(null);
+    expect(useStore.getState().appPage).toBeNull();
+  });
+
+  it("shows docks and panels as surfaces: installed unless closed, drafts beside them, each in its own placement", () => {
+    const dock = { ...app, key: "g~focus", name: "focus", placement: "dock" as const, height: 40 };
+    const panel = { ...app, key: "g~queue", name: "queue", placement: "panel" as const, height: 160 };
+    const off = { ...dock, key: "g~off", name: "off", enabled: false };
+    const draftDock = { ...dock, key: "d~t1~focus2", name: "focus2", scope: "draft" as const };
+    expect(shownSurfaces([dock, panel, off], [], [draftDock], "dock").map((a) => a.key)).toEqual(["g~focus", "d~t1~focus2"]);
+    expect(shownSurfaces([dock, panel], [panel.key], [], "panel")).toEqual([]);
+    expect(shownSurfaces([dock, panel], [], [draftDock], "floating")).toEqual([]);
+    useStore.setState({ surfaceHidden: [dock.key], surfaceFocus: null, appOpen: null });
+    useStore.getState().openApp(dock);
+    expect(useStore.getState()).toMatchObject({ surfaceHidden: [], appOpen: null, surfaceFocus: { key: dock.key } });
+  });
+
+  it("bridges notify, openPlugin and ask: toasts with the title, opens only installed plugins, fills a new chat's composer", async () => {
+    const notices: string[] = [];
+    const other = { ...app, key: "g~notes", name: "notes", title: "Notes" };
+    useStore.setState({ apps: [app, other], appOpen: null, showNotice: (t: string) => void notices.push(t) });
+    useStore.getState().pluginNotify(app, "  Saved\n3 items ");
+    useStore.getState().pluginOpen(app, "notes");
+    expect(useStore.getState().appOpen?.key).toBe("g~notes");
+    useStore.getState().pluginOpen(app, "missing");
+    const newChat = vi.fn(async () => "t2");
+    useStore.setState({ newChat, appPage: { ...app, placement: "page" } });
+    await useStore.getState().pluginAsk(app, "  Plan my day  ");
+    expect(newChat).toHaveBeenCalledOnce();
+    expect(useStore.getState()).toMatchObject({ appPage: null, appOpen: null, composerDraft: { text: "Plan my day" } });
+    expect(notices).toEqual(["Sales: Saved 3 items", 'Sales tried to open "missing", which isn\'t installed.', "Sales started a chat. Read it, then send it."]);
   });
 
   it("refreshes an updated app's pane info and rejects a stale project reply", async () => {
@@ -189,13 +233,13 @@ describe("floating widget placement", () => {
 describe("draft reloads", () => {
   it("updates a shown floating draft's title and size in place, and moves it to the modal when its placement changes", () => {
     const draft = { ...app, key: "d~t1~water", scope: "draft" as const, placement: "floating" as const, size: { width: 260, height: 150 }, title: "Focus timer" };
-    useStore.setState({ appOpen: null, floatingDrafts: [draft], floatingFocus: null, appReloads: {} });
+    useStore.setState({ appOpen: null, surfaceDrafts: [draft], surfaceFocus: null, appReloads: {} });
     const fresh = { ...draft, title: "Water", size: { width: 180, height: 90 } };
     useStore.getState().apply({ type: "app-reload", key: draft.key, app: fresh });
-    expect(useStore.getState()).toMatchObject({ floatingDrafts: [fresh], floatingFocus: null, appOpen: null, appReloads: { [draft.key]: 1 } });
+    expect(useStore.getState()).toMatchObject({ surfaceDrafts: [fresh], surfaceFocus: null, appOpen: null, appReloads: { [draft.key]: 1 } });
     const modal = { ...fresh, placement: undefined, size: undefined };
     useStore.getState().apply({ type: "app-reload", key: draft.key, app: modal });
-    expect(useStore.getState()).toMatchObject({ floatingDrafts: [], appOpen: modal });
+    expect(useStore.getState()).toMatchObject({ surfaceDrafts: [], appOpen: modal });
     useStore.getState().apply({ type: "app-reload", key: "d~t1~other", app: { ...modal, key: "d~t1~other" } });
     expect(useStore.getState().appOpen).toEqual(modal);
   });

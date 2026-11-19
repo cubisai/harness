@@ -357,18 +357,25 @@ interface State {
   appOpen: AppInfo | null;
   /** Per frame key, how many times main said a previewed draft's files changed (an open frame reloads on each). */
   appReloads: Record<string, number>;
-  /** Installed floating widgets the user closed (by key); they show again when opened from the sidebar. Kept in localStorage. */
-  floatingHidden: string[];
-  /** Floating draft previews from Creator threads, shown until closed. */
-  floatingDrafts: AppInfo[];
-  /** Asks a floating widget to expand and come to the front (bumped on every open). */
-  floatingFocus: { key: string; n: number } | null;
+  /** The installed plugin shown as a page over the main area (closed when the thread or project changes). */
+  appPage: AppInfo | null;
+  /** Installed widgets, docks and panels the user closed (by key); they show again when opened from the sidebar. Kept in localStorage. */
+  surfaceHidden: string[];
+  /** Widget, dock and panel draft previews from Creator threads, shown until closed. */
+  surfaceDrafts: AppInfo[];
+  /** Asks a widget, dock or panel to expand and come forward (bumped on every open). */
+  surfaceFocus: { key: string; n: number } | null;
   /** When each installed app was last opened (orders the sidebar's Apps after favourites). Kept in localStorage. */
   appRecents: Record<string, number>;
-  /** Open an app where its manifest says: the modal, or its floating widget. */
+  /** Open an app where its manifest says: the modal, a page, or its widget, dock or panel. */
   openApp(app: AppInfo): void;
-  /** Close a floating widget: a draft preview goes away, an installed widget hides until opened again. */
-  closeFloating(key: string): void;
+  /** Close a widget, dock or panel: a draft preview goes away, an installed one hides until opened again. */
+  closeSurface(key: string): void;
+  closePage(): void;
+  /** A plugin's bridge: a toast headed with its title, another plugin opened by name, a new chat with its text. */
+  pluginNotify(app: AppInfo, text: string): void;
+  pluginOpen(from: AppInfo, name: string): void;
+  pluginAsk(app: AppInfo, prompt: string): Promise<void>;
   editApp(app: AppInfo): Promise<string | null>;
   closeApp(): void;
   toggleTerminal(): void;
@@ -780,9 +787,10 @@ export const useStore = create<State>((set, get) => ({
   apps: [],
   appOpen: null,
   appReloads: {},
-  floatingHidden: readFloatingHidden(),
-  floatingDrafts: [],
-  floatingFocus: null,
+  appPage: null,
+  surfaceHidden: readSurfaceHidden(),
+  surfaceDrafts: [],
+  surfaceFocus: null,
   appRecents: readAppRecents(),
   artifactFiles: {},
   turnScores: {},
@@ -1155,7 +1163,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async selectProject(id) {
-    set({ selectedProjectId: id });
+    set({ selectedProjectId: id, ...(get().selectedProjectId !== id ? { appPage: null } : {}) });
     void get().loadBranch(id);
     if (!get().threads[id]) {
       const list = await api().listThreads(id);
@@ -1168,6 +1176,8 @@ export const useStore = create<State>((set, get) => ({
     const picked = id ? Object.values(get().threads).flat().find((t) => t.id === id) : undefined;
     set((s) => ({
       selectedThreadId: id,
+      // A page belongs to the main area until the user goes to a thread.
+      appPage: null,
       // Keep the selection order so the per-thread caches can be bounded below.
       selectedOrder: id ? [...s.selectedOrder.filter((x) => x !== id), id] : s.selectedOrder,
       // Jumping to a thread (⌘K, the Message Center) lands in its mode.
@@ -1592,8 +1602,10 @@ export const useStore = create<State>((set, get) => ({
       if (get().selectedProjectId === projectId) {
         const open = get().appOpen;
         const fresh = open && open.scope !== "draft" ? apps.find((a) => a.key === open.key) : null;
-        const usable = fresh && fresh.enabled !== false && !fresh.error && fresh.placement !== "floating";
-        set({ apps, ...(usable ? { appOpen: fresh } : {}) });
+        const usable = fresh && fresh.enabled !== false && !fresh.error && hostOf(fresh) === "modal";
+        const page = get().appPage;
+        const freshPage = page ? apps.find((a) => a.key === page.key && a.enabled !== false && !a.error && a.placement === "page") : undefined;
+        set({ apps, ...(usable ? { appOpen: fresh } : {}), ...(page ? { appPage: freshPage ?? null } : {}) });
         if (open && open.scope !== "draft" && !usable) get().closeApp();
       }
     } catch {
@@ -1612,31 +1624,38 @@ export const useStore = create<State>((set, get) => ({
       writeAppRecents(appRecents);
       set({ appRecents });
     }
-    if (app.placement === "floating") {
-      const n = (s.floatingFocus?.n ?? 0) + 1;
-      if (app.scope === "draft") set((x) => ({ floatingDrafts: [...x.floatingDrafts.filter((d) => d.key !== app.key), app], floatingFocus: { key: app.key, n } }));
+    const host = hostOf(app);
+    if (host === "surface") {
+      const n = (s.surfaceFocus?.n ?? 0) + 1;
+      if (app.scope === "draft") set((x) => ({ surfaceDrafts: [...x.surfaceDrafts.filter((d) => d.key !== app.key), app], surfaceFocus: { key: app.key, n } }));
       else {
-        const hidden = s.floatingHidden.filter((k) => k !== app.key);
-        if (hidden.length !== s.floatingHidden.length) writeFloatingHidden(hidden);
-        set({ floatingHidden: hidden, floatingFocus: { key: app.key, n } });
+        const hidden = s.surfaceHidden.filter((k) => k !== app.key);
+        if (hidden.length !== s.surfaceHidden.length) writeSurfaceHidden(hidden);
+        set({ surfaceHidden: hidden, surfaceFocus: { key: app.key, n } });
       }
-      // A modal draft of the same app (placement just changed) gives way to the widget.
-      if (s.appOpen?.key === app.key) set({ appOpen: null });
+      // A panel lives in the sidebar: a folded sidebar opens so it can be seen.
+      if (app.placement === "panel" && s.paneLayout.sidebarCollapsed && s.studioFold === null) s.setPaneLayout({ sidebarCollapsed: false }, true);
+      // The same app in another host (its placement just changed) gives way.
+      set((x) => ({ ...(x.appOpen?.key === app.key ? { appOpen: null } : {}), ...(x.appPage?.key === app.key ? { appPage: null } : {}) }));
       return;
     }
-    set((x) => ({ appOpen: app, floatingDrafts: x.floatingDrafts.filter((d) => d.key !== app.key) }));
+    if (host === "page") {
+      set((x) => ({ appPage: app, appOpen: null, surfaceDrafts: x.surfaceDrafts.filter((d) => d.key !== app.key) }));
+      return;
+    }
+    set((x) => ({ appOpen: app, surfaceDrafts: x.surfaceDrafts.filter((d) => d.key !== app.key), ...(x.appPage?.key === app.key ? { appPage: null } : {}) }));
   },
 
-  closeFloating(key) {
+  closeSurface(key) {
     const s = get();
-    if (s.floatingDrafts.some((d) => d.key === key)) {
-      set({ floatingDrafts: s.floatingDrafts.filter((d) => d.key !== key) });
+    if (s.surfaceDrafts.some((d) => d.key === key)) {
+      set({ surfaceDrafts: s.surfaceDrafts.filter((d) => d.key !== key) });
       return;
     }
-    if (s.floatingHidden.includes(key)) return;
-    const hidden = [...s.floatingHidden, key];
-    writeFloatingHidden(hidden);
-    set({ floatingHidden: hidden });
+    if (s.surfaceHidden.includes(key)) return;
+    const hidden = [...s.surfaceHidden, key];
+    writeSurfaceHidden(hidden);
+    set({ surfaceHidden: hidden });
   },
 
   async editApp(app) {
@@ -1675,6 +1694,34 @@ export const useStore = create<State>((set, get) => ({
 
   closeApp() {
     set({ appOpen: null });
+  },
+
+  closePage() {
+    set({ appPage: null });
+  },
+
+  pluginNotify(app, text) {
+    const t = text.replace(/\s+/g, " ").trim().slice(0, 200);
+    if (t) get().showNotice(`${app.title}: ${t}`);
+  },
+
+  pluginOpen(from, name) {
+    const target = get().apps.find((a) => a.name === name && a.scope !== "draft");
+    if (!target) {
+      get().showNotice(`${from.title} tried to open "${name.slice(0, 64)}", which isn't installed.`);
+      return;
+    }
+    get().openApp(target);
+  },
+
+  async pluginAsk(app, prompt) {
+    const text = prompt.trim().slice(0, 4000);
+    if (!text) return;
+    // A fresh chat (newChat reports its own failure); the text only fills the composer, the user sends it.
+    await get().newChat();
+    set({ appPage: null, appOpen: null });
+    get().setComposerDraft(text);
+    get().showNotice(`${app.title} started a chat. Read it, then send it.`);
   },
 
   closeArtifact() {
@@ -1892,8 +1939,8 @@ export const useStore = create<State>((set, get) => ({
       case "app-open":
         // Only the window showing that Creator thread opens it; elsewhere it would take over the panel.
         if (get().selectedThreadId === update.threadId) get().openApp(update.app);
-        else if (get().appOpen?.key === update.app.key && update.app.placement !== "floating") set({ appOpen: update.app });
-        else if (get().floatingDrafts.some((d) => d.key === update.app.key)) get().openApp(update.app);
+        else if (get().appOpen?.key === update.app.key && hostOf(update.app) === "modal") set({ appOpen: update.app });
+        else if (get().surfaceDrafts.some((d) => d.key === update.app.key)) get().openApp(update.app);
         return;
       case "app-reload": {
         set((s) => ({ appReloads: { ...s.appReloads, [update.key]: (s.appReloads[update.key] ?? 0) + 1 } }));
@@ -1902,11 +1949,12 @@ export const useStore = create<State>((set, get) => ({
         if (!fresh || fresh.key !== update.key) return;
         const s = get();
         const inModal = s.appOpen?.key === fresh.key;
-        const inFloat = s.floatingDrafts.some((d) => d.key === fresh.key);
+        const inSurface = s.surfaceDrafts.some((d) => d.key === fresh.key);
+        const host = hostOf(fresh);
         // Placement changed: it moves to the other host. Otherwise update it in place, without stealing focus.
-        if ((inModal && fresh.placement === "floating") || (inFloat && fresh.placement !== "floating")) s.openApp(fresh);
+        if ((inModal && host !== "modal") || (inSurface && host !== "surface")) s.openApp(fresh);
         else if (inModal) set({ appOpen: fresh });
-        else if (inFloat) set({ floatingDrafts: s.floatingDrafts.map((d) => (d.key === fresh.key ? fresh : d)) });
+        else if (inSurface) set({ surfaceDrafts: s.surfaceDrafts.map((d) => (d.key === fresh.key ? fresh : d)) });
         return;
       }
       case "open-about":
@@ -1993,7 +2041,17 @@ export function relativeToThread(s: Pick<State, "threads" | "projects">, threadI
 const FLOATING_HIDDEN_KEY = "cubiq.floating.hidden";
 
 /** Closed floating widgets, from localStorage; unreadable storage means none are hidden. */
-function readFloatingHidden(): string[] {
+/**
+ * Which host shows an app: widgets, docks and panels stay mounted ("surface"); an installed page fills the main area;
+ * everything else, and a Creator draft of a page (the chat beside it must stay visible), opens in the modal.
+ */
+export function hostOf(app: Pick<AppInfo, "placement" | "scope">): "modal" | "page" | "surface" {
+  if (app.placement === "floating" || app.placement === "dock" || app.placement === "panel") return "surface";
+  if (app.placement === "page" && app.scope !== "draft") return "page";
+  return "modal";
+}
+
+function readSurfaceHidden(): string[] {
   try {
     const v = JSON.parse(globalThis.localStorage?.getItem(FLOATING_HIDDEN_KEY) ?? "[]") as unknown;
     return Array.isArray(v) ? v.filter((k): k is string => typeof k === "string" && k.length <= 200).slice(0, 200) : [];
@@ -2002,7 +2060,7 @@ function readFloatingHidden(): string[] {
   }
 }
 
-function writeFloatingHidden(keys: string[]): void {
+function writeSurfaceHidden(keys: string[]): void {
   try {
     globalThis.localStorage?.setItem(FLOATING_HIDDEN_KEY, JSON.stringify(keys));
   } catch {

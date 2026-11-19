@@ -1476,10 +1476,12 @@ export interface AppInfo {
   url: string;
   /** Why it can't open (bad or missing app.json). */
   error?: string;
-  /** Where it opens; omitted means a modal. */
-  placement?: "modal" | "floating";
+  /** Where it shows (a modal, floating widget, main-area page, composer dock or sidebar panel); omitted means a modal. */
+  placement?: "modal" | "floating" | "page" | "dock" | "panel";
   /** A floating widget's size. */
   size?: { width: number; height: number };
+  /** A dock's or sidebar panel's frame height. */
+  height?: number;
   /** "own": the app brings its own look (no base sheet, transparent frame). */
   style?: "cubiq" | "own";
 }

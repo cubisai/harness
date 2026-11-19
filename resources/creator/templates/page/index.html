@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  /* style: "cubiq" — the base font and background are set for you. A page fills CubiQ's main area: lay out for any width. */
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 24px 40px; display: grid; gap: 16px; }
+  h1 { margin: 0; font-size: 14px; font-weight: 600; }
+  .sub { margin: 2px 0 0; font-size: 12px; color: var(--cq-text-secondary); }
+  .add { display: flex; gap: 8px; min-width: 0; }
+  .add input { flex: 1; min-width: 0; height: 28px; padding: 0 10px; font: inherit; color: var(--cq-text); background: var(--cq-bg-subtle); border: 1px solid var(--cq-hairline); border-radius: 8px; }
+  .add input:focus { outline: none; border-color: var(--cq-hairline-strong); }
+  button { font: inherit; font-size: 12.5px; font-weight: 500; height: 28px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--cq-hairline-strong); background: transparent; color: var(--cq-text); cursor: pointer; flex: none; }
+  button.primary { background: var(--cq-primary); color: var(--cq-on-primary); border-color: var(--cq-primary); }
+  button:hover { background: var(--cq-bg-hover); }
+  button.primary:hover { opacity: .9; background: var(--cq-primary); }
+  button:focus-visible, input[type="checkbox"]:focus-visible { outline: 2px solid var(--cq-focus); outline-offset: 2px; }
+  input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex: none; accent-color: var(--cq-primary); }
+  ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--cq-hairline); border-radius: 10px; }
+  li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; min-width: 0; }
+  li + li { border-top: 1px solid var(--cq-hairline); }
+  li .text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  li.done .text { color: var(--cq-text-tertiary); text-decoration: line-through; }
+  li .note { display: block; font-size: 12px; color: var(--cq-text-secondary); }
+  li button { height: 24px; padding: 0 8px; font-size: 12px; color: var(--cq-text-secondary); border-color: transparent; }
+  .empty, .error { padding: 24px; text-align: center; color: var(--cq-text-secondary); border: 1px dashed var(--cq-hairline-strong); border-radius: 10px; }
+  .error { color: var(--cq-danger); }
+  .count { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Reading list</h1>
+    <p class="sub"><span class="count" id="count">0</span> to read</p>
+  </header>
+  <!-- No <form>: a sandboxed frame never submits one. Add on click or Enter instead. -->
+  <div class="add" role="group" aria-label="Add to the list">
+    <input id="title" placeholder="Title" aria-label="Title" maxlength="200">
+    <input id="note" placeholder="Link or note (optional)" aria-label="Link or note" maxlength="300">
+    <button class="primary" id="add" type="button">Add</button>
+  </div>
+  <div id="list"></div>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

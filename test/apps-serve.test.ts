@@ -23,6 +23,7 @@ describe("cubiq-app:// server", () => {
     expect(full).toContain(":where(html){background");
     expect(own).not.toContain(":where(html){background");
     expect(own).toContain("pill:");
+    for (const op of ['op: "notify"', 'op: "open"', 'op: "ask"']) expect(full).toContain(op);
     const deps = { appRoot: () => dir, bridge: full, bridgeFor: (k: string) => (k === "g~own" ? own : full) };
     expect(await serveApp(appUrl("g~own"), deps).text()).not.toContain(":where(html){background");
     expect(await serveApp(appUrl("g~sales"), deps).text()).toContain(":where(html){background");
