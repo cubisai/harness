@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APP_MAX_FILE_BYTES, granted, validateApp } from "../src/main/apps/manifest";
+import { APP_MAX_FILE_BYTES, appSize, granted, validateApp } from "../src/main/apps/manifest";
 
 const manifest = (extra: Record<string, unknown> = {}) =>
   JSON.stringify({ name: "sales", title: "Sales", description: "Revenue by day.", entry: "index.html", grants: [{ server: "posara", tools: ["list_orders", "get_revenue"] }], ...extra });
@@ -20,6 +20,31 @@ describe("validateApp", () => {
     expect(granted(r.manifest, "posara", "list_orders")).toBe(true);
     expect(granted(r.manifest, "posara", "delete_order")).toBe(false);
     expect(granted(r.manifest, "other", "list_orders")).toBe(false);
+  });
+
+  it("reads placement, a floating size and own style, leaving defaults out", () => {
+    const r = validateApp("sales", files(manifest({ placement: "floating", size: { width: 260, height: 150 }, style: "own" })));
+    expect(r.ok && r.manifest).toMatchObject({ placement: "floating", size: { width: 260, height: 150 }, style: "own" });
+    expect(r.ok && appSize(r.manifest)).toEqual({ width: 260, height: 150 });
+    const d = validateApp("sales", files(manifest({ placement: "floating" })));
+    expect(d.ok && d.manifest.size).toEqual({ width: 280, height: 200 });
+    const m = validateApp("sales", files(manifest({ placement: "modal", style: "cubiq" })));
+    expect(m.ok && Object.keys(m.manifest)).not.toContain("placement");
+    expect(m.ok && Object.keys(m.manifest)).not.toContain("style");
+    expect(m.ok && appSize(m.manifest)).toEqual({ width: 900, height: 700 });
+  });
+
+  it("refuses bad placement, size and style", () => {
+    const errs = (m: Record<string, unknown>) => {
+      const r = validateApp("sales", files(manifest(m)));
+      return r.ok ? "" : r.errors.join("\n");
+    };
+    expect(errs({ placement: "sidebar" })).toContain('"placement"');
+    expect(errs({ style: "neon" })).toContain('"style"');
+    expect(errs({ size: { width: 300, height: 200 } })).toContain('only applies to "placement": "floating"');
+    expect(errs({ placement: "floating", size: { width: 2000, height: 200 } })).toContain('"size"');
+    expect(errs({ placement: "floating", size: { width: 300, height: 200, depth: 1 } })).toContain('"size"');
+    expect(errs({ placement: "floating", size: { width: 300.5, height: 200 } })).toContain('"size"');
   });
 
   it("defaults entry to index.html and allows no grants", () => {

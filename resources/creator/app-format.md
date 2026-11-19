@@ -1,6 +1,6 @@
 # App format
 
-A CubiQ app is a folder of plain HTML, CSS and JS plus an `app.json`. No bundler, no npm, no build step: what you write is what runs. It opens in the right panel's App tab, inside a sandboxed frame with no network.
+A CubiQ app is a folder of plain HTML, CSS and JS plus an `app.json`. No bundler, no npm, no build step: what you write is what runs. It opens in a centred modal, or as a small floating widget over CubiQ (`placement`), inside a sandboxed frame with no network.
 
 ## Where you write it
 
@@ -20,12 +20,25 @@ Your draft folder is `<thread folder>/.cubiq/app-drafts/<name>/`. `creator_app_p
 }
 ```
 
+A floating widget adds:
+
+```json
+{
+  "placement": "floating",
+  "size": { "width": 260, "height": 150 },
+  "style": "own"
+}
+```
+
 - `name`: lowercase letters, digits, `-`; must equal the folder name.
 - `title` (1-60 chars), `description` (1-300 chars): shown in the sidebar and on the review card.
 - `icon`: a lucide name. Known: activity, chart-bar, chart-line, chart-pie, box, calendar, clock, gauge, kanban, layout-dashboard, list, map, notebook, package, shopping-cart, table, users, wallet. Others show a grid.
 - `entry`: the page the frame opens (default `index.html`).
 - `grants`: every connector tool the app may call, per server (exact names, no wildcards; at most 8 servers, 32 tools each). Calls to anything else fail. Ask for the fewest tools that do the job.
 - `cacheSec` (0-3600): identical read-only calls within this many seconds reuse the last result. Use it for dashboards.
+- `placement`: `"modal"` (default: a centred window up to 900×700, opened from the sidebar; dashboards, viewers, forms) or `"floating"` (a small widget that stays on screen, can be dragged and minimised to a pill; timers, counters, now-playing). Floating widgets of enabled apps show at start-up.
+- `size` (floating only): `{ "width": 160-480, "height": 80-600 }` in px, the frame below the widget's title strip. Default 280×200.
+- `style`: `"cubiq"` (default: CubiQ's base font and background are set for you) or `"own"` (nothing is set and the frame is transparent: style the page yourself; the `--cq-*` variables still arrive).
 
 No other fields are allowed.
 
@@ -38,13 +51,15 @@ No other fields are allowed.
 ## Look
 
 - Use CubiQ's theme variables so the app matches light and dark: `--cq-bg`, `--cq-bg-subtle`, `--cq-bg-chip`, `--cq-bg-hover`, `--cq-text`, `--cq-text-secondary`, `--cq-text-tertiary`, `--cq-hairline`, `--cq-hairline-strong`, `--cq-primary`, `--cq-on-primary`, `--cq-focus`, `--cq-success`, `--cq-danger`, `--cq-warning`, `--cq-signal-fill`, `--cq-signal-ink`, `--cq-add-bg`, `--cq-del-bg`. No hard-coded colours.
-- The base font is set for you (13px system UI). Keep it compact: the panel is often 400-600 px wide. Use `font-variant-numeric: tabular-nums` for numbers.
+- With `style: "cubiq"` the base font is set for you (13px system UI). A modal is up to 900×700 and narrower in a small window; a floating widget is exactly its `size`: lay out for that. Use `font-variant-numeric: tabular-nums` for numbers.
 - Always show a state: loading, empty ("No orders in this period."), and an error with a retry button.
 
 ## Templates
 
 `creator_app_preview` with `template: "dashboard"` seeds a stat row, a bar chart and a table over one connector call. Only its `load()` knows the connector: change the server, tool and mapping, and update `grants` in app.json.
 
+`template: "widget"` seeds a floating, own-style focus timer (no connector): state in `cubiq.store`, a countdown on the pill. Rename it and replace its content.
+
 ## Managing installed apps
 
-Library → Apps opens, disables or uninstalls apps. Disabling keeps saved data; uninstalling removes it but keeps connectors. **Edit with Creator** copies the installed files into a new Creator thread's draft and opens its preview. Edit only that draft, preview and check it, then propose the same name: the user reviews an **Update** card before the installed files are replaced. Nothing installs or runs a model turn automatically when Edit is clicked.
+Library → Apps opens, disables or uninstalls apps; the sidebar's Apps rows open them. Disabling keeps saved data; uninstalling removes it but keeps connectors. **Edit with Creator** copies the installed files into a new Creator thread's draft and opens its preview. Edit only that draft, preview and check it, then propose the same name: the user reviews an **Update** card before the installed files are replaced. Nothing installs or runs a model turn automatically when Edit is clicked.

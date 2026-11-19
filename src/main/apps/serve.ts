@@ -43,6 +43,8 @@ export interface AppServeDeps {
   /** The app's folder for a key, or null when the key names no app (or a disabled one). */
   appRoot(key: string): string | null;
   bridge: string;
+  /** The bridge for this app, when it differs by app (an own-style app gets no base sheet). */
+  bridgeFor?(key: string): string;
 }
 
 export function serveApp(url: string, deps: AppServeDeps): Response {
@@ -64,7 +66,7 @@ export function serveApp(url: string, deps: AppServeDeps): Response {
     if (!statSync(abs).isFile()) return notFound();
     const body = readFileSync(abs);
     const type = contentTypeOf(parsed.rel);
-    const payload: string | Uint8Array<ArrayBuffer> = type.startsWith("text/html") ? injectBridge(body.toString("utf-8"), deps.bridge) : copy(body);
+    const payload: string | Uint8Array<ArrayBuffer> = type.startsWith("text/html") ? injectBridge(body.toString("utf-8"), deps.bridgeFor?.(parsed.key) ?? deps.bridge) : copy(body);
     return new Response(payload, {
       status: 200,
       headers: { "Content-Type": type, "Content-Security-Policy": appCsp(parsed.key), "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },

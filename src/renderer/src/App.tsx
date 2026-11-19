@@ -3,6 +3,7 @@ import { ChevronUp, PanelBottom } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
 import { SearchDialog } from "./components/SearchDialog";
 import { Library } from "./components/Library";
+import { FloatingPlugins, PluginModal, setPluginTray } from "./components/PluginHost";
 import { Composer } from "./components/Composer";
 import { ComposerLip, StudioActions } from "./components/StudioComposer";
 import { RequestDock } from "./components/RequestDock";
@@ -126,8 +127,8 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [newThread, showInspector, interrupt, running]);
 
-  // The browser and an app work without a project; Changes and Files need one.
-  const inspectorVisible = inspectorOpen && (project || inspectorTab === "browser" || inspectorTab === "app");
+  // The browser works without a project; Changes and Files need one.
+  const inspectorVisible = inspectorOpen && (project || inspectorTab === "browser");
   const layout = useStore((s) => s.paneLayout);
   const designThread = Boolean(thread && threadKind(thread) === "design");
   const pane = usePaneLayout(Boolean(inspectorVisible), designThread ? DESIGN_FLOOR : undefined);
@@ -222,6 +223,7 @@ export function App() {
                   <PanelBottom size={16} strokeWidth={1.75} aria-hidden />
                 </button>
               )}
+              <div className="plugin-tray" ref={setPluginTray} />
               {project && !studio && (
                 <>
                   <button
@@ -439,6 +441,8 @@ export function App() {
       <MessageCenter />
       <Notice />
       <Library />
+      <FloatingPlugins />
+      <PluginModal />
       <CommandPalette />
       <SearchHost />
       <SwitchDialogHost />

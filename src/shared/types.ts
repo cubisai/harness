@@ -1374,10 +1374,10 @@ export type LiveUpdate =
   /** Creator apps were installed, updated or removed: list them again. */
   | { type: "apps-changed" }
   | { type: "automations-changed"; projectId: string }
-  /** A Creator thread previews its draft app: open it in the App tab if that thread is on screen. */
+  /** A Creator thread previews its draft app: open it (modal or floating) if that thread is on screen. */
   | { type: "app-open"; threadId: string; app: AppInfo }
-  /** A previewed draft's files changed: reload its frame. */
-  | { type: "app-reload"; key: string };
+  /** A previewed draft's files changed: reload its frame (with its app.json re-read, when it is a valid draft). */
+  | { type: "app-reload"; key: string; app?: AppInfo };
 
 export type ProposalScope = { kind: "project"; projectId: string } | { kind: "global" };
 export type ProposalStatus = "staged" | "installed" | "rejected" | "failed";
@@ -1474,6 +1474,12 @@ export interface AppInfo {
   url: string;
   /** Why it can't open (bad or missing app.json). */
   error?: string;
+  /** Where it opens; omitted means a modal. */
+  placement?: "modal" | "floating";
+  /** A floating widget's size. */
+  size?: { width: number; height: number };
+  /** "own": the app brings its own look (no base sheet, transparent frame). */
+  style?: "cubiq" | "own";
 }
 
 /** What a frame's bridge request gets back: a result, an error, or a question for the user first. */

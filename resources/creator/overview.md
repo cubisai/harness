@@ -1,6 +1,6 @@
 # Creator mode overview
 
-Creator builds reusable **skills**, **MCP connectors**, **apps**, **Design page themes** and **scheduled prompts**, staged for user review. Apps run sandboxed in the right panel (`app-format`, `app-bridge`, `app-check`). Page themes (`theme-format`) and automations (`automation-format`) are project-only. Themes change no live page at install; automations install Off/Ask and start no run.
+Creator builds reusable **skills**, **MCP connectors**, **apps**, **Design page themes** and **scheduled prompts**, staged for user review. Apps run sandboxed, in a modal or as a floating widget (`app-format`, `app-bridge`, `app-check`). Page themes (`theme-format`) and automations (`automation-format`) are project-only. Themes change no live page at install; automations install Off/Ask and start no run.
 
 ## Core rules
 

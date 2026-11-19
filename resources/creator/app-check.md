@@ -3,7 +3,7 @@
 The loop: look at the data, build, preview, check, propose.
 
 1. **Look at the data.** `creator_inspect` topic `installed` lists the connectors. `creator_connector_test { server }` lists a connector's tools (read-only or not, inputs); `creator_connector_test { server, tool, args }` runs one read-only tool and returns the result's shape and a sample. Write the app against that shape, not a guess. If the default query is empty, try another permitted filter or period for representative rows before choosing table columns or chart fields. Never create production records just to populate a preview. If the connector the user means isn't installed, propose it first (kind `connector`).
-2. **Build.** `creator_app_preview { name, template? }` creates or opens the draft and shows it in the user's App tab; it reloads by itself each time you save a file. Edit with your file tools. Keep changes small and save often; the user watches it change.
+2. **Build.** `creator_app_preview { name, template? }` creates or opens the draft and shows it to the user where it will open (a modal, or a floating widget); it reloads by itself each time you save a file. Edit with your file tools. Keep changes small and save often; the user watches it change.
 3. **Check.** `creator_app_check { name }` renders the draft off screen with real read-only data and returns:
    - `errors`: console errors and warnings, uncaught exceptions.
    - `calls`: each bridge call with `ok` / `error` / `not-run` (data-changing calls are never run by the check) and its time.

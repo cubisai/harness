@@ -71,8 +71,8 @@ export const APP_THEME_DEFAULTS: Record<"light" | "dark", Record<AppThemeToken, 
 
 // The script injected into every app page: `window.cubiq`. It only talks to the parent window (the CubiQ pane that
 // hosts the frame), which forwards calls to main, where grants are checked. Errors and console warnings go to the
-// host too, so the Creator agent's app check sees what broke.
-export function appBridgeScript(): string {
+// host too, so the Creator agent's app check sees what broke. An own-style app gets no base sheet (font, background).
+export function appBridgeScript(opts: { ownStyle?: boolean } = {}): string {
   return `(() => {
   "use strict";
   if (window.cubiq) return;
@@ -113,10 +113,14 @@ export function appBridgeScript(): string {
     const orig = console[level].bind(console);
     console[level] = (...args) => { report(level, ...args); orig(...args); };
   }
-  const base = document.createElement("style");
+${
+    opts.ownStyle
+      ? ""
+      : `  const base = document.createElement("style");
   base.textContent = ":where(html){background:var(--cq-bg,#fff);color:var(--cq-text,#0b0d10);font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif}";
   (document.head || document.documentElement).prepend(base);
-  window.cubiq = Object.freeze({
+`
+  }  window.cubiq = Object.freeze({
     /** Call a granted connector tool. Resolves to its structured data, else its text (parsed when it is JSON). */
     call: (server, tool, args) => request("call", { server: String(server), tool: String(tool), args: args && typeof args === "object" ? args : {} }),
     store: Object.freeze({
@@ -125,6 +129,8 @@ export function appBridgeScript(): string {
     }),
     theme: () => scheme,
     onTheme: (f) => { themeListeners.add(f); return () => themeListeners.delete(f); },
+    /** A floating widget's label while it is minimised (up to 40 characters; empty shows the title). */
+    pill: (text) => post({ op: "pill", text: String(text == null ? "" : text).slice(0, 40) }),
   });
   post({ op: "ready" });
 })();`;

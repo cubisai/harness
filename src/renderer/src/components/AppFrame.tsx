@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -24,7 +24,6 @@ import {
 import { APP_THEME_TOKENS } from "../../../shared/apps";
 import type { AppInfo } from "../../../shared/types";
 import { api } from "../api";
-import { IconClose, IconRefresh } from "../icons";
 import { isDark, useStore } from "../store";
 
 /** The lucide names an app.json may use (a small set keeps the bundle small); anything else gets the grid. */
@@ -80,10 +79,19 @@ function themeMessage(): { cubiqApp: 1; op: "theme"; scheme: "dark" | "light"; v
   return { cubiqApp: 1, op: "theme", scheme: isDark() ? "dark" : "light", vars };
 }
 
-/** The App tab: one installed Creator app in a sandboxed frame, with its bridge calls relayed to main. */
-export function AppPane({ app }: { app: AppInfo }) {
+/** What a host (the modal, a floating widget) puts around the frame: its header controls. */
+export interface FrameControls {
+  /** The error/warning count button, or null while the app logged nothing. */
+  logsButton: ReactNode;
+  reload(): void;
+}
+
+/**
+ * One Creator app in a sandboxed frame, with its bridge calls relayed to main and data-changing calls asked of the
+ * user first. Hosts (the plugin modal, a floating widget) draw the header through `head`.
+ */
+export function AppFrame({ app, head, onPill }: { app: AppInfo; head(controls: FrameControls): ReactNode; onPill?(text: string): void }) {
   const projectId = useStore((s) => s.selectedProjectId);
-  const closeApp = useStore((s) => s.closeApp);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [nonce, setNonce] = useState(0);
   // A previewed draft reloads itself when its files change.
@@ -94,6 +102,8 @@ export function AppPane({ app }: { app: AppInfo }) {
   const rate = useRef({ second: 0, count: 0 });
   // Answers for a frame that was since reloaded go nowhere.
   const loadRef = useRef(0);
+  const pillRef = useRef(onPill);
+  pillRef.current = onPill;
 
   const reply = useCallback((load: number, id: number, body: { ok: true; result: unknown } | { ok: false; error: string }) => {
     if (load !== loadRef.current) return;
@@ -102,12 +112,13 @@ export function AppPane({ app }: { app: AppInfo }) {
 
   const postTheme = useCallback(() => frameRef.current?.contentWindow?.postMessage(themeMessage(), "*"), []);
 
-  // Another app in the same pane: earlier questions and logs belong to the old one.
+  // Another app in the same host: earlier questions and logs belong to the old one.
   useEffect(() => {
     loadRef.current++;
     setAsks([]);
     setLogs([]);
     setShowLogs(false);
+    pillRef.current?.("");
   }, [app.key]);
 
   // A draft's file changed: answers and logs from the old page go nowhere.
@@ -116,6 +127,7 @@ export function AppPane({ app }: { app: AppInfo }) {
     loadRef.current++;
     setAsks([]);
     setLogs([]);
+    pillRef.current?.("");
   }, [fileChanges]);
 
   useEffect(() => {
@@ -155,6 +167,9 @@ export function AppPane({ app }: { app: AppInfo }) {
             const entry = { level: m.level, message: m.message.slice(0, 2000) } as Log;
             setLogs((l) => [...l.slice(-49), entry]);
           }
+          return;
+        case "pill":
+          if (typeof m.text === "string") pillRef.current?.(m.text.replace(/\s+/g, " ").trim().slice(0, 40));
           return;
         case "call": {
           if (typeof m.server !== "string" || typeof m.tool !== "string") return;
@@ -208,73 +223,61 @@ export function AppPane({ app }: { app: AppInfo }) {
     loadRef.current++;
     setAsks([]);
     setLogs([]);
+    pillRef.current?.("");
     setNonce((n) => n + 1);
   };
 
   const ask = asks[0];
   const errors = logs.filter((l) => l.level === "error").length;
-  const Icon = appIcon(app.icon);
+  const logsButton =
+    logs.length > 0 ? (
+      <button type="button" className={`app-pane-logs-toggle${errors ? " has-errors" : ""}`} aria-expanded={showLogs} onClick={() => setShowLogs((v) => !v)}>
+        {errors ? `${errors} error${errors === 1 ? "" : "s"}` : `${logs.length} warning${logs.length === 1 ? "" : "s"}`}
+      </button>
+    ) : null;
   return (
-    <div className="app-pane">
-      <div className="app-pane-head">
-        <span className="app-pane-icon" aria-hidden>
-          <Icon size={14} strokeWidth={1.75} />
-        </span>
-        <span className="app-pane-title" title={app.description}>
-          {app.title}
-        </span>
-        <span className="proposal-chip">{app.scope === "project" ? "Project" : app.scope === "draft" ? "Draft" : "Global"}</span>
-        <span className="grow" />
-        {logs.length > 0 && (
-          <button type="button" className={`app-pane-logs-toggle${errors ? " has-errors" : ""}`} aria-expanded={showLogs} onClick={() => setShowLogs((v) => !v)}>
-            {errors ? `${errors} error${errors === 1 ? "" : "s"}` : `${logs.length} warning${logs.length === 1 ? "" : "s"}`}
-          </button>
+    <>
+      {head({ logsButton, reload })}
+      <div className="app-frame-wrap">
+        <iframe
+          key={`${app.key}:${nonce}:${fileChanges}`}
+          ref={frameRef}
+          className={`app-frame${app.style === "own" ? " own" : ""}`}
+          title={app.title}
+          src={app.url}
+          sandbox="allow-scripts"
+          referrerPolicy="no-referrer"
+          onLoad={postTheme}
+        />
+        {showLogs && logs.length > 0 && (
+          <ul className="app-pane-log">
+            {logs.map((l, i) => (
+              <li key={i} className={l.level}>
+                {l.message}
+              </li>
+            ))}
+          </ul>
         )}
-        <button type="button" className="icon-button" title="Reload" onClick={reload}>
-          <IconRefresh />
-        </button>
-        <button type="button" className="icon-button" title="Close app" onClick={closeApp}>
-          <IconClose />
-        </button>
+        {ask && (
+          <div className="app-ask" role="alertdialog" aria-label={`${app.title} wants to run ${ask.server}.${ask.tool}`}>
+            <div className="app-ask-text">
+              <strong>{app.title}</strong> wants to run <code>{`${ask.server}.${ask.tool}`}</code>, which can change data.
+            </div>
+            <pre className="app-ask-args">{ask.shown}</pre>
+            <div className="app-ask-foot">
+              <button type="button" className="button ghost" onClick={() => answer(ask, "deny")}>
+                Deny
+              </button>
+              <button type="button" className="button" onClick={() => answer(ask, "always")}>
+                Always for this app
+              </button>
+              <button type="button" className="button primary" autoFocus onClick={() => answer(ask, "once")}>
+                Allow once
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-      {showLogs && logs.length > 0 && (
-        <ul className="app-pane-log">
-          {logs.map((l, i) => (
-            <li key={i} className={l.level}>
-              {l.message}
-            </li>
-          ))}
-        </ul>
-      )}
-      {ask && (
-        <div className="app-ask" role="alertdialog" aria-label={`${app.title} wants to run ${ask.server}.${ask.tool}`}>
-          <div className="app-ask-text">
-            <strong>{app.title}</strong> wants to run <code>{`${ask.server}.${ask.tool}`}</code>, which can change data.
-          </div>
-          <pre className="app-ask-args">{ask.shown}</pre>
-          <div className="app-ask-foot">
-            <button type="button" className="button ghost" onClick={() => answer(ask, "deny")}>
-              Deny
-            </button>
-            <button type="button" className="button" onClick={() => answer(ask, "always")}>
-              Always for this app
-            </button>
-            <button type="button" className="button primary" autoFocus onClick={() => answer(ask, "once")}>
-              Allow once
-            </button>
-          </div>
-        </div>
-      )}
-      <iframe
-        key={`${app.key}:${nonce}:${fileChanges}`}
-        ref={frameRef}
-        className="app-frame"
-        title={app.title}
-        src={app.url}
-        sandbox="allow-scripts"
-        referrerPolicy="no-referrer"
-        onLoad={postTheme}
-      />
-    </div>
+    </>
   );
 }

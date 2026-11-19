@@ -218,9 +218,9 @@ export interface ProposalCardViewProps {
   /** The scope Install uses, shown as a picker while the proposal waits and the thread has a project. */
   scopePick?: "project" | "global";
   onScopePick?(scope: "project" | "global"): void;
-  /** Opens the draft app in the App tab, for an app proposal that can still be reviewed. */
+  /** Opens the draft app where it will open (modal or floating), for an app proposal that can still be reviewed. */
   onPreview?(): void;
-  /** Opens the installed app in the App tab. */
+  /** Opens the installed app. */
   onOpenApp?(): void;
   onUninstall?(): void;
   confirmRemove?: boolean;

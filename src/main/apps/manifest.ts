@@ -19,6 +19,12 @@ const TOOL_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 const ICON_RE = /^[a-z0-9-]{1,40}$/;
 const MAX_GRANT_SERVERS = 8;
 const MAX_GRANT_TOOLS = 32;
+/** A floating widget's size bounds and default, in CSS px. */
+export const FLOATING_MIN = { width: 160, height: 80 } as const;
+export const FLOATING_MAX = { width: 480, height: 600 } as const;
+export const FLOATING_DEFAULT = { width: 280, height: 200 } as const;
+/** The size a modal app is checked at (the modal's largest size). */
+export const MODAL_SIZE = { width: 900, height: 700 } as const;
 
 export interface AppGrant {
   server: string;
@@ -37,6 +43,12 @@ export interface AppManifest {
   grants: AppGrant[];
   /** How long an identical call's result is reused, in seconds (default 0: every call goes out). */
   cacheSec?: number;
+  /** Where it opens: a centred modal (default) or a small floating widget over the app. */
+  placement?: "modal" | "floating";
+  /** A floating widget's size (default 280×200). */
+  size?: { width: number; height: number };
+  /** "own": no CubiQ base sheet (font, background) and a transparent frame; the theme variables still arrive. */
+  style?: "cubiq" | "own";
 }
 
 export interface AppFile {
@@ -58,7 +70,7 @@ export function parseAppManifest(text: string, paths: ReadonlySet<string>, expec
     return { manifest: null, errors: [`app.json is not valid JSON: ${(e as Error).message}`] };
   }
   if (!isRecord(raw)) return { manifest: null, errors: ["app.json must be a JSON object."] };
-  const known = new Set(["name", "title", "description", "icon", "entry", "grants", "cacheSec"]);
+  const known = new Set(["name", "title", "description", "icon", "entry", "grants", "cacheSec", "placement", "size", "style"]);
   for (const k of Object.keys(raw)) if (!known.has(k)) errors.push(`Unknown app.json field "${k}". Fields: ${[...known].join(", ")}.`);
 
   const name = raw.name;
@@ -73,6 +85,18 @@ export function parseAppManifest(text: string, paths: ReadonlySet<string>, expec
   if (typeof entry !== "string" || extname(entry).toLowerCase() !== ".html" || !paths.has(entry)) errors.push(`app.json "entry" must name one of the app's .html files (got ${JSON.stringify(entry)}).`);
   if (raw.cacheSec !== undefined && (typeof raw.cacheSec !== "number" || !Number.isInteger(raw.cacheSec) || raw.cacheSec < 0 || raw.cacheSec > 3600)) {
     errors.push('app.json "cacheSec" must be a whole number of seconds from 0 to 3600.');
+  }
+
+  if (raw.placement !== undefined && raw.placement !== "modal" && raw.placement !== "floating") errors.push('app.json "placement" must be "modal" or "floating".');
+  if (raw.style !== undefined && raw.style !== "cubiq" && raw.style !== "own") errors.push('app.json "style" must be "cubiq" or "own".');
+  let size: { width: number; height: number } | undefined;
+  if (raw.size !== undefined) {
+    const sz = raw.size;
+    const ok = (v: unknown, lo: number, hi: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi;
+    if (raw.placement !== "floating") errors.push('app.json "size" only applies to "placement": "floating".');
+    else if (!isRecord(sz) || Object.keys(sz).some((k) => k !== "width" && k !== "height") || !ok(sz.width, FLOATING_MIN.width, FLOATING_MAX.width) || !ok(sz.height, FLOATING_MIN.height, FLOATING_MAX.height)) {
+      errors.push(`app.json "size" is { "width": ${FLOATING_MIN.width}-${FLOATING_MAX.width}, "height": ${FLOATING_MIN.height}-${FLOATING_MAX.height} } in whole pixels.`);
+    } else size = { width: sz.width, height: sz.height };
   }
 
   const grants: AppGrant[] = [];
@@ -107,6 +131,9 @@ export function parseAppManifest(text: string, paths: ReadonlySet<string>, expec
       entry: entry as string,
       grants: grants.sort((a, b) => (a.server < b.server ? -1 : a.server > b.server ? 1 : 0)),
       ...(typeof raw.cacheSec === "number" && raw.cacheSec > 0 ? { cacheSec: raw.cacheSec } : {}),
+      // Defaults are left out, so an app written before these fields reads exactly as it did.
+      ...(raw.placement === "floating" ? { placement: "floating" as const, size: size ?? { ...FLOATING_DEFAULT } } : {}),
+      ...(raw.style === "own" ? { style: "own" as const } : {}),
     },
     errors,
   };
@@ -150,4 +177,9 @@ export function validateApp(name: string, files: unknown): AppCheck {
 /** Whether `tool` on `server` is one of the app's grants. */
 export function granted(manifest: AppManifest, server: string, tool: string): boolean {
   return manifest.grants.some((g) => g.server === server && g.tools.includes(tool));
+}
+
+/** The size an app shows at: a floating widget's own, else the modal's. */
+export function appSize(manifest: Pick<AppManifest, "placement" | "size">): { width: number; height: number } {
+  return manifest.placement === "floating" ? (manifest.size ?? { ...FLOATING_DEFAULT }) : { ...MODAL_SIZE };
 }

@@ -166,6 +166,8 @@ export class AppRegistry {
       path: dir,
       url: appUrl(encodeAppKey(k), manifest?.entry ?? "index.html"),
       ...(error ? { error } : {}),
+      ...(manifest?.placement === "floating" ? { placement: "floating" as const, ...(manifest.size ? { size: manifest.size } : {}) } : {}),
+      ...(manifest?.style === "own" ? { style: "own" as const } : {}),
     };
   }
 

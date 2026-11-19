@@ -2156,6 +2156,8 @@ button.qc-option.other { cursor: pointer; }
   [data-motion="full"] .sheet-backdrop { animation: fade 160ms var(--ease); }
   [data-motion="subtle"] .sheet-backdrop { animation: fade 80ms var(--ease); }
   [data-motion="full"] .palette { animation: rise 180ms var(--ease); }
+  [data-motion="full"] .plugin-modal, [data-motion="full"] .floating-plugin { animation: rise 180ms var(--ease); }
+  [data-motion="subtle"] .plugin-modal, [data-motion="subtle"] .floating-plugin { animation: rise 90ms var(--ease); }
   [data-motion="subtle"] .palette { animation: rise 90ms var(--ease); }
   [data-motion="full"] .sheet { animation: rise 220ms var(--ease); }
   [data-motion="subtle"] .sheet { animation: rise 110ms var(--ease); }
@@ -2184,26 +2186,76 @@ button.qc-option.other { cursor: pointer; }
 .platform-win32 .inspector-head, .platform-linux .inspector-head { padding-right: calc(150px / var(--zoom, 1)); }
 .inspector-head .grow { flex: 1; }
 .inspector-body { flex: 1; min-height: 0; overflow: auto; }
-/* ---------- Creator app pane ---------- */
-.inspector-app-tab { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
-.inspector-body.app-body { overflow: hidden; display: flex; flex-direction: column; }
-.inspector-body.app-body[hidden] { display: none; }
-.app-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.app-pane-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--hairline); min-width: 0; }
-.app-pane-icon { display: inline-flex; color: var(--text-secondary); flex: none; }
-.app-pane-title { font-size: 12.5px; font-weight: 500; color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-pane-logs-toggle { border: 0; background: var(--bg-chip); color: var(--warning); font-size: 11px; font-weight: 500; border-radius: var(--radius-s); padding: 1px 7px; cursor: pointer; }
+/* ---------- Creator apps: the frame, the plugin modal, floating widgets ---------- */
+.app-pane-logs-toggle { border: 0; background: var(--bg-chip); color: var(--warning); font-size: 11px; font-weight: 500; border-radius: var(--radius-s); padding: 1px 7px; cursor: pointer; flex: none; }
 .app-pane-logs-toggle.has-errors { color: var(--danger); }
 .app-pane-logs-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.app-pane-log { list-style: none; margin: 0; padding: 6px 12px; max-height: 140px; overflow: auto; border-bottom: 1px solid var(--hairline); font: 11.5px/1.45 var(--mono); }
+.app-frame-wrap { position: relative; flex: 1; min-height: 0; display: flex; }
+.app-pane-log { position: absolute; top: 0; left: 0; right: 0; z-index: 1; list-style: none; margin: 0; padding: 6px 12px; max-height: min(140px, 100%); overflow: auto; border-bottom: 1px solid var(--hairline); background: var(--bg-elevated); font: 11.5px/1.45 var(--mono); }
 .app-pane-log li { color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; padding: 2px 0; }
 .app-pane-log li.error { color: var(--danger); }
-.app-ask { margin: 8px; padding: 10px 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-m); background: var(--bg-subtle); display: grid; gap: 8px; }
+.app-ask { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 2; max-height: calc(100% - 16px); overflow: auto; padding: 10px 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-m); background: var(--bg-elevated); box-shadow: var(--shadow-float); display: grid; gap: 8px; }
 .app-ask-text { font-size: 12.5px; color: var(--text); }
 .app-ask-text code { font-family: var(--mono); font-size: 12px; }
 .app-ask-args { margin: 0; max-height: 120px; overflow: auto; font: 11.5px/1.45 var(--mono); color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .app-ask-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.app-frame { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--bg); }
+.app-frame { flex: 1; min-height: 0; min-width: 0; width: 100%; border: 0; background: var(--bg); }
+.app-frame.own { background: transparent; }
+
+.sheet-backdrop.plugin-backdrop { place-items: center; padding: 24px; }
+.plugin-modal {
+  width: min(900px, 100%);
+  height: min(744px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+}
+.plugin-head { display: flex; align-items: center; gap: 8px; height: 44px; flex: none; padding: 0 8px 0 14px; border-bottom: 1px solid var(--hairline); min-width: 0; }
+.plugin-head .grow { flex: 1; }
+.plugin-head-icon { display: inline-flex; color: var(--text-secondary); flex: none; }
+.plugin-head-title { font-size: 13px; font-weight: 600; color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plugin-head .proposal-chip { flex: none; }
+
+.floating-layer { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+.floating-plugin {
+  position: absolute;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100vw - 24px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-float);
+  -webkit-app-region: no-drag;
+}
+.floating-strip { display: flex; align-items: center; gap: 6px; height: 30px; flex: none; padding: 0 3px 0 10px; min-width: 0; border-bottom: 1px solid var(--hairline); border-radius: var(--radius-l) var(--radius-l) 0 0; cursor: grab; user-select: none; touch-action: none; }
+.floating-strip:active { cursor: grabbing; }
+.floating-strip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.floating-strip .icon-button { width: 24px; height: 24px; flex: none; }
+.floating-icon { display: inline-flex; color: var(--text-secondary); flex: none; }
+.floating-title { flex: 1; min-width: 0; font-size: 12px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.floating-title.pill-text { font-variant-numeric: tabular-nums; }
+.floating-strip .proposal-chip { flex: none; }
+.floating-plugin .app-frame-wrap { flex: none; height: var(--frame-h, 200px); overflow: hidden; border-radius: 0 0 var(--radius-l) var(--radius-l); }
+.floating-plugin.collapsed { border-radius: 999px; }
+.floating-plugin.collapsed .floating-strip { border-bottom: 0; border-radius: 999px; padding-left: 12px; max-width: 240px; cursor: pointer; }
+/* Docked in the top bar's tray: the widget and its frame stay loaded, out of sight. */
+.floating-plugin.docked { visibility: hidden; pointer-events: none; width: 0; height: 0; overflow: hidden; border: 0; box-shadow: none; animation: none; }
+.plugin-tray { display: flex; align-items: center; gap: 4px; min-width: 0; -webkit-app-region: no-drag; }
+.plugin-tray:empty { display: none; }
+.plugin-tray-chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; max-width: 160px; padding: 0 8px; border: 1px solid var(--hairline); border-radius: var(--radius-s); background: var(--bg-subtle); color: var(--text-secondary); font-size: 12px; font-weight: 500; cursor: pointer; flex: none; min-width: 0; transition: background 120ms var(--ease), color 120ms var(--ease); }
+.plugin-tray-chip:hover { background: var(--bg-hover); color: var(--text); }
+.plugin-tray-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.plugin-tray-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text); }
+/* Minimised: the frame stays loaded (a timer keeps counting), just takes no room. */
+.floating-plugin.collapsed .app-frame-wrap { position: absolute; width: 0; height: 0; visibility: hidden; }
+
 .diff-summary { padding: 12px 16px; color: var(--text-secondary); font-size: 12px; border-bottom: 1px solid var(--hairline); }
 .review-bar { display: grid; gap: 8px; padding: 10px 16px 12px; border-bottom: 1px solid var(--hairline); }
 .review-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 12px; color: var(--text-secondary); }

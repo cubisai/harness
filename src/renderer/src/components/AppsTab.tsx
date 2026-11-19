@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppInfo, ExtensionInstallView } from "../../../shared/types";
 import { api } from "../api";
 import { useStore } from "../store";
-import { appIcon } from "./AppPane";
+import { appIcon } from "./AppFrame";
 
 type AppAction = "enable" | "edit" | "uninstall";
 

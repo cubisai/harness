@@ -36,7 +36,7 @@ import type {
 import type { DocumentStatus } from "../../shared/design-mutation";
 import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
-import { clampLayout, DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
+import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { waitingThreads, workspaceModeOf } from "./sections";
@@ -59,8 +59,8 @@ export interface DesignSelection {
   names?: string[];
 }
 
-/** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact; App runs a Creator app. */
-export type InspectorTab = "changes" | "browser" | "files" | "artifact" | "app";
+/** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. Creator apps never open here. */
+export type InspectorTab = "changes" | "browser" | "files" | "artifact";
 
 export type LibraryTab = "experts" | "skills" | "connectors" | "apps" | "mcp" | "agents" | "memory" | "automations" | "learned";
 
@@ -350,11 +350,20 @@ interface State {
   /** Installed Creator apps for the selected project (and global ones), as last listed. */
   apps: AppInfo[];
   loadApps(): Promise<void>;
-  /** The Creator app shown in the panel's App tab; it stays open across threads. */
+  /** The Creator app open in the plugin modal. */
   appOpen: AppInfo | null;
-  /** Per frame key, how many times main said a previewed draft's files changed (the App tab reloads on each). */
+  /** Per frame key, how many times main said a previewed draft's files changed (an open frame reloads on each). */
   appReloads: Record<string, number>;
+  /** Installed floating widgets the user closed (by key); they show again when opened from the sidebar. Kept in localStorage. */
+  floatingHidden: string[];
+  /** Floating draft previews from Creator threads, shown until closed. */
+  floatingDrafts: AppInfo[];
+  /** Asks a floating widget to expand and come to the front (bumped on every open). */
+  floatingFocus: { key: string; n: number } | null;
+  /** Open an app where its manifest says: the modal, or its floating widget. */
   openApp(app: AppInfo): void;
+  /** Close a floating widget: a draft preview goes away, an installed widget hides until opened again. */
+  closeFloating(key: string): void;
   editApp(app: AppInfo): Promise<string | null>;
   closeApp(): void;
   toggleTerminal(): void;
@@ -758,6 +767,9 @@ export const useStore = create<State>((set, get) => ({
   apps: [],
   appOpen: null,
   appReloads: {},
+  floatingHidden: readFloatingHidden(),
+  floatingDrafts: [],
+  floatingFocus: null,
   artifactFiles: {},
   turnScores: {},
   browserMounted: false,
@@ -1566,8 +1578,9 @@ export const useStore = create<State>((set, get) => ({
       if (get().selectedProjectId === projectId) {
         const open = get().appOpen;
         const fresh = open && open.scope !== "draft" ? apps.find((a) => a.key === open.key) : null;
-        set({ apps, ...(fresh && fresh.enabled !== false && !fresh.error ? { appOpen: fresh } : {}) });
-        if (open && open.scope !== "draft" && (!fresh || fresh.enabled === false || fresh.error)) get().closeApp();
+        const usable = fresh && fresh.enabled !== false && !fresh.error && fresh.placement !== "floating";
+        set({ apps, ...(usable ? { appOpen: fresh } : {}) });
+        if (open && open.scope !== "draft" && !usable) get().closeApp();
       }
     } catch {
       // The list stays as it was.
@@ -1580,11 +1593,31 @@ export const useStore = create<State>((set, get) => ({
       s.showNotice(app.error ?? "This app is disabled. Enable it in Library → Apps.");
       return;
     }
-    const opens = !s.inspectorOpen;
-    set({ appOpen: app, inspectorOpen: true, inspectorTab: "app" });
-    const narrow = typeof window !== "undefined" && Number.isFinite(window.innerWidth) && clampLayout(window.innerWidth, { ...s.paneLayout, inspectorCollapsed: false }, true).inspectorAutoCollapsed;
-    // An explicit Open/Preview must show something, even where the normal chat floor auto-hides the panel.
-    if (narrow || (opens && s.paneLayout.inspectorCollapsed)) s.setPaneLayout({ inspectorCollapsed: false, ...(narrow ? { sidebarCollapsed: true } : {}) }, true);
+    if (app.placement === "floating") {
+      const n = (s.floatingFocus?.n ?? 0) + 1;
+      if (app.scope === "draft") set((x) => ({ floatingDrafts: [...x.floatingDrafts.filter((d) => d.key !== app.key), app], floatingFocus: { key: app.key, n } }));
+      else {
+        const hidden = s.floatingHidden.filter((k) => k !== app.key);
+        if (hidden.length !== s.floatingHidden.length) writeFloatingHidden(hidden);
+        set({ floatingHidden: hidden, floatingFocus: { key: app.key, n } });
+      }
+      // A modal draft of the same app (placement just changed) gives way to the widget.
+      if (s.appOpen?.key === app.key) set({ appOpen: null });
+      return;
+    }
+    set((x) => ({ appOpen: app, floatingDrafts: x.floatingDrafts.filter((d) => d.key !== app.key) }));
+  },
+
+  closeFloating(key) {
+    const s = get();
+    if (s.floatingDrafts.some((d) => d.key === key)) {
+      set({ floatingDrafts: s.floatingDrafts.filter((d) => d.key !== key) });
+      return;
+    }
+    if (s.floatingHidden.includes(key)) return;
+    const hidden = [...s.floatingHidden, key];
+    writeFloatingHidden(hidden);
+    set({ floatingHidden: hidden });
   },
 
   async editApp(app) {
@@ -1622,7 +1655,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   closeApp() {
-    set((s) => ({ appOpen: null, ...(s.inspectorTab === "app" ? { inspectorTab: "changes" as const, inspectorOpen: false } : {}) }));
+    set({ appOpen: null });
   },
 
   closeArtifact() {
@@ -1840,11 +1873,23 @@ export const useStore = create<State>((set, get) => ({
       case "app-open":
         // Only the window showing that Creator thread opens it; elsewhere it would take over the panel.
         if (get().selectedThreadId === update.threadId) get().openApp(update.app);
-        else if (get().appOpen?.key === update.app.key) set({ appOpen: update.app });
+        else if (get().appOpen?.key === update.app.key && update.app.placement !== "floating") set({ appOpen: update.app });
+        else if (get().floatingDrafts.some((d) => d.key === update.app.key)) get().openApp(update.app);
         return;
-      case "app-reload":
+      case "app-reload": {
         set((s) => ({ appReloads: { ...s.appReloads, [update.key]: (s.appReloads[update.key] ?? 0) + 1 } }));
+        // A shown draft takes its fresh title, size and placement (and moves between modal and widget if that changed).
+        const fresh = update.app;
+        if (!fresh || fresh.key !== update.key) return;
+        const s = get();
+        const inModal = s.appOpen?.key === fresh.key;
+        const inFloat = s.floatingDrafts.some((d) => d.key === fresh.key);
+        // Placement changed: it moves to the other host. Otherwise update it in place, without stealing focus.
+        if ((inModal && fresh.placement === "floating") || (inFloat && fresh.placement !== "floating")) s.openApp(fresh);
+        else if (inModal) set({ appOpen: fresh });
+        else if (inFloat) set({ floatingDrafts: s.floatingDrafts.map((d) => (d.key === fresh.key ? fresh : d)) });
         return;
+      }
       case "open-about":
         set({ aboutOpen: true });
         break;
@@ -1924,4 +1969,24 @@ export function relativeToThread(s: Pick<State, "threads" | "projects">, threadI
   const win = /^[a-z]:\//i.test(r);
   const under = win ? p.toLowerCase().startsWith(`${r.toLowerCase()}/`) : p.startsWith(`${r}/`);
   return under ? p.slice(r.length + 1) : p.replace(/^\.\//, "");
+}
+
+const FLOATING_HIDDEN_KEY = "cubiq.floating.hidden";
+
+/** Closed floating widgets, from localStorage; unreadable storage means none are hidden. */
+function readFloatingHidden(): string[] {
+  try {
+    const v = JSON.parse(globalThis.localStorage?.getItem(FLOATING_HIDDEN_KEY) ?? "[]") as unknown;
+    return Array.isArray(v) ? v.filter((k): k is string => typeof k === "string" && k.length <= 200).slice(0, 200) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeFloatingHidden(keys: string[]): void {
+  try {
+    globalThis.localStorage?.setItem(FLOATING_HIDDEN_KEY, JSON.stringify(keys));
+  } catch {
+    // Not remembered: the widget shows again next start.
+  }
 }

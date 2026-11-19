@@ -327,7 +327,7 @@ describe("Creator app tools", () => {
     expect(withImage.imagePng).toBe(Buffer.from("png").toString("base64"));
     const check = vi.fn(async () => ({ ok: true, errors: [], calls: [], empty: false, text: "", size: { width: 0, height: 0 }, timedOut: false }));
     const noImage = await toolsFor(env, { takeImage: () => false, check }).byName[CREATOR_APP_CHECK_TOOL]!.run({ name: "sales" });
-    expect(check).toHaveBeenCalledWith(`d~${env.thread.id}~sales`, expect.stringContaining("cubiq-app://a/"), { scheme: "light", screenshot: false });
+    expect(check).toHaveBeenCalledWith(`d~${env.thread.id}~sales`, expect.stringContaining("cubiq-app://a/"), { scheme: "light", screenshot: false, size: { width: 900, height: 700 } });
     expect(noImage.imagePng).toBeUndefined();
     expect(noImage.text).toContain("No screenshot");
   });
@@ -416,7 +416,7 @@ describe("app check", () => {
         return true;
       },
       evaluateApp: async () => ({ text: script.text ?? "", chars: (script.text ?? "").length, media: 0, width: 900, height: 500 }),
-      capture: async () => Buffer.from("png"),
+      capture: vi.fn(async (_w: number, _h: number) => Buffer.from("png")),
       destroy: vi.fn(),
     };
     return { win, replies, evaluated };
@@ -451,6 +451,22 @@ describe("app check", () => {
     expect(r.empty).toBe(false);
     expect(r.png?.toString()).toBe("png");
     expect(win.destroy).toHaveBeenCalled();
+  });
+
+  it("renders and captures at the size the app shows at", async () => {
+    const { win } = fakeWindow({ calls: [], text: "Focus 25:00 Start Reset" });
+    const createWindow = vi.fn(() => win);
+    const r = await new AppChecker({ createWindow, call: vi.fn(), storeGet: () => null, storeSet: () => ({ ok: true as const, result: null }), ...clock() }).check("d~t~timer", "cubiq-app://a/d~t~timer/index.html", { scheme: "light", screenshot: true, size: { width: 260, height: 150 } });
+    expect(createWindow).toHaveBeenCalledWith({ width: 260, height: 150 });
+    expect(win.capture).toHaveBeenCalledWith(260, 150);
+    expect(r.ok).toBe(true);
+    const small = fakeWindow({ calls: [], text: "0 +" });
+    const deps = { call: vi.fn(), storeGet: () => null, storeSet: () => ({ ok: true as const, result: null }) };
+    const strict = await new AppChecker({ ...deps, ...clock(), createWindow: () => small.win }).check("g~w", "cubiq-app://a/g~w/index.html", { scheme: "light", screenshot: false });
+    expect(strict.empty).toBe(true);
+    const widget = fakeWindow({ calls: [], text: "0 +" });
+    const loose = await new AppChecker({ ...deps, ...clock(), createWindow: () => widget.win }).check("g~w", "cubiq-app://a/g~w/index.html", { scheme: "light", screenshot: false, minChars: 1 });
+    expect(loose).toMatchObject({ ok: true, empty: false });
   });
 
   it("flags an empty page and a page that never loads", async () => {

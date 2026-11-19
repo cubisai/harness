@@ -125,7 +125,7 @@ import { appBridgeScript } from "./apps/bridge";
 import { AppCalls } from "./apps/calls";
 import { AppRegistry, decodeAppKey } from "./apps/registry";
 import { APP_SCHEME, serveApp } from "./apps/serve";
-import { AppChecker, CHECK_HEIGHT, CHECK_WIDTH } from "./apps/check";
+import { AppChecker } from "./apps/check";
 import { electronCheckWindow } from "./apps/check-window";
 import { appDraftsDir, appEditDraftsDir, projectAppsDir } from "./apps/registry";
 import { DraftWatcher } from "./apps/watch";
@@ -2061,15 +2061,22 @@ async function main(): Promise<void> {
     call: (projectId, server, tool, args, before) =>
       callServerTool({ servers: (pid) => mcpScopes.effective(pid ?? null), listings: mcpTools, pool: mcpPool }, projectId, server, tool, args, undefined, before),
   });
-  const draftWatcher = new DraftWatcher((key) => broadcast({ type: "app-reload", key }));
+  // A draft's app.json may have changed its title, size or placement: send its fresh listing with the reload.
+  const draftWatcher = new DraftWatcher((key) => {
+    const app = appRegistry.info(key);
+    broadcast({ type: "app-reload", key, ...(app && !app.error ? { app } : {}) });
+  });
   const appChecker = new AppChecker({
-    createWindow: () => electronCheckWindow(CHECK_WIDTH, CHECK_HEIGHT),
+    createWindow: (size) => electronCheckWindow(size.width, size.height),
     call: (key, server, tool, args) => appCalls.call(key, null, server, tool, args),
     storeGet: (key, name) => appCalls.storeGet(key, name),
     storeSet: (key, name, value) => appCalls.storeSet(key, name, value),
   });
   const appBridgeJs = appBridgeScript();
-  protocol.handle(APP_SCHEME, (req) => serveApp(req.url, { appRoot: (key) => appRegistry.root(key), bridge: appBridgeJs }));
+  const appBridgeOwnJs = appBridgeScript({ ownStyle: true });
+  protocol.handle(APP_SCHEME, (req) =>
+    serveApp(req.url, { appRoot: (key) => appRegistry.root(key), bridge: appBridgeJs, bridgeFor: (key) => (appRegistry.manifest(key)?.style === "own" ? appBridgeOwnJs : appBridgeJs) }),
+  );
   const str = (v: unknown, max = 200): string => {
     if (typeof v !== "string" || !v || v.length > max) throw new Error("Invalid argument.");
     return v;

@@ -47,7 +47,7 @@ describe("app store actions", () => {
   it("closes an installed pane when disabled or removed, but keeps drafts", async () => {
     const listApps = vi.fn(async () => [{ ...app, enabled: false }]);
     vi.stubGlobal("window", { unskilled: { listApps } });
-    useStore.setState({ selectedProjectId: "p", appOpen: app, inspectorOpen: true, inspectorTab: "app" });
+    useStore.setState({ selectedProjectId: "p", appOpen: app, inspectorOpen: false });
     await useStore.getState().loadApps();
     expect(useStore.getState()).toMatchObject({ appOpen: null, inspectorOpen: false });
     const draft = { ...app, key: "d~new~sales", scope: "draft" as const };
@@ -58,6 +58,39 @@ describe("app store actions", () => {
     useStore.setState({ appOpen: app });
     await useStore.getState().loadApps();
     expect(useStore.getState().appOpen).toBeNull();
+  });
+
+  it("opens a modal app in the plugin modal and never in the right panel", () => {
+    useStore.setState({ appOpen: null, inspectorOpen: false, inspectorTab: "changes", floatingDrafts: [], floatingHidden: [] });
+    useStore.getState().openApp(app);
+    expect(useStore.getState()).toMatchObject({ appOpen: app, inspectorOpen: false, inspectorTab: "changes" });
+    useStore.getState().closeApp();
+    expect(useStore.getState().appOpen).toBeNull();
+  });
+
+  it("shows a floating app as a widget: drafts until closed, installed ones hide and come back", () => {
+    const widget = { ...app, key: "g~timer", name: "timer", placement: "floating" as const, size: { width: 260, height: 150 } };
+    const draft = { ...widget, key: "d~t1~timer", scope: "draft" as const };
+    useStore.setState({ appOpen: null, inspectorOpen: false, floatingDrafts: [], floatingHidden: [], floatingFocus: null });
+    useStore.getState().openApp(draft);
+    expect(useStore.getState()).toMatchObject({ appOpen: null, inspectorOpen: false, floatingDrafts: [draft], floatingFocus: { key: draft.key, n: 1 } });
+    useStore.getState().openApp(draft);
+    expect(useStore.getState().floatingDrafts).toEqual([draft]);
+    useStore.getState().closeFloating(draft.key);
+    expect(useStore.getState().floatingDrafts).toEqual([]);
+    useStore.getState().closeFloating(widget.key);
+    expect(useStore.getState().floatingHidden).toEqual([widget.key]);
+    useStore.getState().openApp(widget);
+    expect(useStore.getState().floatingHidden).toEqual([]);
+    expect(useStore.getState().floatingFocus?.key).toBe(widget.key);
+  });
+
+  it("a draft that turns floating leaves the modal for its widget", () => {
+    const modalDraft = { ...app, key: "d~t1~sales", scope: "draft" as const };
+    useStore.setState({ appOpen: modalDraft, floatingDrafts: [] });
+    useStore.getState().openApp({ ...modalDraft, placement: "floating" });
+    expect(useStore.getState().appOpen).toBeNull();
+    expect(useStore.getState().floatingDrafts).toHaveLength(1);
   });
 
   it("refreshes an updated app's pane info and rejects a stale project reply", async () => {
@@ -96,13 +129,13 @@ describe("app store actions", () => {
     expect(useStore.getState().notice).toContain("Invalid app files");
   });
 
-  it("opens the app visibly at 900px by folding the sidebar, without changing the chat floor", () => {
+  it("opens an app at 900px without touching the pane layout (it is a modal, not a panel)", () => {
     const setPaneLayout = vi.fn();
     vi.stubGlobal("window", { innerWidth: 900 });
-    useStore.setState({ setPaneLayout, inspectorOpen: false });
+    useStore.setState({ setPaneLayout, inspectorOpen: false, appOpen: null });
     useStore.getState().openApp(app);
-    expect(setPaneLayout).toHaveBeenCalledWith({ inspectorCollapsed: false, sidebarCollapsed: true }, true);
-    expect(useStore.getState().inspectorOpen).toBe(true);
+    expect(setPaneLayout).not.toHaveBeenCalled();
+    expect(useStore.getState()).toMatchObject({ inspectorOpen: false, appOpen: app });
   });
 
   it("keeps the selected thread's engine/model for Edit, without copying its full-access permission", async () => {
@@ -114,5 +147,32 @@ describe("app store actions", () => {
     expect(createThread).toHaveBeenCalledWith("p", "codex", { kind: "chat", preset: "creator" });
     expect(updateThread).toHaveBeenCalledWith("new", expect.objectContaining({ model: "preferred" }));
     expect(updateThread.mock.calls[0]![1]).not.toHaveProperty("permissionMode");
+  });
+});
+
+describe("floating widget placement", () => {
+  it("keeps a widget inside the window and stacks unmoved ones top right, under the header", async () => {
+    const { clampPlace, defaultPlace } = await import("../src/renderer/src/components/PluginHost");
+    const box = { width: 262, height: 182 };
+    const view = { width: 900, height: 700 };
+    expect(clampPlace({ x: 2000, y: -50 }, box, view)).toEqual({ x: 900 - 262 - 12, y: 12 });
+    expect(defaultPlace(0, box, view)).toEqual({ x: 900 - 262 - 16, y: 58 });
+    expect(defaultPlace(1, box, view).y).toBe(58 + 38);
+    expect(clampPlace({ x: 100, y: 100 }, { width: 2000, height: 2000 }, view)).toEqual({ x: 12, y: 12 });
+  });
+});
+
+describe("draft reloads", () => {
+  it("updates a shown floating draft's title and size in place, and moves it to the modal when its placement changes", () => {
+    const draft = { ...app, key: "d~t1~water", scope: "draft" as const, placement: "floating" as const, size: { width: 260, height: 150 }, title: "Focus timer" };
+    useStore.setState({ appOpen: null, floatingDrafts: [draft], floatingFocus: null, appReloads: {} });
+    const fresh = { ...draft, title: "Water", size: { width: 180, height: 90 } };
+    useStore.getState().apply({ type: "app-reload", key: draft.key, app: fresh });
+    expect(useStore.getState()).toMatchObject({ floatingDrafts: [fresh], floatingFocus: null, appOpen: null, appReloads: { [draft.key]: 1 } });
+    const modal = { ...fresh, placement: undefined, size: undefined };
+    useStore.getState().apply({ type: "app-reload", key: draft.key, app: modal });
+    expect(useStore.getState()).toMatchObject({ floatingDrafts: [], appOpen: modal });
+    useStore.getState().apply({ type: "app-reload", key: "d~t1~other", app: { ...modal, key: "d~t1~other" } });
+    expect(useStore.getState().appOpen).toEqual(modal);
   });
 });

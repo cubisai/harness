@@ -1,6 +1,6 @@
 // The Creator agent's "test what you built": render an app off screen inside a small host page that plays the
-// part of CubiQ's App tab (theme, bridge relay), run its read-only calls for real, and report what broke. Calls
-// that could change data are never run here; the user approves those in the App tab.
+// part of CubiQ's plugin host (theme, bridge relay), run its read-only calls for real, and report what broke. Calls
+// that could change data are never run here; the user approves those when the app is open.
 
 import { APP_THEME_DEFAULTS, APP_THEME_TOKENS } from "../../shared/apps";
 import type { AppCallResult } from "../../shared/types";
@@ -60,8 +60,17 @@ export interface CheckWindow {
   destroy(): void;
 }
 
+export interface CheckOptions {
+  scheme: "light" | "dark";
+  screenshot: boolean;
+  /** The size the app shows at (its placement's); default 900×700. */
+  size?: { width: number; height: number };
+  /** Below this much text (and no image, svg or canvas) the page counts as empty; a small widget needs less. Default 20. */
+  minChars?: number;
+}
+
 export interface AppCheckDeps {
-  createWindow(): CheckWindow;
+  createWindow(size: { width: number; height: number }): CheckWindow;
   call(key: string, server: string, tool: string, args: Record<string, unknown>): Promise<AppCallResult>;
   storeGet(key: string, name: string): unknown;
   storeSet(key: string, name: string, value: unknown): AppCallResult;
@@ -107,14 +116,15 @@ export class AppChecker {
     this.sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
-  check(key: string, src: string, opts: { scheme: "light" | "dark"; screenshot: boolean }): Promise<AppCheckReport> {
+  check(key: string, src: string, opts: CheckOptions): Promise<AppCheckReport> {
     const run = this.queue.catch(() => {}).then(() => this.run(key, src, opts));
     this.queue = run;
     return run;
   }
 
-  private async run(key: string, src: string, opts: { scheme: "light" | "dark"; screenshot: boolean }): Promise<AppCheckReport> {
-    const win = this.deps.createWindow();
+  private async run(key: string, src: string, opts: CheckOptions): Promise<AppCheckReport> {
+    const size = opts.size ?? { width: CHECK_WIDTH, height: CHECK_HEIGHT };
+    const win = this.deps.createWindow(size);
     const errors: AppCheckReport["errors"] = [];
     const calls: AppCheckReport["calls"] = [];
     let dropped = 0;
@@ -154,7 +164,7 @@ export class AppChecker {
                   if (calls.length < MAX_CALLS) calls.push({ call: name, status: "ok", ms });
                   await reply(m.id, r);
                 } else if ("approval" in r) {
-                  if (calls.length < MAX_CALLS) calls.push({ call: name, status: "not-run", ms, error: "can change data: the check doesn't run it (the user approves it in the App tab)" });
+                  if (calls.length < MAX_CALLS) calls.push({ call: name, status: "not-run", ms, error: "can change data: the check doesn't run it (the user approves it when the app is open)" });
                   await reply(m.id, { ok: false, error: "The check doesn't run calls that can change data." });
                 } else {
                   if (calls.length < MAX_CALLS) calls.push({ call: name, status: "error", ms, error: r.error.slice(0, 600) });
@@ -187,8 +197,8 @@ export class AppChecker {
       }
       if (dropped) errors.push({ level: "warn", message: `${dropped} more console lines were dropped.` });
       const probe = ((await win.evaluateApp(PROBE).catch(() => null)) ?? null) as { text: string; chars: number; media: number; width: number; height: number } | null;
-      const png = opts.screenshot ? await win.capture(CHECK_WIDTH, CHECK_HEIGHT) : undefined;
-      const empty = !probe || (probe.chars < 20 && probe.media === 0);
+      const png = opts.screenshot ? await win.capture(size.width, size.height) : undefined;
+      const empty = !probe || (probe.chars < (opts.minChars ?? 20) && probe.media === 0);
       const failed = errors.some((e) => e.level === "error") || calls.some((c) => c.status === "error");
       return {
         ok: !failed && !empty && !timedOut,
