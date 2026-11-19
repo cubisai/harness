@@ -6,9 +6,9 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const dist = fileURLToPath(new URL("../dist/", import.meta.url));
+const dist = fileURLToPath(new URL("../../dist/", import.meta.url));
 // electron-builder names the app after productName, and the Linux binary after the package name.
-const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
 const product = pkg.productName ?? pkg.name;
 const candidates = [];
 for (const dir of existsSync(dist) ? readdirSync(dist) : []) {

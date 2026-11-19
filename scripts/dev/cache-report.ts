@@ -13,8 +13,8 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { MISS_WORDS } from "../src/shared/cache-stats";
-import type { ThreadEvent, Usage } from "../src/shared/types";
+import { MISS_WORDS } from "../../src/shared/cache-stats";
+import type { ThreadEvent, Usage } from "../../src/shared/types";
 
 /** One top-level turn-start or turn-end, oldest first within a thread. */
 export interface ReportRow {

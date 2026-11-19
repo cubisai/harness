@@ -7,14 +7,14 @@ import { describe, expect, it } from "vitest";
 import { cumulativeHitRate } from "../src/main/cache-policy";
 import type { Usage } from "../src/shared/types";
 // @ts-expect-error: a plain .mjs script without type declarations
-import * as rollbackCheck from "../scripts/rollback-check.mjs";
+import * as rollbackCheck from "../scripts/dev/rollback-check.mjs";
 import { tempDir } from "./helpers";
 
 const NETWORK = ["fetch(", "http.request", "https.request", "net.connect", "XMLHttpRequest", "new WebSocket", 'from "node:http"', 'from "node:https"', 'from "node:net"'];
 const root = join(__dirname, "..");
 
 describe("no telemetry", () => {
-  for (const file of ["src/main/cache-policy.ts", "src/shared/cache-stats.ts", "src/main/usage.ts", "src/main/agents/limits.ts", "scripts/rollback-check.mjs"]) {
+  for (const file of ["src/main/cache-policy.ts", "src/shared/cache-stats.ts", "src/main/usage.ts", "src/main/agents/limits.ts", "scripts/dev/rollback-check.mjs"]) {
     it(`${file} opens no connection`, () => {
       const text = readFileSync(join(root, file), "utf-8");
       for (const call of NETWORK) expect(text, call).not.toContain(call);
@@ -22,7 +22,7 @@ describe("no telemetry", () => {
   }
 });
 
-describe("scripts/rollback-check.mjs", () => {
+describe("scripts/dev/rollback-check.mjs", () => {
   const u = (read: number | null, input: number, write = 0): Usage => ({
     inputTokens: input,
     outputTokens: 1,

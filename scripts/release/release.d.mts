@@ -1,4 +1,4 @@
-// Types for scripts/release.mjs.
+// Types for scripts/release/release.mjs.
 
 /** Next version for a release; `current` returns the input, explicit versions must move forward. */
 export function bumpVersion(current: string, kind: string): string;

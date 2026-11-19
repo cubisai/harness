@@ -3,9 +3,9 @@
 // push is what triggers .github/workflows/release-cubiq.yml. The pure helpers at
 // the top are unit-tested; everything touching fs/git lives in main().
 //
-// Run: node scripts/release.mjs [patch|minor|major|current|<x.y.z>]
+// Run: node scripts/release/release.mjs [patch|minor|major|current|<x.y.z>]
 //        [--dry-run] [--push] [--yes] [--any-branch]
-//      node scripts/release.mjs notes <version>   (prints that version's notes; the release workflow)
+//      node scripts/release/release.mjs notes <version>   (prints that version's notes; the release workflow)
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -316,7 +316,7 @@ function parseArgs(argv) {
     else if (arg === "--any-branch") options.anyBranch = true;
     else if (arg === "--help" || arg === "-h") {
       process.stdout.write(
-        "Usage: node scripts/release.mjs [patch|minor|major|current|<x.y.z>] [--dry-run] [--push] [--yes] [--any-branch]\n",
+        "Usage: node scripts/release/release.mjs [patch|minor|major|current|<x.y.z>] [--dry-run] [--push] [--yes] [--any-branch]\n",
       );
       process.exit(0);
     } else if (arg.startsWith("-")) {
@@ -369,7 +369,7 @@ function printDryRun(version, tag, notes, branch, push) {
 }
 
 async function main() {
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
   if (process.argv[2] === "notes") {
     const version = process.argv[3];
     const notes = version ? releaseNotes(readFileSync(join(root, "CHANGELOG.md"), "utf8"), version) : null;

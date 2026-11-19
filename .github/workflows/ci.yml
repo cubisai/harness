@@ -89,7 +89,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run build
       - run: bunx electron-builder --dir --publish never
-      - run: xvfb-run -a node scripts/smoke.mjs
+      - run: xvfb-run -a node scripts/build/smoke.mjs
 
   package:
     # Installers to download from the run's page for 7 days: the macOS .dmg
@@ -131,4 +131,4 @@ jobs:
       - if: runner.os == 'macOS'
         run: |
           codesign --verify --deep --strict dist/mac-arm64/CubiQ.app
-          node scripts/smoke.mjs
+          node scripts/build/smoke.mjs

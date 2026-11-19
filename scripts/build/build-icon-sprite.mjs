@@ -1,10 +1,10 @@
 // Builds resources/design-icons/icons.svg: a curated Lucide set (ISC, from the installed lucide-react) as one sprite
-// that design turns copy into system/. Re-run after a lucide-react upgrade: node scripts/build-icon-sprite.mjs
+// that design turns copy into system/. Re-run after a lucide-react upgrade: node scripts/build/build-icon-sprite.mjs
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const icons = join(root, "node_modules", "lucide-react", "dist", "esm", "icons");
 
 // Everyday product UI. Left out on purpose: sparkles, rocket, wand and the like, the stock "AI magic" icons.

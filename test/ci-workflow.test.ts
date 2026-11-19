@@ -31,7 +31,7 @@ describe("CI workflow", () => {
   });
 
   it("runs the packaged smoke after the test matrix", () => {
-    expect(workflow).toMatch(/\n {2}smoke:\n[\s\S]*needs: test[\s\S]*node scripts\/smoke\.mjs/);
+    expect(workflow).toMatch(/\n {2}smoke:\n[\s\S]*needs: test[\s\S]*node scripts\/build\/smoke\.mjs/);
   });
 });
 

@@ -4,10 +4,10 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { discoverSkills, parseSkillMd } from "../src/main/skills/discover";
 import { testServer } from "../src/main/mcp/servers";
-import { generate, makeTools, PRESETS } from "../scripts/mock-extensions-lib.mjs";
+import { generate, makeTools, PRESETS } from "../scripts/dev/mock-extensions-lib.mjs";
 import { tempDir } from "./helpers";
 
-const CLI = join(__dirname, "..", "scripts", "mock-extensions.mjs");
+const CLI = join(__dirname, "..", "scripts", "dev", "mock-extensions.mjs");
 const SERVER = join(__dirname, "fixtures", "mock-mcp-many.mjs");
 
 function writeFiles(root: string, files: { path: string; content: string }[]): void {

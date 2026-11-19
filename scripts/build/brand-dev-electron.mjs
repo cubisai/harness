@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 if (process.platform === "darwin") {
   const require = createRequire(import.meta.url);
   const app = join(dirname(require.resolve("electron/package.json")), "dist", "Electron.app");
-  const { productName } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const { productName } = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
   if (existsSync(join(app, "Contents", "Info.plist")) && productName) {
     // Brand a fresh clone each time so it always mirrors the current Electron.app.
     const copy = join(dirname(app), `${productName}.app`);
@@ -34,7 +34,7 @@ if (process.platform === "darwin") {
     };
     set("CFBundleName", productName);
     set("CFBundleDisplayName", productName);
-    const icon = new URL("../build/icon.icns", import.meta.url);
+    const icon = new URL("../../build/icon.icns", import.meta.url);
     if (existsSync(icon)) copyFileSync(icon, join(copy, "Contents", "Resources", "electron.icns"));
     // Editing Info.plist breaks the bundle's signature; re-sign ad hoc so macOS still launches it.
     execFileSync("codesign", ["--force", "--deep", "--sign", "-", copy], { stdio: "ignore" });

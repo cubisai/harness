@@ -1,5 +1,5 @@
 // CLI: write a deterministic mock extension kit to --out.
-//   node scripts/mock-extensions.mjs --out <dir> [--preset small|medium|large]
+//   node scripts/dev/mock-extensions.mjs --out <dir> [--preset small|medium|large]
 //     [--skills N] [--servers K] [--tools M] [--seed S] [--mcp-out <file>]
 //     [--manifest-out <file>] [--force]
 //   --mcp-out writes the MCP JSON to that file instead of <out>/.mcp.json.
@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { generate, PRESETS } from "./mock-extensions-lib.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const serverScript = resolve(scriptDir, "..", "test", "fixtures", "mock-mcp-many.mjs");
+const serverScript = resolve(scriptDir, "..", "..", "test", "fixtures", "mock-mcp-many.mjs");
 
 function parseArgs(argv) {
   const value = (name) => {
@@ -41,7 +41,7 @@ function parseArgs(argv) {
 
 function main() {
   const opts = parseArgs(process.argv.slice(2));
-  if (!opts.out) throw new Error("usage: node scripts/mock-extensions.mjs --out <dir> [--preset small|medium|large] [--mcp-out <file>] [--manifest-out <file>] [--force]");
+  if (!opts.out) throw new Error("usage: node scripts/dev/mock-extensions.mjs --out <dir> [--preset small|medium|large] [--mcp-out <file>] [--manifest-out <file>] [--force]");
   const out = resolve(opts.out);
   const skillsDir = join(out, ".agents", "skills");
   // The MCP JSON goes to --mcp-out when given, otherwise to <out>/.mcp.json.

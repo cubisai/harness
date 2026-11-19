@@ -13,7 +13,7 @@ Work with your preferred agents, review every change, and turn ideas into live i
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-informational)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[Download](https://github.com/cubisai/harness/releases) · [Demo](#demo) · [Features](#features) · [Get started](#get-started) · [Contribute](CONTRIBUTING.md)
+[Install](#install) · [Demo](#demo) · [Features](#features) · [Get started](#get-started) · [Contribute](CONTRIBUTING.md)
 
 </div>
 
@@ -64,36 +64,19 @@ CubiQ is an open-source desktop app that brings AI agents, project files, a brow
 
 Agent features—including vision, MCP transport, sandboxing, and permission enforcement—vary by integration. Check the Library and Settings for the selected agent’s support.
 
-## Download
-
-Install the latest release with one line:
+## Install
 
 ```bash
-# macOS (Apple Silicon) and Linux; also works from Git Bash on Windows
+# macOS (Apple Silicon) and Linux
 curl -fsSL https://raw.githubusercontent.com/cubisai/harness/main/scripts/install/install.sh | bash
 ```
 
 ```powershell
-# Windows PowerShell
+# Windows (PowerShell)
 irm https://raw.githubusercontent.com/cubisai/harness/main/scripts/install/install.ps1 | iex
 ```
 
-Set `VERSION=0.1.3` to pin a release. Or get the installers from [GitHub Releases](https://github.com/cubisai/harness/releases).
-
-| Platform | Release architecture | Installer |
-| :--- | :--- | :--- |
-| macOS | Apple Silicon (ARM64) | `.dmg` |
-| Windows | x64 | `CubiQ-Setup-<version>.exe` |
-| Linux | x64 | `.AppImage` |
-
-If an installer is not available, [build from source](#build-from-source). Installed releases update themselves (Settings → Updates); macOS builds without a Developer ID swap in the new version when you restart.
-
-<details>
-<summary>Opening an unsigned build</summary>
-
-Only proceed if you trust the build’s source. On macOS, use **System Settings → Privacy & Security → Open Anyway** if offered. On Windows, SmartScreen may offer **More info → Run anyway**. Signed and notarized releases avoid these warnings.
-
-</details>
+CubiQ updates itself after that. To install a specific version, set `VERSION`, e.g. `VERSION=0.1.3`. On other platforms, [build from source](#build-from-source).
 
 ## Get started
 

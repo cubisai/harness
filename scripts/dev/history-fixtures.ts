@@ -3,10 +3,10 @@
 // before/after baseline. No Math.random and no Date.now in the generated
 // content: the same HistorySpec always yields byte-identical events.
 
-import type { Store } from "../src/main/db";
-import type { ThreadEvent } from "../src/shared/types";
+import type { Store } from "../../src/main/db";
+import type { ThreadEvent } from "../../src/shared/types";
 
-/** mulberry32: a tiny seeded PRNG (the one in scripts/mock-extensions-lib.mjs). */
+/** mulberry32: a tiny seeded PRNG (the one in scripts/dev/mock-extensions-lib.mjs). */
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {

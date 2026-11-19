@@ -1,4 +1,4 @@
-// Types for the design-system guard in scripts/design-check.mjs.
+// Types for the design-system guard in scripts/design/design-check.mjs.
 
 /** A file to check; `text` is already LF-normalised. */
 export interface DesignFile {
@@ -16,7 +16,7 @@ export interface DesignIssue {
   value?: string;
 }
 
-/** An allowlist entry as stored in scripts/design-allowlist.json. */
+/** An allowlist entry as stored in scripts/design/design-allowlist.json. */
 export interface DesignAllowlistEntry {
   code: string;
   file: string;

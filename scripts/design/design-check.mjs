@@ -18,7 +18,7 @@
 //   design/allowlist-unused  warning an allowlist entry matched nothing
 //   design/component-missing error   reserved; not checked yet
 //
-// Run: node scripts/design-check.mjs [--json | --baseline]
+// Run: node scripts/design/design-check.mjs [--json | --baseline]
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -523,7 +523,7 @@ export function applyAllowlist(issues, allowlist) {
   for (let i = 0; i < entries.length; i++) {
     if (used.has(i)) continue;
     const e = entries[i];
-    unused.push(issue("warning", "design/allowlist-unused", "scripts/design-allowlist.json", 0, `allowlist entry ${e.code} for ${e.file} is unused`, e.value ?? ""));
+    unused.push(issue("warning", "design/allowlist-unused", "scripts/design/design-allowlist.json", 0, `allowlist entry ${e.code} for ${e.file} is unused`, e.value ?? ""));
   }
   return { issues: kept, unused };
 }
@@ -610,7 +610,7 @@ function collectFiles(root) {
   return files;
 }
 
-/** Read scripts/design-allowlist.json, or an empty list when missing/invalid. */
+/** Read scripts/design/design-allowlist.json, or an empty list when missing/invalid. */
 function readAllowlist(path) {
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8"));
@@ -633,15 +633,15 @@ function writeBaseline(files, path) {
     (a, b) => a.code.localeCompare(b.code) || a.file.localeCompare(b.file) || a.value.localeCompare(b.value),
   );
   writeFileSync(path, `${JSON.stringify(entries, null, 2)}\n`, "utf8");
-  console.log(`design:check: wrote ${entries.length} baseline entries to scripts/design-allowlist.json`);
+  console.log(`design:check: wrote ${entries.length} baseline entries to scripts/design/design-allowlist.json`);
 }
 
 /** The CLI: collect the tree, run the checks, print and set the exit code. */
 async function main() {
   const args = process.argv.slice(2);
-  const root = fileURLToPath(new URL("..", import.meta.url));
+  const root = fileURLToPath(new URL("../..", import.meta.url));
   const files = collectFiles(root);
-  const allowlistPath = join(root, "scripts", "design-allowlist.json");
+  const allowlistPath = join(root, "scripts", "design", "design-allowlist.json");
   if (args.includes("--baseline")) {
     writeBaseline(files, allowlistPath);
     return;
@@ -651,7 +651,7 @@ async function main() {
   const generateTokensMd = docs && typeof docs.generateTokensMd === "function" ? docs.generateTokensMd : null;
   let issues = runChecks(files, { generateTokensMd, allowlist });
   if (!generateTokensMd) {
-    issues = [...issues, issue("error", "design/token-stale", "scripts/design-docs.mjs", 0, "scripts/design-docs.mjs is missing")].sort(compareIssues);
+    issues = [...issues, issue("error", "design/token-stale", "scripts/design/design-docs.mjs", 0, "scripts/design/design-docs.mjs is missing")].sort(compareIssues);
   }
   const errors = issues.filter((i) => i.severity === "error").length;
   const warnings = issues.filter((i) => i.severity === "warning").length;

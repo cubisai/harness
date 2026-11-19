@@ -25,7 +25,7 @@ bun run dev
 | `design-kits/` | Component kits and their assets |
 | `test/` | Automated tests |
 | `evals/`, `bench/` | Optional agent evaluations and benchmarks |
-| `scripts/` | Build, validation, and maintenance scripts |
+| `scripts/` | `build/` (install hooks, smoke), `design/` (design:check), `dev/` (test fixtures, reports), `release/`, `install/` |
 | `docs/design/` | Design-system reference and quality checks |
 
 ## Before opening a pull request

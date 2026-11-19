@@ -2,7 +2,7 @@
 // days after the M4.5 release against the 7 days before it, read from the
 // app's own database. Nothing leaves the machine.
 //
-//   node scripts/rollback-check.mjs --since <M4.5 release date, e.g. 2026-10-01> [--db <path to unskilled.db>]
+//   node scripts/dev/rollback-check.mjs --since <M4.5 release date, e.g. 2026-10-01> [--db <path to unskilled.db>]
 //
 // Prints both windows' cumulative hit rates, the delta, and PASS/FAIL against
 // -5 percentage points; exits 1 on FAIL, 2 when a window has no data.
@@ -65,7 +65,7 @@ async function main() {
   const sinceText = arg("--since");
   const since = sinceText ? Date.parse(sinceText) : NaN;
   if (Number.isNaN(since)) {
-    console.error("usage: node scripts/rollback-check.mjs --since <M4.5 release date> [--db <path>]");
+    console.error("usage: node scripts/dev/rollback-check.mjs --since <M4.5 release date> [--db <path>]");
     process.exit(2);
   }
   const file = arg("--db") ?? defaultDb();
