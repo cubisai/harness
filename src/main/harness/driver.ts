@@ -3,6 +3,7 @@
 // app's guide, memory, browser and MCP tools, and a JSONL session per thread.
 
 import { randomUUID } from "node:crypto";
+import { BoundedMap, BoundedSet } from "../bounded";
 import { CODE_HINT } from "../code-hint";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -28,7 +29,8 @@ import { contextFiles } from "./context/files";
 import { pruneToolOutputs, retentionFor } from "./context/prune";
 import { nativeTools, shellFor, todosOf, type NativeTool, type ToolContext } from "./tools";
 import { bound } from "./tools/bound";
-import { createCodeTool } from "./tools/code";
+import { createCodeTool, type ShownWidget } from "./tools/code";
+import { scriptEnvelope } from "../../shared/genui/widget";
 import { createCodeBroker } from "./tools/code-broker";
 import { resolvePath } from "./tools/paths";
 import { parsePatch } from "./tools/apply-patch";
@@ -56,6 +58,8 @@ export interface ProviderDriverDeps {
   skills?(cwd: string, design: boolean, threadId?: string): HarnessTool | null;
   /** The thread's code mode: "on" offers the `run_code` sandbox tool. */
   codeMode?: (threadId: string) => CodeMode;
+  /** Inline UI on: run_code scripts may `show()` tables and stats to the user. */
+  uiBlocks?: () => boolean;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
   /** Tests. */
@@ -93,14 +97,17 @@ function protocolOf(provider: Provider): HarnessProtocol | null {
   return provider.wireProtocol === "gemini" ? null : provider.wireProtocol;
 }
 
+/** Sessions a provider driver remembers reads, script store and the text-only flag for; past it the oldest forgets them, as a restart does. */
+const SESSION_CACHE_CAP = 64;
+
 export function createProviderDriver(providerId: string, deps: ProviderDriverDeps): AgentDriver {
   const id = providerAgentId(providerId);
   // Files read per session, kept across turns so an edit next turn needs no re-read (a restart forgets them).
-  const readsBySession = new Map<string, Map<string, number>>();
+  const readsBySession = new BoundedMap<string, Map<string, number>>(SESSION_CACHE_CAP);
   // run_code's store/load values, per session, the same way.
-  const codeStateBySession = new Map<string, Map<string, string>>();
+  const codeStateBySession = new BoundedMap<string, Map<string, string>>(SESSION_CACHE_CAP);
   // Sessions whose model rejected an image once: their images go as a text note from then on.
-  const textOnlySessions = new Set<string>();
+  const textOnlySessions = new BoundedSet<string>(SESSION_CACHE_CAP);
   const current = (): Provider | undefined => deps.provider();
 
   const models = (): ModelOption[] =>
@@ -193,7 +200,10 @@ async function runTurn(
   const platform = deps.platform ?? process.platform;
   const route = routeFor(provider, protocol, wire, deps.secret(), deps.secretHeaders(), env);
   const shell = shellFor(platform, env).name;
-  const guide = input.expert ? [deps.guide(input.cwd, input.design), input.expert].filter(Boolean).join("\n\n") : deps.guide(input.cwd, input.design);
+  const guide =
+    input.expert || input.preset
+      ? [deps.guide(input.cwd, input.design), input.expert, input.preset].filter(Boolean).join("\n\n")
+      : deps.guide(input.cwd, input.design);
   const files = contextFiles(input.cwd);
 
   const contextSize = provider.contextWindowOverride ?? entry.contextWindow;
@@ -266,6 +276,7 @@ async function runTurn(
     memory,
     contextFiles: files,
     date: new Date(`${meta.startedOn}T00:00:00Z`),
+    shells: input.tools.some((t) => t.name === "shell_start"),
   });
   // Code mode: one fixed line on when a run_code script beats the shell.
   if (codeMode !== "off") system.push(CODE_HINT);
@@ -404,6 +415,7 @@ async function runTurn(
           outputDir: deps.outputDir,
           state: codeState,
           broker: createCodeBroker({ tools: () => scriptable, emit: (e) => input.onEvent(e), authorize: (tool, args, summary) => authorize(tool, args, summary), outputDir: deps.outputDir }),
+          ...(deps.uiBlocks?.() ? { show: (widgets: ShownWidget[], callId: string) => widgets.forEach((w, i) => input.onEvent({ kind: "widget", envelope: scriptEnvelope(w.spec, callId, i, w.complete) })) } : {}),
         })
       : null;
   const scriptable: LoopTool[] = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : []), ...(planLoop ? [planLoop] : []), ...(askLoop ? [askLoop] : []), taskLoop, ...(codeLoop ? [codeLoop] : [])].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
@@ -441,6 +453,9 @@ async function runTurn(
         return { ok: false, reason };
       }
     }
+    // Plan mode runs a script: read, glob and grep live only inside run_code, and every call it makes comes back
+    // through here, so its edits and shell are still refused one by one.
+    if (mode === "plan" && tool === codeLoop) return { ok: true };
     const verdict = decide(mode, tool.access, tool.outside?.(args) ?? false);
     if (verdict === "allow") return { ok: true };
     if (verdict === "deny") return { ok: false, reason: refusal(mode, "deny") };
@@ -625,6 +640,7 @@ export function appLoopTool(tool: HarnessTool, input: Pick<TurnInput, "projectId
   }
   return {
     definition: { name: tool.name, description: tool.description, parameters },
+    ...(tool.returns ? { returns: tool.returns } : {}),
     displayName: tool.name,
     // Safe tools run in any mode; the rest ask in "ask" mode, like an edit.
     access: tool.autoAllow ? "read" : "edit",
@@ -641,7 +657,7 @@ export function appLoopTool(tool: HarnessTool, input: Pick<TurnInput, "projectId
       const out = await tool.run(parsed.data as never, { ...(input.projectId ? { projectId: input.projectId } : {}), threadId: input.threadId, signal: call.signal });
       // A skill's body is instructions, not output: it reaches the model whole. Anything else is bounded like a native tool's result.
       const text = tool.name === "skill" ? out.text : bound(out.text, { outputDir, callId: call.id });
-      return { text, ...(out.isError ? { isError: true } : {}), ...(out.imagePng ? { imagePng: out.imagePng } : {}) };
+      return { text, ...(out.isError ? { isError: true } : {}), ...(out.imagePng ? { imagePng: out.imagePng } : {}), ...(call.script && out.data !== undefined ? { data: out.data } : {}) };
     },
   };
 }

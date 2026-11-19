@@ -1,5 +1,6 @@
 import { DOC_SCHEME } from "../documents/serve";
 import { DESIGN_SCHEME } from "./serve";
+import { parseStylePreviewUrl } from "./style-preview";
 
 /** The part of a hidden BrowserWindow the shooter drives; injected so it stays testable. */
 export interface ShotWindow {
@@ -103,7 +104,7 @@ export class Shooter {
   private job<T>(url: string, width: number, height: number, work: (win: ShotWindow) => Promise<T>): Promise<T> {
     const run = async (): Promise<T> => {
       if (this.closed) throw new Error("The design renderer is closed.");
-      if (!url.startsWith(`${DESIGN_SCHEME}://`) && !url.startsWith(`${DOC_SCHEME}://`)) throw new Error("Only design pages and documents can be rendered.");
+      if (!url.startsWith(`${DESIGN_SCHEME}://`) && !url.startsWith(`${DOC_SCHEME}://`) && !parseStylePreviewUrl(url)) throw new Error("Only design pages, documents and local style previews can be rendered.");
       if (this.idle) clearTimeout(this.idle);
       this.idle = null;
       try {

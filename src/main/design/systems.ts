@@ -179,7 +179,7 @@ function collectSystems(root: string, out: DesignSystemInfo[], seen: Set<string>
   let folders: string[];
   try {
     folders = readdirSync(root, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
+      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
       .map((e) => e.name)
       .sort();
   } catch {

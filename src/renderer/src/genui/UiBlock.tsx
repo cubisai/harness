@@ -1,5 +1,6 @@
 import { type ReactNode, useMemo } from "react";
-import { validateUi } from "./validate";
+import { validateUiDetailed } from "./validate";
+import type { UiSpec } from "./types";
 import { Calculator } from "./components/Calculator";
 import { Cards } from "./components/Cards";
 import { Chart } from "./components/Chart";
@@ -12,11 +13,33 @@ import { Timeline } from "./components/Timeline";
 
 /**
  * Draws one inline UI block from a validated ```ui:<name> fence. When the body
- * doesn't validate, the caller's `fallback` (the fence as plain code) shows.
+ * doesn't validate, the caller's `fallback` (the fence as plain code) shows,
+ * under one muted line saying why. Repairs to a drawn block (clipped texts,
+ * padded rows) go in `data-ui-notes` only: a drawn block still says what the agent meant, so it doesn't nag.
  */
 export function UiBlock({ name, body, fallback }: { name: string; body: string; fallback: ReactNode }) {
-  const spec = useMemo(() => validateUi(name, body), [name, body]);
-  if (!spec) return <>{fallback}</>;
+  const verdict = useMemo(() => validateUiDetailed(name, body), [name, body]);
+  if (!verdict.spec) {
+    return (
+      <>
+        <div className="ui-fallback-note">
+          Couldn't draw ui:{name}: {verdict.reason}
+        </div>
+        {fallback}
+      </>
+    );
+  }
+  const { spec, notes } = verdict;
+  const view = <UiSpecView spec={spec} />;
+  return (
+    <div className="ui-block" data-ui={spec.name} data-ui-notes={notes.length ? notes.join("; ") : undefined}>
+      {view}
+    </div>
+  );
+}
+
+/** One validated catalog spec as its component (no frame): UiBlock and script widgets share it. */
+export function UiSpecView({ spec }: { spec: UiSpec }) {
   let view: ReactNode = null;
   switch (spec.name) {
     case "checklist":
@@ -47,9 +70,5 @@ export function UiBlock({ name, body, fallback }: { name: string; body: string; 
       view = <Cards spec={spec} />;
       break;
   }
-  return (
-    <div className="ui-block" data-ui={spec.name}>
-      {view}
-    </div>
-  );
+  return <>{view}</>;
 }

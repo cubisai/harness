@@ -82,6 +82,26 @@ describe("splitForCompaction", () => {
     expect(tail).toEqual(messages.slice(2));
     expect(tail[0]!.role).toBe("user");
   });
+
+  it("estimates each tail message at most once across many candidate boundaries", () => {
+    let stringifyCalls = 0;
+    const origStringify = JSON.stringify;
+    const step = (i: number): LlmMessage[] => [user(text(`q${i}`)), assistant(call(`c${i}`, "read", { path: `f${i}.ts`, pad: "x".repeat(400) })), tool(`c${i}`, "read", "y".repeat(400))];
+    const messages: LlmMessage[] = Array.from({ length: 40 }, (_, i) => step(i)).flat();
+    JSON.stringify = ((...args: Parameters<typeof JSON.stringify>) => {
+      stringifyCalls++;
+      return origStringify(...args);
+    }) as typeof JSON.stringify;
+    try {
+      const { head, tail } = splitForCompaction(messages, 4_000);
+      expect(head.length).toBeGreaterThan(0);
+      expect(tail.length).toBeGreaterThan(0);
+      // Linear suffix accumulation: each assistant tool-call in the inspected suffix is stringified once, not O(N^2).
+      expect(stringifyCalls).toBeLessThanOrEqual(40);
+    } finally {
+      JSON.stringify = origStringify;
+    }
+  });
 });
 
 describe("touchedFiles", () => {

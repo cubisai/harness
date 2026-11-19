@@ -19,6 +19,11 @@ extraResources:
   # Design mode: its guide.
   - from: resources/DESIGN-MODE.md
     to: DESIGN-MODE.md
+  # Creator mode: its short always-on note and inspect docs.
+  - from: resources/CREATOR-MODE.md
+    to: CREATOR-MODE.md
+  - from: resources/creator
+    to: creator
   # The font pack design references' faces are substituted from.
   - from: resources/design-fonts
     to: design-fonts

@@ -197,6 +197,7 @@ export function workSummary(items: StoredEvent[]): string {
   let read = 0;
   let searched = 0;
   let ran = 0;
+  let scripts = 0;
   let other = 0;
   const edited = new Set<string>();
   for (const e of items) {
@@ -205,6 +206,7 @@ export function workSummary(items: StoredEvent[]): string {
     if (name === "Read") read++;
     else if (name === "Search") searched++;
     else if (name === "Run") ran++;
+    else if (name === "run_code") scripts++;
     else if (name === "Edit") for (const f of e.event.summary.split(", ").filter(Boolean)) edited.add(f);
     else other++;
   }
@@ -212,7 +214,7 @@ export function workSummary(items: StoredEvent[]): string {
     read ? `read ${plural(read, "file", "files")}` : "",
     searched ? `searched ${plural(searched, "time", "times")}` : "",
     edited.size ? `edited ${plural(edited.size, "file", "files")}` : "",
-    ran ? `ran ${plural(ran, "command", "commands")}` : "",
+    ran || scripts ? `ran ${[ran ? plural(ran, "command", "commands") : "", scripts ? plural(scripts, "script", "scripts") : ""].filter(Boolean).join(" and ")}` : "",
     other ? plural(other, "other step", "other steps") : "",
   ]
     .filter(Boolean)

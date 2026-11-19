@@ -162,7 +162,7 @@ describe("runLoop", () => {
       ],
       text("ok"),
     );
-    const boom = tool("boom", "other", async () => {
+    const boom = tool("boom", "control", async () => {
       throw new ToolError("No such file: x");
     });
     const { input, events, messages } = setup({
@@ -397,6 +397,8 @@ describe("decide", () => {
     expect(["ask", "auto-edit", "plan", "full"].map((m) => decide(m as never, "read", true))).toEqual(["allow", "allow", "allow", "allow"]);
     // A fetch reads, but a URL can carry data out: it asks unless the mode is full, plan mode included.
     expect(["ask", "auto-edit", "plan", "full"].map((m) => decide(m as never, "web"))).toEqual(["ask", "ask", "ask", "allow"]);
+    expect(["ask", "auto-edit", "plan", "full"].map((m) => decide(m as never, "control"))).toEqual(["allow", "allow", "allow", "allow"]);
+    expect(["ask", "auto-edit", "plan", "full"].map((m) => decide(m as never, "other" as never))).toEqual(["deny", "deny", "deny", "deny"]);
   });
 });
 

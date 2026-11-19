@@ -1,10 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants as fsConstants, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { createHash } from "node:crypto";
 import { homedir, release, tmpdir, type as osType } from "node:os";
-import { basename, delimiter, isAbsolute, join, resolve } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, shell, utilityProcess } from "electron";
-import type { AboutInfo, AgentLimits, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignIntent, DesignKitEdit, DesignKitSampleRequest, DesignSystemEdit, DesignSystemOption, DevicePreset, IssueSummary, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
+import type { AboutInfo, AgentLimits, AppUpdateStatus, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignIntent, DesignKitEdit, DesignKitSampleRequest, DesignSystemEdit, DesignSystemOption, DevicePreset, IssueSummary, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { CHATS_NAME, chatsRoot, isChatsRoot } from "./chats";
 import { stepZoom, trafficLightPosition, zoomKey } from "../shared/zoom";
@@ -34,11 +36,16 @@ import { detectPins, lintWidth, styleAllows, withoutAllowed, type PageLint } fro
 import { kitIndexEntry, kitThemeIndex, type KitIndexEntry } from "./design/systems";
 import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
+import { prepareTheme, readThemeFiles } from "./creator/themes";
+import { ThemePreviews } from "./creator/theme-previews";
+import { stylePreviewUrl } from "../shared/style-preview";
+import { prepareAutomation, checkAutomationAgent } from "./creator/automations";
+import { parseTokens } from "./design/tokens";
 import { DOC_SCHEME, documentUrl, pdfPageCount, serveDocument } from "./documents/serve";
 import { documentTools } from "./documents/tools";
 import { designTools, imageBudget } from "./design/tools";
 import { selectorFor } from "./browser/picker";
-import { spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { setBinaryPins, warmBinaries } from "./agents/binaries";
 import { createDoctor, pinsByCommand } from "./doctor";
@@ -55,6 +62,9 @@ import { withBrowserOnDemand } from "./browser/on-demand";
 import { DevServers } from "./devserver/registry";
 import { devServerTools } from "./devserver/tools";
 import { Store } from "./db";
+import { creatorTools } from "./creator/tools";
+import { assertContained, ExtensionService } from "./extensions/install";
+import { ExtensionStore } from "./extensions/store";
 import { artifactKind, resolveInside } from "./artifacts";
 import { createLinkPreviews, localImage } from "./link-preview";
 import { headContent } from "./git";
@@ -109,11 +119,24 @@ import { BUILT_IN_SERVER, isRemote, McpScopes, McpServerStore, McpToolsCache, mi
 import { cleanName } from "../shared/mcp-add";
 import { expandEnvRefs } from "./mcp/vault";
 import { McpVault } from "./mcp/vault";
-import { MCP_ROUTER_MIN_TOOLS, McpClientPool, routerTools } from "./mcp/router";
+import { callServerTool, MCP_ROUTER_MIN_TOOLS, McpClientPool, routerTools } from "./mcp/router";
+import { appBridgeScript } from "./apps/bridge";
+import { AppCalls } from "./apps/calls";
+import { AppRegistry, decodeAppKey } from "./apps/registry";
+import { APP_SCHEME, serveApp } from "./apps/serve";
+import { AppChecker, CHECK_HEIGHT, CHECK_WIDTH } from "./apps/check";
+import { electronCheckWindow } from "./apps/check-window";
+import { appDraftsDir, appEditDraftsDir, projectAppsDir } from "./apps/registry";
+import { DraftWatcher } from "./apps/watch";
+import { creatorAppTools } from "./creator/app-tools";
+import { prepareAppEdit } from "./apps/manage";
 import { providerWarning } from "../shared/provider-rules";
 import { Updater, type UpdaterBackend } from "./updater";
+import { MacSwapBackend, bundlePath, isAdHocSigned, type FoundUpdate } from "./mac-swap-updater";
+import { checkFolder, privacyMessage, type PrivacyBlock } from "./mac-privacy";
 import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
 import { codexCoveredSkills, withoutCodexCovered } from "./skills/codex-plugins";
+import { discoverSkills } from "./skills/discover";
 import { ensureModelSkillsDir, ensurePlugin } from "./skills/plugin";
 import { SkillCatalogs, forAgent } from "./skills/sources";
 import { skillTool } from "./skills/tool";
@@ -156,7 +179,75 @@ async function updaterBackend(): Promise<UpdaterBackend | null> {
   if (!app.isPackaged || smoke || process.env.UNSKILLED_NO_UPDATE) return null;
   if (process.platform === "linux" && !process.env.APPIMAGE) return null;
   const { default: updater } = await import("electron-updater");
-  return updater.autoUpdater;
+  const auto = updater.autoUpdater;
+  // A local feed for testing an update end to end without publishing a release.
+  // Only a loopback URL counts, so the variable can't point the app elsewhere.
+  const feed = process.env.CUBIQ_UPDATE_FEED;
+  const localFeed = feed && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(feed) ? feed : null;
+  if (localFeed) auto.setFeedURL({ provider: "generic", url: localFeed });
+  if (process.platform !== "darwin") return auto;
+  const appPath = bundlePath(process.execPath);
+  if (!appPath) return auto;
+  const run = (cmd: string, args: string[]) =>
+    new Promise<{ stdout: string; stderr: string }>((done, fail) =>
+      execFile(cmd, args, { encoding: "utf8" }, (err, stdout, stderr) => (err ? fail(err) : done({ stdout, stderr }))),
+    );
+  const signature = await run("/usr/bin/codesign", ["-dv", appPath]).then(
+    (r) => r.stderr,
+    (err: { stderr?: string }) => err.stderr ?? "not signed at all",
+  );
+  if (!isAdHocSigned(signature)) return auto; // a Developer ID build: Squirrel.Mac installs it
+  // Swapping needs to replace the bundle where it is; a translocated or read-only copy can't update.
+  if (appPath.includes("/AppTranslocation/") || !writable(dirname(appPath)) || !writable(appPath)) {
+    console.warn(`update: ${appPath} can't be replaced in place, so this copy doesn't update itself`);
+    return null;
+  }
+  auto.autoDownload = false;
+  auto.autoInstallOnAppQuit = false;
+  auto.logger = null;
+  return new MacSwapBackend({
+    check: () => auto.checkForUpdates() as Promise<FoundUpdate | null>,
+    fileUrl: (info, file) =>
+      localFeed
+        ? new URL(file, localFeed).toString()
+        : `https://github.com/cubisai/harness/releases/download/${info.tag ?? `cubiq-v${info.version}`}/${file}`,
+    download: async (url, dest) => {
+      const res = await net.fetch(url);
+      if (!res.ok || !res.body) throw new Error(`update download failed: HTTP ${res.status}`);
+      await pipeline(Readable.fromWeb(res.body as import("node:stream/web").ReadableStream), createWriteStream(dest));
+    },
+    sha512: (path) =>
+      new Promise((done, fail) => {
+        const hash = createHash("sha512");
+        createReadStream(path)
+          .on("data", (chunk) => hash.update(chunk))
+          .on("error", fail)
+          .on("end", () => done(hash.digest("base64")));
+      }),
+    run,
+    spawnDetached: (cmd, args) => spawn(cmd, args, { detached: true, stdio: "ignore" }).unref(),
+    writeFile: (path, text) => writeFileSync(path, text, { mode: 0o755 }),
+    resetDir: (path) => {
+      rmSync(path, { recursive: true, force: true });
+      mkdirSync(path, { recursive: true });
+    },
+    exists: existsSync,
+    quit: () => app.quit(),
+    onWillQuit: (listener) => app.on("will-quit", listener),
+    pid: process.pid,
+    appPath,
+    bundleId: "dev.aiharness.app",
+    stagingDir: join(app.getPath("userData"), "pending-update"),
+  });
+}
+
+function writable(path: string): boolean {
+  try {
+    accessSync(path, fsConstants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** build/icon.png, shipped next to the app's resources in a packaged build. */
@@ -255,6 +346,8 @@ async function main(): Promise<void> {
     { scheme: DESIGN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
     // cubiq-style:// serves the style picker's previews: a style's tokens, fonts and the shared specimen (no scripts, no network).
     { scheme: STYLE_PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    // cubiq-app:// serves an installed Creator app to its sandboxed frame: that app's files only, no network.
+    { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
     // cubiq-doc:// serves a thread's folder to the hidden window that prints its HTML documents (no scripts, no network).
     { scheme: DOC_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   ]);
@@ -276,6 +369,7 @@ async function main(): Promise<void> {
     return net.fetch(pathToFileURL(join(shotsDir, name)).toString());
   });
   const store = new Store(join(userData, "unskilled.db"));
+  const extensions = new ExtensionStore(store.sql);
   // Content left behind by threads deleted before blobs were pruned on delete, off the startup path.
   setImmediate(() => store.pruneBlobs());
   // Saved tool output from old turns, likewise off the startup path.
@@ -322,6 +416,7 @@ async function main(): Promise<void> {
     harnessDir,
     disabled: () => settings.get().skills?.disabled ?? [],
   });
+  const creatorDir = app.isPackaged ? join(process.resourcesPath, "creator") : join(app.getAppPath(), "resources", "creator");
   /**
    * The skills listing one agent carries for a cwd, priced the same by the
    * Context sheet and the first-turn breakdown. Null when the agent takes no
@@ -727,9 +822,100 @@ async function main(): Promise<void> {
       threadId,
     );
   };
+  /** A Creator thread's app drafts folder, inside its own folder (the project, or the chat's folder). */
+  const creatorDraftsDir = (threadId: string): string | null => {
+    const t = threadOf(threadId);
+    if (!t || t.kind === "design" || t.preset !== "creator") return null;
+    try {
+      const cwd = service.cwdOf(t);
+      const editing = appEditDraftsDir(cwd, threadId);
+      return existsSync(editing) ? editing : appDraftsDir(cwd);
+    } catch {
+      return null;
+    }
+  };
+  /** The thread's project when it is a real one (not Chats). */
+  const threadRealProject = (threadId: string): string | null => {
+    const t = threadOf(threadId);
+    return t && realProjectPath(t.projectId) ? t.projectId : null;
+  };
+  const creatorToolsOf = (threadId: string): HarnessTool[] => {
+    const thread = threadOf(threadId);
+    if (!thread || thread.kind === "design" || thread.preset !== "creator") return [];
+    const appTools = creatorAppTools(
+      {
+        templatesDir: join(creatorDir, "templates"),
+        draftsDir: creatorDraftsDir,
+        threadOf,
+        appInfo: (key) => appRegistry.info(key),
+        openPreview: (tid, info) => broadcast({ type: "app-open", threadId: tid, app: info }),
+        watch: (key, tid, dir) => draftWatcher.watch(key, tid, dir),
+        check: (key, src, opts) => appChecker.check(key, src, opts),
+        takeImage,
+        connectorTools: async (tid, server) => {
+          const target = mcpScopes.effective(threadRealProject(tid)).find((s) => s.name === server && s.enabled === true);
+          if (!target) return { ok: false, error: `No enabled connector named "${server}" for this thread. creator_inspect topic "installed" lists them.` };
+          await mcpTools.refresh([target], 20_000);
+          const listing = mcpTools.peek(target.spec);
+          if (!listing || !listing.ok) return { ok: false, error: `Couldn't list "${server}": ${listing?.error ?? "it didn't answer"}.` };
+          return { ok: true, tools: listing.tools };
+        },
+        callReadOnly: (tid, server, tool, args) =>
+          callServerTool(
+            { servers: (pid) => mcpScopes.effective(pid ?? null), listings: mcpTools, pool: mcpPool },
+            threadRealProject(tid) ?? undefined,
+            server,
+            tool,
+            args,
+            undefined,
+            async (found) => (found.readOnly ? null : `"${server}.${tool}" isn't marked read-only; the test only runs read-only tools.`),
+          ),
+      },
+      threadId,
+    );
+    return [...creatorTools(
+      {
+        creatorDir,
+        bundledSkillsDir: skills.dirs(null).bundled,
+        chatsRoot: chats,
+        threadOf,
+        projectOf: (id) => {
+          try {
+            return store.getProject(id);
+          } catch {
+            return null;
+          }
+        },
+        cwdOf: (t) => service.cwdOf(t),
+        skillsForProject: (cwd) => skills.forProject(cwd),
+        mcpOverview: (pid) => mcpOverview(pid),
+        extensions,
+        emitProposal: (id, proposalId) => service.emitFromTool(id, { kind: "extension-proposal", proposalId }),
+        draftsDir: creatorDraftsDir,
+        apps: (pid) => appRegistry.list(pid),
+        prepareTheme: (name, config, pid) => prepareTheme(name, config, (base) => creatorThemeBase(pid, base)),
+        themes: (pid) => service.kits.groups(pid).flatMap((g) => g.themes.map((t) => ({ id: t.id, name: t.name }))),
+        themeTokens: (pid, id) => {
+          const base = creatorThemeBase(pid, id);
+          if (!base?.tokensCss || statSync(base.tokensCss).size > 128 * 1024) throw new Error("No local token file for that base.");
+          return parseTokens(readFileSync(base.tokensCss, "utf8")).flatMap((g) => g.tokens).slice(0, 64);
+        },
+        prepareAutomation: (name, config, t) => prepareAutomation(name, config, t, service.allDrivers().map((d) => ({ id: d.id, models: d.models().map((m) => m.id) }))),
+        automations: (pid) => automations.overview(pid).automations.map((a) => ({ id: a.id, name: a.name, enabled: a.enabled, scheduleText: a.scheduleText })),
+        previewTheme: async (id, scheme) => {
+          const p = extensions.get(id);
+          if (!p || p.scope.kind !== "project" || !themePreviews.system(p.scope.projectId, `creator:${id}`)) return { text: "Theme preview is unavailable; its base may have changed. Create a new proposal.", isError: true };
+          if (!takeImage(threadId)) return { text: "Theme specimen is available on the review card; image budget reached." };
+          const shot = await shooter.screenshot(stylePreviewUrl(p.scope.projectId, `creator:${id}`, scheme), { width: 900, height: 700 });
+          return { text: `Isolated ${scheme} page theme at 900×700; no live page changed.`, imagePng: shot.png.toString("base64") };
+        },
+      },
+      threadId,
+    ), ...appTools];
+  };
   const threadOwnTools = (threadId: string): HarnessTool[] => {
     let list = threadToolLists.get(threadId);
-    if (!list) threadToolLists.set(threadId, (list = [...shellToolsOf(threadId), ...documentToolsOf(threadId), ...issueToolsOf(threadId)]));
+    if (!list) threadToolLists.set(threadId, (list = [...shellToolsOf(threadId), ...documentToolsOf(threadId), ...issueToolsOf(threadId), ...creatorToolsOf(threadId)]));
     return list;
   };
   // A turn's tools: the app's, plus the thread's shell and document tools (not in a design thread, whose tools are its own).
@@ -761,10 +947,18 @@ async function main(): Promise<void> {
     },
     parentOf: (id, code) => service.scriptParent(id, code),
     emit: (id, event) => service.emitFromTool(id, event),
+    uiBlocks: () => settings.get().uiBlocks === true,
     turnSignal: (id) => service.turnSignal(id),
     outputDir: join(userData, "harness-output"),
     guardScript,
   });
+  /** Drop a deleted thread's cached tool lists and code-mode state. */
+  const forgetThread = (id: string): void => {
+    for (const map of [designToolLists, designThreadTools, shellToolLists, teamToolLists, documentToolLists, threadToolLists] as Map<string, unknown>[]) map.delete(id);
+    codeServer.forget(id);
+    codeModeOf.forget(id);
+    draftWatcher.forgetThread(id);
+  };
   // Started on first use, for Codex and ACP agents, which take tools over MCP.
   let toolServer: Promise<ToolServer> | null = null;
   // `/mcp-skills` adds the skill tool for agents in "tool" delivery mode.
@@ -1035,10 +1229,12 @@ async function main(): Promise<void> {
       return list.length ? skillTool(() => list) : null;
     },
     codeMode: codeModeOf,
+    uiBlocks: () => settings.get().uiBlocks === true,
   });
   const syncProviderAgents = () => service.syncDrivers(PROVIDER_AGENT_PREFIX, providerAgents.list());
   syncProviderAgents();
   service.setDesignFontsDir(app.isPackaged ? join(process.resourcesPath, "design-fonts") : join(app.getAppPath(), "resources", "design-fonts"));
+  service.setCreatorModePath(app.isPackaged ? join(process.resourcesPath, "CREATOR-MODE.md") : join(app.getAppPath(), "resources", "CREATOR-MODE.md"));
   // Foundation ships with the app, so a kit is always there offline; the others are installed under userData.
   const foundationKit = app.isPackaged ? join(process.resourcesPath, "design-kits", "foundation") : join(app.getAppPath(), "resources", "design-kits", "foundation");
   const kitStore = new KitStore(join(userData, "design-packs"));
@@ -1100,10 +1296,19 @@ async function main(): Promise<void> {
       bridge: designBridgeJs,
     }),
   );
+  const creatorThemeBase = (pid: string, id: string) => {
+    const base = service.previewSystem(pid, id);
+    if (base?.source === "projectFolder") {
+      const project = store.getProject(pid);
+      for (const file of [base.designMd, base.tokensCss, ...(base.fontFiles ?? []), base.kit?.dir].filter((p): p is string => Boolean(p))) assertContained(project.path, file, "theme source");
+    }
+    return base;
+  };
+  const themePreviews = new ThemePreviews({ dir: join(userData, "creator-theme-previews"), proposal: (id) => extensions.get(id), resolve: creatorThemeBase });
   // Style previews: the shared specimen, a style's tokens and fonts, all read-only and script-free.
   protocol.handle(STYLE_PREVIEW_SCHEME, (req) =>
     serveStylePreview(req.url, {
-      system: (projectId, id) => service.previewSystem(projectId, id),
+      system: (projectId, id) => id.startsWith("creator:") ? themePreviews.system(projectId, id) : service.previewSystem(projectId, id),
       specimen: app.isPackaged ? join(process.resourcesPath, "design-preview", "specimen.html") : join(app.getAppPath(), "resources", "design-preview", "specimen.html"),
     }),
   );
@@ -1686,7 +1891,7 @@ async function main(): Promise<void> {
     return skills.forProject(null).all;
   });
   ipcMain.handle("skills:folders", (_e, projectId?: string) => skills.dirs(projectPathOf(projectId ?? null)));
-  ipcMain.handle("skills:create", (_e, input: { scope: "harness" | "project"; projectId?: string | null; name: string; description: string }) => {
+  const createSkillFile = (input: { scope: "harness" | "project"; projectId?: string | null; name: string; description: string }): string => {
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(input.name)) throw new Error("A skill name is lowercase letters, digits and dashes, up to 64 characters.");
     const dirs = skills.dirs(projectPathOf(input.projectId ?? null));
     const base = input.scope === "project" ? dirs.projectCubiq : dirs.harness;
@@ -1700,27 +1905,205 @@ async function main(): Promise<void> {
     writeFileSync(file, `---\nname: ${input.name}\ndescription: ${description}\n---\n\n# ${input.name}\n\nDescribe what the agent should do.\n`);
     skills.invalidate();
     return file;
-  });
-  ipcMain.handle("library:agents", () => catalogOfAgents());
-  ipcMain.handle("mcp:get", (_e, projectId: string | null) => mcpOverview(projectId));
-  ipcMain.handle("mcp:save", async (_e, entry: McpServerEntry, previousName?: string, projectId?: string | null) => {
+  };
+  const saveMcpEntry = async (entry: McpServerEntry, previousName?: string, projectId?: string | null): Promise<McpOverview> => {
     (projectId ? mcpScopes.project(projectId) : mcpStore).save(entry, previousName);
     if (previousName && previousName !== entry.name) await mcpChanged(mcpScope(projectId), previousName);
     await mcpChanged(mcpScope(projectId), entry.name);
     return mcpOverview(projectId ?? null);
-  });
-  ipcMain.handle("mcp:remove", async (_e, name: string, projectId?: string | null) => {
-    const store = projectId ? mcpScopes.project(projectId) : mcpStore;
-    const entry = store.list().find((s) => s.name === name);
+  };
+  const removeMcpEntry = async (name: string, projectId?: string | null): Promise<McpOverview> => {
+    const targetStore = projectId ? mcpScopes.project(projectId) : mcpStore;
+    const entry = targetStore.list().find((s) => s.name === name);
     const key = `${mcpScope(projectId)}:${name}`;
     // Revoke the sign-in at the server (best effort) before the store drops its tokens from the vault.
     if (entry && isRemote(entry.spec) && mcpAuth.hasTokens(key)) {
       const spec = resolveSpec(entry.spec);
       if (isRemote(spec)) await mcpAuth.disconnect(key, spec).catch(() => {});
     }
-    store.remove(name);
+    targetStore.remove(name);
     await mcpChanged(mcpScope(projectId), name);
     return mcpOverview(projectId ?? null);
+  };
+  const assertMainWindow = (event: Electron.IpcMainInvokeEvent): void => {
+    if (!isFromAppWindow(event) || event.sender.getType() === "webview") {
+      throw new Error("Extensions can only be managed from the main window.");
+    }
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || !windows.has(win)) {
+      throw new Error("Extensions can only be managed from the main window.");
+    }
+  };
+  const extensionService = new ExtensionService({
+    extensions,
+    projectOf: (id) => {
+      try {
+        return store.getProject(id);
+      } catch {
+        return null;
+      }
+    },
+    allProjects: () => store.listProjects(),
+    threadProjectId: (threadId) => {
+      try {
+        return store.getThread(threadId).projectId;
+      } catch {
+        return null;
+      }
+    },
+    chatsRoot: chats,
+    skillDirs: (projectPath) => skills.dirs(projectPath),
+    bundledSkillNames: () => discoverSkills({ origin: "bundled", dir: skills.dirs(null).bundled }).map((s) => s.name),
+    invalidateSkills: () => skills.invalidate(),
+    listMcpNames: (projectId) => (projectId ? mcpScopes.project(projectId) : mcpStore).list().map((s) => s.name),
+    saveMcp: async (entry, projectId) => {
+      await saveMcpEntry(entry, undefined, projectId);
+    },
+    removeMcp: async (name, projectId) => {
+      await removeMcpEntry(name, projectId);
+    },
+    mcpFile: (projectId) => (projectId ? join(mcpProjectDir(projectId), "mcp.json") : join(userData, "mcp.json")),
+    emitNotice: (threadId, text) => service.emitNotice(threadId, text),
+    appsDir: (projectPath) => (projectPath ? projectAppsDir(projectPath) : join(userData, "apps")),
+    themeFiles: (draft, pid) => readThemeFiles(draft, (base) => creatorThemeBase(pid, base)),
+    automation: {
+      list: (pid) => automations.overview(pid).automations,
+      save: (pid, input, id) => {
+        checkAutomationAgent(input, service.allDrivers().map((d) => ({ id: d.id, models: d.models().map((m) => m.id) })));
+        const saved = automations.save(pid, input, id);
+        broadcast({ type: "automations-changed", projectId: pid });
+        return saved;
+      },
+      remove: (id) => {
+        const a = automations.store.get(id);
+        automations.remove(id);
+        if (a) broadcast({ type: "automations-changed", projectId: a.projectId });
+      },
+      active: (id) => Boolean(store.sql.prepare("SELECT 1 FROM automation_runs WHERE automation_id = ? AND status IN ('queued', 'running', 'waiting-input') LIMIT 1").get(id)),
+    },
+    toolAccess: (projectId, server, tool) => {
+      const target = mcpScopes.effective(projectId).find((s) => s.name === server);
+      const found = target ? mcpTools.peekStale(target.spec)?.tools.find((t) => t.name === tool) : undefined;
+      return found ? (found.readOnly ? "read" : "write") : "unknown";
+    },
+    appsChanged: ({ key, removed }) => {
+      const decoded = decodeAppKey(key);
+      const dir = decoded ? appRegistry.dirOf(decoded) : null;
+      if (dir) appRegistry.forget(dir);
+      if (removed) {
+        appCalls.forget(key);
+        appRegistry.resetEnabled(key);
+      } else appCalls.invalidate(key);
+      broadcast({ type: "apps-changed" });
+      if (!removed) broadcast({ type: "app-reload", key });
+    },
+  });
+  setImmediate(() => extensionService.cleanupStartup());
+
+  ipcMain.handle("skills:create", (_e, input: { scope: "harness" | "project"; projectId?: string | null; name: string; description: string }) => createSkillFile(input));
+  ipcMain.handle("library:agents", () => catalogOfAgents());
+  ipcMain.handle("mcp:get", (_e, projectId: string | null) => mcpOverview(projectId));
+  ipcMain.handle("mcp:save", (_e, entry: McpServerEntry, previousName?: string, projectId?: string | null) => saveMcpEntry(entry, previousName, projectId));
+  ipcMain.handle("mcp:remove", (_e, name: string, projectId?: string | null) => removeMcpEntry(name, projectId));
+  ipcMain.handle("extensions:get", (_e, id: string) => (typeof id === "string" ? extensionService.getProposalView(id) : null));
+  ipcMain.handle("extensions:theme-preview", (e, id: unknown) => {
+    assertMainWindow(e);
+    if (typeof id !== "string" || id.length > 80) throw new Error("Invalid proposal id.");
+    const p = extensions.get(id);
+    if (!p || p.scope.kind !== "project" || !themePreviews.system(p.scope.projectId, `creator:${id}`)) throw new Error("Theme preview unavailable; its base may have changed. Create a new proposal.");
+    return stylePreviewUrl(p.scope.projectId, `creator:${id}`, "light");
+  });
+  ipcMain.handle("extensions:install", (e, id: string, scope?: unknown) => {
+    assertMainWindow(e);
+    if (typeof id !== "string") throw new Error("Invalid proposal id.");
+    if (scope !== undefined && scope !== "project" && scope !== "global") throw new Error("Invalid scope.");
+    return extensionService.install(id, scope);
+  });
+  ipcMain.handle("extensions:reject", (e, id: string) => {
+    assertMainWindow(e);
+    if (typeof id !== "string") throw new Error("Invalid proposal id.");
+    return extensionService.reject(id);
+  });
+  ipcMain.handle("extensions:installs", (_e, projectId?: string | null) => extensionService.installs(projectId));
+
+  // Creator apps: installed folders served over cubiq-app://, their bridge calls checked here against app.json grants.
+  const realProjectPath = (projectId: string): string | null => {
+    try {
+      const p = store.getProject(projectId);
+      return isChatsRoot(p.path, chats) ? null : p.path;
+    } catch {
+      return null;
+    }
+  };
+  const appRegistry = new AppRegistry({ globalDir: join(userData, "apps"), stateFile: join(userData, "app-state.json"), projectPath: realProjectPath, draftsDir: creatorDraftsDir });
+  const appCalls = new AppCalls({
+    registry: appRegistry,
+    dataDir: join(userData, "app-data"),
+    draftProject: threadRealProject,
+    call: (projectId, server, tool, args, before) =>
+      callServerTool({ servers: (pid) => mcpScopes.effective(pid ?? null), listings: mcpTools, pool: mcpPool }, projectId, server, tool, args, undefined, before),
+  });
+  const draftWatcher = new DraftWatcher((key) => broadcast({ type: "app-reload", key }));
+  const appChecker = new AppChecker({
+    createWindow: () => electronCheckWindow(CHECK_WIDTH, CHECK_HEIGHT),
+    call: (key, server, tool, args) => appCalls.call(key, null, server, tool, args),
+    storeGet: (key, name) => appCalls.storeGet(key, name),
+    storeSet: (key, name, value) => appCalls.storeSet(key, name, value),
+  });
+  const appBridgeJs = appBridgeScript();
+  protocol.handle(APP_SCHEME, (req) => serveApp(req.url, { appRoot: (key) => appRegistry.root(key), bridge: appBridgeJs }));
+  const str = (v: unknown, max = 200): string => {
+    if (typeof v !== "string" || !v || v.length > max) throw new Error("Invalid argument.");
+    return v;
+  };
+  const projectArg = (v: unknown): string | null => (v === null || v === undefined ? null : realProjectPath(str(v)) ? (v as string) : null);
+  ipcMain.handle("apps:list", (e, projectId?: string | null) => {
+    assertMainWindow(e);
+    return appRegistry.list(projectArg(projectId));
+  });
+  ipcMain.handle("apps:info", (e, key: unknown) => {
+    assertMainWindow(e);
+    return appRegistry.info(str(key));
+  });
+  ipcMain.handle("apps:enable", (e, key: unknown, enabled: unknown) => {
+    assertMainWindow(e);
+    if (typeof enabled !== "boolean") throw new Error("Invalid enabled state.");
+    const id = str(key);
+    appRegistry.setEnabled(id, enabled);
+    appCalls.invalidate(id);
+    broadcast({ type: "apps-changed" });
+  });
+  ipcMain.handle("apps:edit", (e, key: unknown, threadId: unknown) => {
+    assertMainWindow(e);
+    const tid = str(threadId);
+    const thread = threadOf(tid);
+    if (!thread || thread.kind === "design" || thread.preset !== "creator") throw new Error("A Creator thread is required to edit an app.");
+    const cwd = service.cwdOf(thread);
+    const editing = appEditDraftsDir(cwd, tid);
+    assertContained(cwd, editing, "app edit drafts");
+    mkdirSync(editing, { recursive: true });
+    const result = prepareAppEdit(appRegistry, str(key), tid, cwd);
+    draftWatcher.watch(result.app.key, tid, result.app.path);
+    return result;
+  });
+  ipcMain.handle("apps:call", (e, key: unknown, projectId: unknown, server: unknown, tool: unknown, args: unknown, approval: unknown) => {
+    assertMainWindow(e);
+    const a = args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
+    const ap = approval && typeof approval === "object" ? (approval as { token?: unknown; remember?: unknown }) : null;
+    return appCalls.call(str(key), projectArg(projectId), str(server), str(tool, 128), a, ap && typeof ap.token === "string" ? { token: ap.token, remember: ap.remember === true } : undefined);
+  });
+  ipcMain.handle("apps:store-get", (e, key: unknown, name: unknown) => {
+    assertMainWindow(e);
+    return appCalls.storeGet(str(key), str(name));
+  });
+  ipcMain.handle("apps:store-set", (e, key: unknown, name: unknown, value: unknown) => {
+    assertMainWindow(e);
+    return appCalls.storeSet(str(key), str(name), value);
+  });
+  ipcMain.handle("extensions:uninstall", (e, installId: string) => {
+    assertMainWindow(e);
+    if (typeof installId !== "string") throw new Error("Invalid install id.");
+    return extensionService.uninstall(installId);
   });
   ipcMain.handle("mcp:enable", async (_e, name: string, enabled: boolean, projectId?: string | null) => {
     (projectId ? mcpScopes.project(projectId) : mcpStore).setEnabled(name, enabled);
@@ -1802,6 +2185,21 @@ async function main(): Promise<void> {
     if (typeof path === "string" && existsSync(path)) shell.showItemInFolder(path);
   });
 
+  // The version that ran before this one, once, so the renderer opens What's new
+  // after an update. A first install (no record yet) and dev builds stay quiet.
+  let updatedFrom: string | null = null;
+  if (app.isPackaged && !smoke) {
+    const seenFile = join(userData, "last-version");
+    const seen = existsSync(seenFile) ? readFileSync(seenFile, "utf8").trim() : null;
+    if (seen !== app.getVersion()) {
+      try {
+        writeFileSync(seenFile, app.getVersion());
+        updatedFrom = seen;
+      } catch {
+        // Unwritable data folder: skip What's new rather than show it every launch.
+      }
+    }
+  }
   const updater = new Updater(
     await updaterBackend(),
     app.getVersion(),
@@ -1875,7 +2273,7 @@ async function main(): Promise<void> {
   ipcMain.handle("app:open-data-folder", () => shell.openPath(userData));
   ipcMain.handle("app:about", (): AboutInfo => {
     // Read lazily: vitest runs this module without electron-vite's define.
-    const build = typeof __CUBIQ_BUILD__ !== "undefined" ? __CUBIQ_BUILD__ : { commit: null, date: null, changelog: [] };
+    const build = typeof __CUBIQ_BUILD__ !== "undefined" ? __CUBIQ_BUILD__ : { commit: null, date: null, changelog: [], releases: [] };
     return {
       name: "CubiQ",
       version: app.getVersion(),
@@ -1886,6 +2284,7 @@ async function main(): Promise<void> {
       node: process.versions.node,
       os: process.platform === "darwin" ? `macOS ${process.getSystemVersion()}` : `${osType()} ${release()}`,
       changelog: build.changelog,
+      releases: build.releases ?? [],
     };
   });
   // MCP tool search defers schemas to a lookup: still on for Claude's own login
@@ -1980,7 +2379,11 @@ async function main(): Promise<void> {
   ipcMain.handle("automation:delete", (_e, id: string) => automations.remove(id));
   ipcMain.handle("automation:run-now", (_e, id: string) => automations.runNow(id));
   ipcMain.handle("automation:runs", (_e, id: string) => automations.runs(id));
-  ipcMain.handle("app:update-status", () => updater.status());
+  ipcMain.handle("app:update-status", (): AppUpdateStatus => {
+    const status = { ...updater.status(), updatedFrom };
+    updatedFrom = null; // one window opens What's new, not every new one
+    return status;
+  });
   ipcMain.handle("limits:list", () => limits.all());
   ipcMain.handle("app:install-update", () => updater.install());
 
@@ -1995,6 +2398,22 @@ async function main(): Promise<void> {
     mkdirSync(chats, { recursive: true });
     return projectView(store.addProject(chats));
   });
+  // macOS privacy: a project folder CubiQ was refused (Desktop, Documents, iCloud…) gets one
+  // dialog per folder per run that opens the System Settings pane holding the switch.
+  const privacyAsked = new Set<string>();
+  const checkPrivacy = async (paths: string[], owner?: BrowserWindow | null) => {
+    if (process.platform !== "darwin" || smoke) return;
+    const blocks = paths
+      .filter((p) => !privacyAsked.has(p) && !isChatsRoot(p, chats))
+      .map((p) => checkFolder(p, homedir()))
+      .filter((b): b is PrivacyBlock => b !== null);
+    if (!blocks.length) return;
+    for (const b of blocks) privacyAsked.add(b.path);
+    const { message, detail } = privacyMessage(blocks);
+    const options: Electron.MessageBoxOptions = { type: "warning", message, detail, buttons: ["Open System Settings", "Not Now"], defaultId: 0, cancelId: 1 };
+    const res = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
+    if (res.response === 0) void shell.openExternal(blocks[0]!.pane);
+  };
   ipcMain.handle("projects:add", async (event) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     const options: Electron.OpenDialogOptions = {
@@ -2003,7 +2422,9 @@ async function main(): Promise<void> {
     };
     const res = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
     const path = res.filePaths[0];
-    return res.canceled || !path ? null : projectView(store.addProject(path));
+    if (res.canceled || !path) return null;
+    void checkPrivacy([path], owner);
+    return projectView(store.addProject(path));
   });
   ipcMain.handle("projects:relocate", async (event, id: string) => {
     if (isChatsRoot(store.getProject(id).path, chats)) throw new Error("Chats live in the app's own folder and can't be moved.");
@@ -2015,11 +2436,14 @@ async function main(): Promise<void> {
     const res = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
     const path = res.filePaths[0];
     if (res.canceled || !path) return null;
+    void checkPrivacy([path], owner);
     return { ...store.setProjectPath(id, path), missing: false };
   });
   ipcMain.handle("projects:delete", async (_e, id: string) => {
     for (const shell of shells.list()) if (threadOf(shell.threadId)?.projectId === id) await shells.stop(shell.id);
-    return service.deleteProject(id);
+    const gone = store.listThreads(id).map((t) => t.id);
+    await service.deleteProject(id);
+    for (const tid of gone) forgetThread(tid);
   });
   ipcMain.handle("shells:list", (_e, threadId: string) => shells.list(threadId));
   ipcMain.handle("shells:output", (_e, id: string, since?: number) => {
@@ -2035,15 +2459,16 @@ async function main(): Promise<void> {
   );
   ipcMain.handle("threads:list", (_e, projectId: string) => store.listThreads(projectId));
   ipcMain.handle("threads:all", () => store.listAllThreads());
-  ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: unknown; designSystem?: unknown; expertId?: unknown }) => {
+  ipcMain.handle("threads:create", (_e, projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: unknown; designSystem?: unknown; expertId?: unknown; preset?: unknown }) => {
     const kind: ThreadKind = opts?.kind === "design" ? "design" : "chat";
+    const preset: "creator" | null = opts?.preset === "creator" ? "creator" : null;
     // Only a design thread keeps a system, and only an id the picker could offer (checked again at each turn).
     const designSystem = kind === "design" && typeof opts?.designSystem === "string" && /^[\w:.-]{1,80}$/.test(opts.designSystem) ? opts.designSystem : null;
     // Only an expert the catalogue knows; anything else (unknown id, bad shape) is no expert.
     const expertId = typeof opts?.expertId === "string" && EXPERT_ID_RE.test(opts.expertId) && experts.get(opts.expertId) ? opts.expertId : null;
     return opts?.worktree
-      ? service.createWorktreeThread(projectId, agent, kind, designSystem, expertId)
-      : service.createThread(projectId, agent, kind, designSystem, expertId);
+      ? service.createWorktreeThread(projectId, agent, kind, designSystem, expertId, preset)
+      : service.createThread(projectId, agent, kind, designSystem, expertId, preset);
   });
   ipcMain.handle("threads:set-prototype-tier", (_e, threadId: string, tier: unknown) => service.setPrototypeTier(threadId, readTier(tier)));
   ipcMain.handle("issues:list", (_e, projectId: string) => service.listIssues(projectId));
@@ -2100,10 +2525,9 @@ async function main(): Promise<void> {
   );
   ipcMain.handle("threads:delete", async (_e, id: string) => {
     await shells.stopThread(id);
-    shellToolLists.delete(id);
     await service.deleteThread(id);
+    forgetThread(id);
     // Its team workspace and Codex member roles go with it.
-    teamToolLists.delete(id);
     rmSync(teamRunDir(id), { recursive: true, force: true });
     rmSync(join(userData, "codex-roles", id), { recursive: true, force: true });
   });
@@ -2173,7 +2597,7 @@ async function main(): Promise<void> {
   ipcMain.handle("turn:send", (_e, req: SendRequest) => {
     // Resolve once the turn has started; progress arrives as updates.
     service.send(req).catch((err: unknown) => {
-      broadcast({ type: "running", threadId: req.threadId, running: false });
+      service.settleFailedSend(req.threadId);
       console.error(redactSecrets(err instanceof Error ? (err.stack ?? err.message) : String(err), knownSecrets()));
     });
   });
@@ -2318,6 +2742,8 @@ async function main(): Promise<void> {
     return win;
   };
   const first = open();
+  // Projects opened before access was refused: say so once the window is up.
+  first.webContents.once("did-finish-load", () => void checkPrivacy(store.listProjects().map((p) => p.path), first));
 
   const smokeBrowser = () => smokeBrowserWith(tools, browser);
   // A real shell through node-pty: proves the native module loads (packaged too) on every OS.
@@ -2420,6 +2846,7 @@ async function main(): Promise<void> {
     service.dispose();
     previews.dispose();
     designWatcher.closeAll();
+    draftWatcher.closeAll();
     shooter.close();
     terminals.dispose();
     devServers.stopAll();

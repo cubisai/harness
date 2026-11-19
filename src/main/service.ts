@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createTurnWatchdog, STALL_NOTICE_MS, STALL_STOP_MS, type TurnWatchdog } from "./watchdog";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
+import { PERMISSION_MODES } from "../shared/types";
 import type {
   AgentInfo,
   ArtifactContent,
@@ -77,7 +78,7 @@ import {
 import { Approvals } from "./approvals";
 import { artifactDiff, listArtifacts, opensByItself, readArtifact, recordPlan, recordPseudo, recordTurnArtifacts, snapshotDeliverables, type ArtifactDeps, type DeliverableSnapshot } from "./artifacts";
 import { runCheck, tailOf } from "./check";
-import { evidenceFlags, isTestPath, markerCounts, newMarkers, addedLines as diffAddedLines } from "./evidence";
+import { evidenceFlags, isCheckCommand, isCheckTool, isTestPath, markerCounts, newMarkers, addedLines as diffAddedLines, type EvidenceStep } from "./evidence";
 import type { Store } from "./db";
 import { isChatDir, isChatsRoot } from "./chats";
 import { addedSinceHead, branchLabel, createWorktree, currentBranch, dirtyPaths, hasGitDir, headSha, isTracked, listProjectFiles, removeWorktree, workingTreeDiff, worktreeBranch } from "./git";
@@ -120,6 +121,8 @@ export class Service {
   private designPatternsDir: string | null = null;
   private designIconsDir: string | null = null;
   private designFontsDir: string | null = null;
+  private creatorModePath: string | null = null;
+  private creatorModeNote: string | null = null;
   /** The downloaded design references (GradientDeck); null until main wires the store in. */
   private designReferences: ReferenceSource | null = null;
   /** Where the picker's adapted previews of references are cached (rebuilt at will; never a thread's pin). */
@@ -280,7 +283,15 @@ export class Service {
     });
   }
 
-  createThread(projectId: string, agent?: string, kind: ThreadKind = "chat", designSystem: string | null = null, expertId: string | null = null): Thread {
+  createThread(
+    projectId: string,
+    agent?: string,
+    kind: ThreadKind = "chat",
+    designSystem: string | null = null,
+    expertId: string | null = null,
+    preset: "creator" | null = null,
+  ): Thread {
+    if (preset === "creator" && kind === "design") throw new Error("A Creator thread is a chat thread.");
     const project = this.store.getProject(projectId);
     const d = this.defaults();
     const wanted = agent ?? d.agent;
@@ -289,7 +300,16 @@ export class Service {
     // A design thread nobody picked a system for starts on Auto: the agent picks the style (the project's own still wins).
     const system = kind === "design" ? this.knownSystem(projectId, designSystem) : designSystem;
     // A design thread is always Full: its folder fence stands in for asking.
-    const thread = this.store.createThread(projectId, driver.id, driver.defaultModel, kind === "design" ? "full" : d.permissionMode, kind, system, expertId);
+    const thread = this.store.createThread(
+      projectId,
+      driver.id,
+      driver.defaultModel,
+      kind === "design" ? "full" : d.permissionMode,
+      kind,
+      system,
+      expertId,
+      preset,
+    );
     if (!isChatsRoot(project.path, this.chatsRoot)) return thread;
     // A chat works in its own folder, so files one chat writes never show up in another.
     const dir = join(project.path, thread.id);
@@ -301,12 +321,20 @@ export class Service {
    * A thread with its own git worktree on a new branch, so its edits stay off
    * the project's checkout. Nothing is left behind when the worktree can't be made.
    */
-  async createWorktreeThread(projectId: string, agent?: string, kind: ThreadKind = "chat", designSystem: string | null = null, expertId: string | null = null): Promise<Thread> {
+  async createWorktreeThread(
+    projectId: string,
+    agent?: string,
+    kind: ThreadKind = "chat",
+    designSystem: string | null = null,
+    expertId: string | null = null,
+    preset: "creator" | null = null,
+  ): Promise<Thread> {
+    if (preset === "creator" && kind === "design") throw new Error("A Creator thread is a chat thread.");
     const project = this.store.getProject(projectId);
     // Chats have no git: a chat already gets its own folder.
-    if (isChatsRoot(project.path, this.chatsRoot)) return this.createThread(projectId, agent, kind, designSystem, expertId);
+    if (isChatsRoot(project.path, this.chatsRoot)) return this.createThread(projectId, agent, kind, designSystem, expertId, preset);
     if (!this.worktreesDir) throw new Error("Worktree threads aren't available here.");
-    const thread = this.createThread(projectId, agent, kind, designSystem, expertId);
+    const thread = this.createThread(projectId, agent, kind, designSystem, expertId, preset);
     const branch = worktreeBranch(project.name, thread.id);
     const dir = join(this.worktreesDir, thread.id);
     // Where it branches from, so Review & merge can compare and merge back later.
@@ -379,9 +407,34 @@ export class Service {
     return { expert: expertBlock(def, bound.lead), ...(team.length ? { team } : {}), ...(root ? { expertRoot: root } : {}) };
   }
 
+  /** A turn's preset note: read once from `resources/CREATOR-MODE.md` and included only for Creator threads. */
+  private presetInput(thread: Thread): { preset?: string } {
+    if (thread.preset !== "creator") return {};
+    if (this.creatorModeNote === null) {
+      const candidate =
+        this.creatorModePath ??
+        (typeof process.resourcesPath === "string" && existsSync(join(process.resourcesPath, "CREATOR-MODE.md"))
+          ? join(process.resourcesPath, "CREATOR-MODE.md")
+          : join(process.cwd(), "resources", "CREATOR-MODE.md"));
+      this.creatorModeNote = existsSync(candidate) ? readFileSync(candidate, "utf-8").trim() : "";
+    }
+    return this.creatorModeNote ? { preset: this.creatorModeNote } : {};
+  }
+
+  /** Where `CREATOR-MODE.md` lives (resources/CREATOR-MODE.md). */
+  setCreatorModePath(path: string): void {
+    this.creatorModePath = path;
+    this.creatorModeNote = null;
+  }
+
   /** A note on a team thread's channel (team_post), shown in the thread as it happens. */
   teamNote(threadId: string, note: { from: string; to: string; text: string }): void {
     this.emit(threadId, { kind: "notice", text: `Team note · ${note.from} → ${note.to}: ${note.text}` });
+  }
+
+  /** Persist and broadcast a notice event on a thread whether or not a turn is running. */
+  emitNotice(threadId: string, text: string): void {
+    this.emit(threadId, { kind: "notice", text });
   }
 
   /**
@@ -403,6 +456,8 @@ export class Service {
    */
   updateThread(id: string, patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent" | "pinned" | "archived">>): Thread {
     const current = this.store.getThread(id);
+    // A stored mode the UI doesn't know blanks the whole window, so an unknown one never gets in.
+    if (patch.permissionMode !== undefined && !PERMISSION_MODES.includes(patch.permissionMode)) throw new Error(`Unknown permission mode: ${String(patch.permissionMode)}`);
     if (patch.agent && patch.agent !== current.agent) {
       if (this.running.has(id)) throw new Error("Stop the running turn before switching agents.");
       const { agent, ...rest } = patch;
@@ -550,6 +605,7 @@ export class Service {
         projectId: thread.projectId,
         design: designOf(thread),
         ...this.expertInput(thread),
+        ...this.presetInput(thread),
         model: thread.model,
         permissionMode: turnMode(thread),
         tools: this.harnessTools(thread),
@@ -576,6 +632,7 @@ export class Service {
           projectId: thread.projectId,
           design: designOf(thread),
           ...this.expertInput(thread),
+        ...this.presetInput(thread),
           prompt,
           sessionId: null,
           model: thread.model,
@@ -740,6 +797,16 @@ export class Service {
 
   isRunning(threadId: string): boolean {
     return this.running.has(threadId);
+  }
+
+  /**
+   * turn:send's error path: clear the window's running mark for a send that failed, unless the
+   * thread really is running or queued. A refused duplicate send must not hide a live turn, its
+   * approval cards and its queue (the window would show an idle thread the main process still runs).
+   */
+  settleFailedSend(threadId: string): void {
+    if (this.running.has(threadId) || this.waiting.some((w) => w.threadId === threadId)) return;
+    this.broadcast({ type: "running", threadId, running: false });
   }
 
   private emit(threadId: string, event: ThreadEvent, provenance: Provenance | null = null): StoredEvent {
@@ -919,8 +986,10 @@ export class Service {
       // The agent reported an edit this turn: a tool-result for an Edit tool-use, or a path git changed.
       const editIds = new Set<string>();
       let edited = false;
-      // What the evidence gate reads: the turn's commands and its edits' diffs.
+      // What the evidence gate reads: the turn's commands, ordered ledger steps and its edits' diffs.
       const commands: string[] = [];
+      const evidenceSteps: EvidenceStep[] = [];
+      const checkStepOf = new Map<string, Extract<EvidenceStep, { kind: "check" }>>();
       const editDiffs: { path: string; unified: string }[] = [];
       // What the scorecard reads besides: failing commands, tools used, denials and the turn's size.
       const commandOf = new Map<string, string>();
@@ -979,6 +1048,7 @@ export class Service {
         design: designOf(thread),
         ...(thread.kind === "design" ? { designGuard: this.designGuard(thread.id) } : {}),
         ...this.expertInput(thread),
+        ...this.presetInput(thread),
         prompt: turnPrompt,
         ...(compact ? { compact } : {}),
         sessionId: current.sessionId,
@@ -1005,19 +1075,41 @@ export class Service {
           }
           if (event.kind === "assistant-text" || event.kind === "tool-use" || event.kind === "thinking" || event.kind === "error" || event.kind === "plan") answered = true;
           // An Edit that completed is what makes a file change count even outside git.
-          if (event.kind === "tool-use" && event.name === "Edit") editIds.add(event.toolUseId);
+          // Canonical: the native loop's writeTool emits "Write", which is a file change too.
+          if (event.kind === "tool-use" && canonicalTool(event.name) === "Edit") editIds.add(event.toolUseId);
           if (event.kind === "tool-result" && !event.isError && editIds.has(event.toolUseId)) {
             edited = true;
-            editDiffs.push(...diffsOf(event.payload));
+            const diffs = diffsOf(event.payload);
+            editDiffs.push(...diffs);
+            evidenceSteps.push({ kind: "edit", ...(diffs[0]?.path ? { path: diffs[0].path } : {}) });
           }
           if (event.kind === "tool-use") {
             const command = (event.payload as { command?: unknown } | undefined)?.command;
-            if (typeof command === "string") commands.push(command);
+            if (typeof command === "string") {
+              commands.push(command);
+              if (isCheckCommand(command)) {
+                const step: Extract<EvidenceStep, { kind: "check" }> = { kind: "check", command, tool: event.name, ok: true, cwd };
+                evidenceSteps.push(step);
+                checkStepOf.set(event.toolUseId, step);
+              }
+            } else if (isCheckTool(event.name)) {
+              const step: Extract<EvidenceStep, { kind: "check" }> = { kind: "check", tool: event.name, ok: true, cwd };
+              evidenceSteps.push(step);
+              checkStepOf.set(event.toolUseId, step);
+            }
             // Every turn's tool names: the issue check skips a turn that filed one, with or without self-improve.
             toolNames.push(event.name);
             if (learner) {
               toolCalls++;
               if (typeof command === "string") commandOf.set(event.toolUseId, command);
+            }
+          }
+          if (event.kind === "tool-result") {
+            const checkStep = checkStepOf.get(event.toolUseId);
+            if (checkStep) {
+              const exitCode = (event.payload as { exitCode?: unknown } | undefined)?.exitCode;
+              if (typeof exitCode === "number") checkStep.exitCode = exitCode;
+              if (event.isError || (typeof exitCode === "number" && exitCode !== 0)) checkStep.ok = false;
             }
           }
           if (learner && event.kind === "tool-result" && event.isError) {
@@ -1184,7 +1276,19 @@ export class Service {
         try {
           const last = [...this.store.listEvents(thread.id)].reverse().find((e) => e.event.kind === "assistant-text" && e.seq > userEvent.seq);
           const answer = last && last.event.kind === "assistant-text" ? last.event.text : "";
-          const flags = await turnEvidence(cwd, { before, after, testsBefore, editDiffs, commands, tools: toolNames, answer, request: req.text, checkPassed });
+          const flags = await turnEvidence(cwd, {
+            before,
+            after,
+            testsBefore,
+            editDiffs,
+            commands,
+            tools: toolNames,
+            steps: evidenceSteps,
+            answer,
+            request: req.text,
+            checkPassed,
+            checkFailed: checkRow !== null && !checkRow.ok,
+          });
           evidence = flags;
           if (flags.length) this.emit(thread.id, { kind: "notice", text: `Worth a second look: ${flags.join(" ")}`, evidence: flags });
         } catch {
@@ -2750,9 +2854,11 @@ async function turnEvidence(
     editDiffs: { path: string; unified: string }[];
     commands: string[];
     tools: string[];
+    steps?: readonly EvidenceStep[];
     answer: string;
     request: string;
     checkPassed: boolean;
+    checkFailed?: boolean;
   },
 ): Promise<string[]> {
   const rel = (p: string) => (isAbsolute(p) ? relative(cwd, p) : p).replace(/\\/g, "/");
@@ -2778,7 +2884,18 @@ async function turnEvidence(
     const labels = lines ? newMarkers(new Map(), markerCounts(lines)) : newMarkers(t.testsBefore.get(p) ?? new Map(), markerCounts(await addedSinceHead(cwd, p)));
     if (labels.length) weakened.push({ path: p, labels });
   }
-  return evidenceFlags({ editedTests, deletedTests, weakened, request: t.request, answer: t.answer, commands: t.commands, tools: t.tools, checkPassed: t.checkPassed });
+  return evidenceFlags({
+    editedTests,
+    deletedTests,
+    weakened,
+    request: t.request,
+    answer: t.answer,
+    commands: t.commands,
+    tools: t.tools,
+    ...(t.steps ? { steps: t.steps } : {}),
+    checkPassed: t.checkPassed,
+    ...(t.checkFailed ? { checkFailed: true } : {}),
+  });
 }
 
 /** Whether two sets hold the same members. */

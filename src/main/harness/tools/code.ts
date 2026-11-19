@@ -8,6 +8,7 @@ import { bm25Rank } from "../../search/bm25";
 import type { LoopTool } from "../loop";
 import { bound } from "./bound";
 import { toTsDeclaration } from "./ts-decl";
+import { validateWidget, WIDGET_KINDS, WIDGET_SHAPES, WIDGETS_PER_RUN, widgetSummary, type WidgetKind, type WidgetSpec } from "../../../shared/genui/widget";
 
 /** Tools a script may never call: no nested agents, plans or questions from code. */
 const EXCLUDED = new Set(["run_code", "task", "propose_plan", "ask_user"]);
@@ -18,6 +19,30 @@ const DEFAULT_MEMORY_BYTES = 64 * 1024 * 1024;
 /** Limits on what a script may keep in the session state, in characters. */
 const MAX_STATE_VALUE_CHARS = 256 * 1024;
 const MAX_STATE_CHARS = 1024 * 1024;
+/** Console output one run keeps, in characters: a print loop can't fill memory before the time limit stops it. */
+const MAX_LOG_CHARS = 256 * 1024;
+
+/** A run's console lines, up to MAX_LOG_CHARS; later lines are only counted. */
+class LogBuffer {
+  private lines: string[] = [];
+  private chars = 0;
+  private dropped = 0;
+  get length(): number {
+    return this.lines.length;
+  }
+  push(line: string): void {
+    if (this.dropped || this.chars + line.length > MAX_LOG_CHARS) {
+      this.dropped += 1;
+      return;
+    }
+    this.chars += line.length + 1;
+    this.lines.push(line);
+  }
+  /** The kept lines, with a note for the dropped ones. */
+  shown(): string[] {
+    return this.dropped ? [...this.lines, `[… ${this.dropped} more console line${this.dropped === 1 ? "" : "s"} dropped]`] : this.lines;
+  }
+}
 
 export interface CodeToolOptions {
   /** Every tool the loop offers; `run_code` and the agent-ish ones are hidden from a script. */
@@ -30,7 +55,18 @@ export interface CodeToolOptions {
   memoryBytes?: number;
   /** Values kept across scripts in one session, as JSON text; a script's writes commit only when it succeeds. */
   state?: Map<string, string>;
+  /** Draws what a successful script `show()`ed for the user (inline UI on); absent = scripts have no `show`. Called once per run, before it returns. */
+  show?: (widgets: ShownWidget[], callId: string) => void | Promise<void>;
 }
+
+/** One widget a script showed: its checked spec, and whether the script called its data complete. */
+export interface ShownWidget {
+  spec: WidgetSpec;
+  complete: boolean;
+}
+
+/** The run_code description's `show` sentence, present only when scripts can show widgets. */
+export const SHOW_NOTE = `\`show(kind, props)\` draws your data for the user right in the chat (kind: ${WIDGET_KINDS.join(", ")}; table props: { title?, rows: object[] or array[], columns?: (string | { key, label?, type?: "text"|"number"|"currency"|"percent", unit? })[], complete?: false when partial }, up to 2000 rows): the user sees the real values, so don't retype them in your reply, say what they mean.`;
 
 /** A tool's one required string parameter, which a bare string argument fills; undefined when it has none or several. */
 function mainArg(tool: LoopTool): string | undefined {
@@ -62,7 +98,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
   return {
     definition: {
       name: "run_code",
-      description: CODE_DESCRIPTION,
+      description: o.show ? `${CODE_DESCRIPTION} ${SHOW_NOTE}` : CODE_DESCRIPTION,
       parameters: {
         type: "object",
         properties: { code: { type: "string", description: "The JavaScript to run, as the body of an async function." } },
@@ -77,12 +113,23 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
     summarize: (args) => oneLine(String(args.code ?? "")),
     run: async (args, call) => {
       const code = typeof args.code === "string" ? args.code : "";
-      const logs: string[] = [];
+      const logs = new LogBuffer();
+      const spill = { outputDir: o.outputDir, callId: call.id };
+      // What the script show()s; drawn only when the run succeeds, like its store writes.
+      const shown: ShownWidget[] = [];
+      // A failed run's widgets are dropped: say so, or the model tells the user a table is there that isn't.
+      const failed = (message: string, logs_: LogBuffer, spill_: typeof spill): string =>
+        failure(message, logs_, spill_) + (shown.length ? `\nNothing was shown to the user: a failed script's show() calls are dropped. Show them again from a script that succeeds.` : "");
       let stopReason: "timeout" | "abort" | null = null;
       let runtime: QuickJSRuntime | null = null;
       let context: QuickJSContext | null = null;
       let disposeInstall: (() => void) | null = null;
-      let stop: { promise: Promise<void>; done: () => void } | null = null;
+      // The run owns its tool calls: Stop or the time limit aborts every one still running or queued.
+      const runAbort = new AbortController();
+      const stop = watchStop(call.signal, timeoutMs, (r) => {
+        stopReason ??= r;
+        runAbort.abort();
+      });
       // Host promises of tool calls still in flight: freed before the context, or QuickJS aborts on a leak.
       const pending = new Set<QuickJSDeferredPromise>();
       try {
@@ -94,11 +141,11 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         const afterDeadline = shouldInterruptAfterDeadline(Date.now() + timeoutMs);
         live.setInterruptHandler(() => {
           if (call.signal.aborted) {
-            stopReason = "abort";
+            stopReason ??= "abort";
             return true;
           }
           if (afterDeadline(live)) {
-            stopReason = "timeout";
+            stopReason ??= "timeout";
             return true;
           }
           return false;
@@ -106,17 +153,18 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
         context = live.newContext();
         // Writes go to a copy; only a successful run commits them to the session.
         const staged = new Map<string, string>(o.state);
-        disposeInstall = install(context, live, o, logs, call.id, call.signal, staged, pending);
+        // The keys this run wrote: a commit applies only these, so a concurrent script's writes survive.
+        const written = new Set<string>();
+        disposeInstall = install(context, live, o, logs, call.id, runAbort.signal, staged, written, pending, shown);
 
         // "script.js" names the file in error stacks; the wrapper adds one line, so user line 1 is file line 2.
         const evaluated = context.evalCode(`(async () => {\n${code}\n})()`, "script.js");
         if (isFail(evaluated)) {
           const message = explain(errorText(context, evaluated.error), o);
           evaluated.error.dispose();
-          return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
+          return { text: failed(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs, spill), isError: true };
         }
         const promise = evaluated.value;
-        stop = watchStop(call.signal, timeoutMs, (r) => (stopReason = r));
         let settled: Awaited<ReturnType<QuickJSContext["resolvePromise"]>> | null = null;
         try {
           // resolvePromise registers a host callback on the script's promise; the
@@ -126,31 +174,46 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
           if (isFail(kick)) kick.error.dispose();
           settled = await Promise.race([settledPromise, stop.promise.then(() => null)]);
         } finally {
-          stop.done();
           promise.dispose();
         }
         if (settled === null) {
-          return { text: failure(stopReason === "abort" ? STOPPED : timingOut(timeoutMs), logs), isError: true };
+          return { text: failed(stopReason === "abort" ? STOPPED : timingOut(timeoutMs), logs, spill), isError: true };
         }
         if (isFail(settled)) {
           const message = explain(errorText(context, settled.error), o);
           settled.error.dispose();
-          return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
+          return { text: failed(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs, spill), isError: true };
         }
         const wasUndefined = context.typeof(settled.value) === "undefined";
         const rendered = render(context, settled.value);
         settled.value.dispose();
-        if (o.state) {
-          o.state.clear();
-          for (const [key, value] of staged) o.state.set(key, value);
+        // Tool calls the script started but didn't await: a run isn't done while they still run.
+        if (pending.size) {
+          const left = pending.size;
+          const drained = await Promise.race([Promise.allSettled([...pending].map((d) => d.settled)).then(() => true), stop.promise.then(() => false)]);
+          if (!drained) {
+            const why = stopReason === "abort" ? STOPPED : timingOut(timeoutMs);
+            return { text: failed(`${why} The script returned with ${left} tool call${left === 1 ? "" : "s"} it never awaited still running; they were stopped. Await every tool call.`, logs, spill), isError: true };
+          }
         }
-        let text = [...logs, `=> ${rendered}`].join("\n");
+        if (o.state) for (const key of written) o.state.set(key, staged.get(key)!);
+        let text = [...logs.shown(), `=> ${rendered}`].join("\n");
+        if (shown.length && o.show) {
+          try {
+            await o.show(shown, call.id);
+            text += `\n\nShown to the user: ${shown.map((w) => widgetSummary(w.spec) + (w.complete ? "" : " (partial)")).join("; ")}. They see these values drawn: don't repeat them.`;
+          } catch {
+            text += "\n\nThe show() widgets couldn't be drawn; give the user the key values yourself.";
+          }
+        }
         if (wasUndefined && logs.length === 0) text += "\n\nThe script returned undefined and printed nothing: return a value (or console.log it) so there is something to read.";
         return { text: bound(text, { outputDir: o.outputDir, callId: call.id }) };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return { text: failure(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs), isError: true };
+        return { text: failed(stopReason === "abort" ? STOPPED : stopReason === "timeout" ? timingOut(timeoutMs) : message, logs, spill), isError: true };
       } finally {
+        stop.done();
+        runAbort.abort();
         for (const deferred of pending) if (deferred.alive) deferred.dispose();
         pending.clear();
         disposeInstall?.();
@@ -164,16 +227,18 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
 const STOPPED = "Interrupted by the user.";
 const timingOut = (timeoutMs: number): string => `Stopped after ${Math.round(timeoutMs / 1000)}s: the time limit was reached.`;
 
-/** The globals a script sees: `tools` (plus `tools.readMany`), `ALL_TOOLS`, `searchTools`, `describeTool`, `store`, `load`, `path` and `console`. */
+/** The globals a script sees: `tools` (plus `tools.readMany`), `ALL_TOOLS`, `searchTools`, `describeTool`, `store`, `load`, `path`, `console`, and `show` when inline UI is on. */
 function install(
   context: QuickJSContext,
   runtime: QuickJSRuntime,
   o: CodeToolOptions,
-  logs: string[],
+  logs: LogBuffer,
   parentId: string,
   signal: AbortSignal,
   staged: Map<string, string>,
+  written: Set<string>,
   pending: Set<QuickJSDeferredPromise>,
+  shown: ShownWidget[],
 ): () => void {
   // QuickJS's own JSON.parse, kept for the context's life: arrays and objects
   // cross the WASM boundary once, as text, instead of a handle per element or
@@ -257,6 +322,7 @@ function install(
     for (const [k, v] of staged) if (k !== key) total += k.length + v.length;
     if (total > MAX_STATE_CHARS) return fail(`store(key, value): the session state may not exceed ${MAX_STATE_CHARS} characters.`);
     staged.set(key, text);
+    written.add(key);
   });
   context.setProp(context.global, "store", store);
   store.dispose();
@@ -270,6 +336,23 @@ function install(
   });
   context.setProp(context.global, "load", load);
   load.dispose();
+
+  if (o.show) {
+    const show = context.newFunction("show", (kindHandle, propsHandle) => {
+      if (shown.length >= WIDGETS_PER_RUN) return fail(`show(): at most ${WIDGETS_PER_RUN} widgets per script.`);
+      const kind = kindHandle ? context.dump(kindHandle) : undefined;
+      const props = propsHandle ? context.dump(propsHandle) : undefined;
+      const checked = validateWidget(kind, props);
+      if (!checked.spec) {
+        const shape = typeof kind === "string" ? WIDGET_SHAPES[kind as WidgetKind] : undefined;
+        return fail(`show(${typeof kind === "string" ? JSON.stringify(kind) : ""}): ${checked.reason}.${shape ? ` Expected: show(${JSON.stringify(kind)}, ${shape}).` : ""}`);
+      }
+      const complete = !(props && typeof props === "object" && (props as { complete?: unknown }).complete === false);
+      shown.push({ spec: checked.spec, complete });
+    });
+    context.setProp(context.global, "show", show);
+    show.dispose();
+  }
 
   /** A host promise for the script to await: `work` settles it with a plain value or an error message. */
   const defer = (work: () => Promise<{ value?: unknown; error?: string }>): QuickJSHandle => {
@@ -503,14 +586,18 @@ function explain(message: string, o: CodeToolOptions): string {
     return `${message}. The sandbox has no require, import, module or fs: read files with tools.read (a folder lists), search with tools.grep and tools.glob.`;
   }
   if (!/not a function/.test(message)) return message;
-  const names = o.tools().map((t) => t.definition.name).filter((n) => !EXCLUDED.has(n));
-  return `${message}. A script's tools are: ${names.join(", ")}. Read files with tools.read (a folder lists), search with tools.grep and tools.glob; edits, shell commands and tools that change state (such as design_set_direction) are not available in a script: call those directly as tool calls, not through run_code.`;
+  const exposed = o.tools().filter((t) => !EXCLUDED.has(t.definition.name));
+  const names = exposed.map((t) => t.definition.name);
+  const readOnly = !exposed.some((t) => t.access === "edit" || t.access === "shell");
+  const tail = readOnly ? " Edits, shell commands and tools that change state (such as design_set_direction) are not available in a script: call those directly as tool calls, not through run_code." : "";
+  return `${message}. A script's tools are: ${names.join(", ")}. Read files with tools.read (a folder lists), search with tools.grep and tools.glob.${tail}`;
 }
 
 /** Console output before an error still reaches the model, with the error after it. */
-function failure(message: string, logs: string[]): string {
+function failure(message: string, logs: LogBuffer, spill: { outputDir: string; callId: string }): string {
   const tail = `Error: ${message}\n\nCalls made before the error are not undone.`;
-  return logs.length ? `${logs.join("\n")}\n\n${tail}` : tail;
+  // Long output is bounded like a success's; the error stays at the end, never cut off.
+  return logs.length ? `${bound(logs.shown().join("\n"), spill)}\n\n${tail}` : tail;
 }
 
 /** Stops a script that is waiting on a host function no interrupt can reach. */

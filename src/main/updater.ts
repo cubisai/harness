@@ -1,4 +1,5 @@
 import type { AppUpdateStatus } from "../shared/types";
+import { notesText } from "./mac-swap-updater";
 
 /** The part of electron-updater's autoUpdater this module uses, so tests can fake it. */
 export interface UpdaterBackend {
@@ -7,7 +8,7 @@ export interface UpdaterBackend {
   logger: unknown;
   checkForUpdates(): Promise<unknown>;
   quitAndInstall(): void;
-  on(event: "update-downloaded", listener: (info: { version: string }) => void): unknown;
+  on(event: "update-downloaded", listener: (info: { version: string; releaseNotes?: unknown }) => void): unknown;
   on(event: "error", listener: (err: Error) => void): unknown;
 }
 
@@ -20,6 +21,7 @@ const CHECK_EVERY_MS = 4 * 60 * 60 * 1000;
  */
 export class Updater {
   private ready: string | null = null;
+  private notes: string | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -35,6 +37,7 @@ export class Updater {
     backend.logger = null; // its progress chatter; failures still come through "error"
     backend.on("update-downloaded", (info) => {
       this.ready = info.version;
+      this.notes = notesText(info.releaseNotes);
       this.onReady(this.status());
     });
     // An unsigned macOS build, a network hiccup, or a release without update
@@ -43,7 +46,7 @@ export class Updater {
   }
 
   status(): AppUpdateStatus {
-    return { current: this.current, ready: this.ready, supported: this.backend !== null };
+    return { current: this.current, ready: this.ready, notes: this.notes, supported: this.backend !== null };
   }
 
   start(): void {

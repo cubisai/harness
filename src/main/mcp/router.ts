@@ -24,9 +24,14 @@ interface PoolEntry {
   client: Client;
   transport: Transport;
   lastUsed: number;
+  /** Calls using this entry right now; the sweeper never closes an entry with one. */
+  inFlight: number;
   /** Shared by concurrent callers; set once per entry, before the first await. */
   connecting?: Promise<void>;
 }
+
+/** The reply for a call the user stopped; the connection stays up for other callers. */
+const INTERRUPTED = "Interrupted by the user.";
 
 /** A pid is still running (signal 0 only probes). */
 function alive(pid: number): boolean {
@@ -36,6 +41,21 @@ function alive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+/** A content part from a tool result, as much as rendering it as text needs. */
+type ContentPart = { type: string; text?: string; uri?: string; name?: string; resource?: { uri?: string; text?: string } };
+
+/** Render content parts as text: text passes through, a resource's inline text or its URI stands in, and binary parts say they were omitted. */
+function contentText(content: ContentPart[]): string {
+  return content
+    .map((part) => {
+      if (part.type === "text") return part.text ?? "";
+      if (part.type === "resource") return typeof part.resource?.text === "string" ? part.resource.text : `[resource ${part.resource?.uri ?? ""}]`;
+      if (part.type === "resource_link") return `[resource_link ${part.uri ?? ""}${part.name ? ` (${part.name})` : ""}]`;
+      return `[${part.type} content omitted]`;
+    })
+    .join("\n");
 }
 
 /** Connect once per spec, call, and keep the client warm until it idles out. */
@@ -57,8 +77,13 @@ export class McpClientPool {
     this.onToolsChanged = opts.onToolsChanged;
   }
 
-  /** Call one tool on this server, connecting it first if needed; never throws. */
-  async callTool(spec: McpServerSpec, name: string, args: Record<string, unknown>): Promise<{ ok: boolean; text: string; isError: boolean }> {
+  /**
+   * Call one tool on this server, connecting it first if needed; never throws.
+   * `signal` stops waiting (the SDK tells the server the request is cancelled),
+   * without closing the shared connection under other callers.
+   */
+  async callTool(spec: McpServerSpec, name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<{ ok: boolean; text: string; isError: boolean; data?: unknown }> {
+    if (signal?.aborted) return { ok: false, text: INTERRUPTED, isError: true };
     this.startSweeper();
     const key = stableStringify(spec);
     let entry = this.entries.get(key);
@@ -66,25 +91,38 @@ export class McpClientPool {
       entry = this.createEntry(spec);
       this.entries.set(key, entry);
     }
+    entry.inFlight++;
+    entry.lastUsed = this.now();
     try {
-      if (!entry.connecting) entry.connecting = this.race(entry.client.connect(entry.transport), this.connectTimeoutMs);
-      await entry.connecting;
-      const result = await this.race(entry.client.callTool({ name, arguments: args }), this.callTimeoutMs);
-      entry.lastUsed = this.now();
-      const parts: string[] = [];
-      const content = (result.content ?? []) as { type: string; text?: string }[];
-      for (const part of content) parts.push(part.type === "text" ? (part.text ?? "") : `[${part.type} content omitted]`);
-      return { ok: true, text: parts.join("\n"), isError: result.isError === true };
+      if (!entry.connecting) {
+        entry.connecting = this.race(entry.client.connect(entry.transport), this.connectTimeoutMs);
+        // A caller who stopped early no longer awaits it; a failed connect must not go unhandled.
+        entry.connecting.catch(() => {});
+      }
+      // Stop during a cold start settles at once; the connect itself carries on for the next caller.
+      await this.raceAbort(entry.connecting, signal);
+      const result = await this.race(entry.client.callTool({ name, arguments: args }, undefined, signal ? { signal } : undefined), this.callTimeoutMs);
+      let text = contentText((result.content ?? []) as ContentPart[]);
+      const structured = result.structuredContent;
+      const data = structured && typeof structured === "object" ? structured : undefined;
+      if (!text.trim() && data !== undefined) text = JSON.stringify(data);
+      return { ok: true, text, isError: result.isError === true, ...(data !== undefined ? { data } : {}) };
     } catch (err) {
+      // An abort is the caller's Stop, not a broken server: keep the client for everyone else.
+      if (signal?.aborted) return { ok: false, text: INTERRUPTED, isError: true };
       await this.drop(key, entry);
       return { ok: false, text: err instanceof Error ? err.message : String(err), isError: true };
+    } finally {
+      entry.inFlight--;
+      entry.lastUsed = this.now();
     }
   }
 
-  /** Close entries idle for at least `idleMs`. */
+  /** Close entries idle for at least `idleMs`, leaving alone any with a call in flight. */
   async sweep(): Promise<void> {
     const now = this.now();
     for (const [key, entry] of [...this.entries]) {
+      if (entry.inFlight > 0) continue;
       if (now - entry.lastUsed >= this.idleMs) {
         this.entries.delete(key);
         await this.closeEntry(entry);
@@ -107,7 +145,7 @@ export class McpClientPool {
     const transport: Transport = clientTransport(spec);
     const client = new Client({ name: "cubiq", version: "1.0.0" });
     client.setNotificationHandler(ToolListChangedNotificationSchema, () => this.onToolsChanged?.(spec));
-    return { client, transport, lastUsed: this.now() };
+    return { client, transport, lastUsed: this.now(), inFlight: 0 };
   }
 
   private async drop(key: string, entry: PoolEntry): Promise<void> {
@@ -129,6 +167,20 @@ export class McpClientPool {
       timer = setTimeout(() => reject(new Error(`No answer in ${Math.round(ms / 1000)} seconds.`)), ms);
     });
     return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+  }
+
+  /** Settle with the work or reject as soon as `signal` aborts; the work itself keeps running. */
+  private raceAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return work;
+    if (signal.aborted) return Promise.reject(new Error(INTERRUPTED));
+    let onAbort: (() => void) | undefined;
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => reject(new Error(INTERRUPTED));
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+    return Promise.race([work, aborted]).finally(() => {
+      if (onAbort) signal.removeEventListener("abort", onAbort);
+    });
   }
 
   private startSweeper(): void {
@@ -207,6 +259,52 @@ const jsonValidator = new AjvJsonSchemaValidator();
 /** How long a router call waits for a server to list its tools; `npx -y …` servers can take several seconds to start. */
 const LIST_TIMEOUT_MS = 15_000;
 
+/**
+ * One MCP tool call by server and tool name, the way call_mcp_tool makes it: the server must be enabled for the
+ * project, the tool listed, the arguments valid for its schema. Creator apps call through here too.
+ */
+export async function callServerTool(
+  deps: { servers: (projectId: string | undefined) => McpServerEntry[]; listings: Pick<McpToolsCache, "refresh" | "peek">; pool: Pick<McpClientPool, "callTool"> },
+  projectId: string | undefined,
+  server: string,
+  tool: string,
+  args: Record<string, unknown>,
+  signal?: AbortSignal,
+  /** Runs once the tool is found and its arguments check out, before the call; a returned reason stops it. */
+  before?: (found: McpToolInfo) => Promise<string | null>,
+): Promise<{ text: string; isError: boolean; data?: unknown; readOnly?: true }> {
+  const enabled = deps.servers(projectId).filter((s) => s.enabled === true);
+  const target = enabled.find((s) => s.name === server);
+  if (!target) {
+    const names = enabled.map((s) => s.name);
+    return { text: `Unknown MCP server "${server}". Available: ${names.length ? names.join(", ") : "none"}.`, isError: true };
+  }
+  await deps.listings.refresh([target], LIST_TIMEOUT_MS);
+  const listing = deps.listings.peek(target.spec);
+  // A server that didn't list isn't missing the tool: say what went wrong instead.
+  if (listing && !listing.ok) return { text: `Couldn't reach MCP server "${server}": ${(listing.error ?? "it didn't answer").replace(/\.$/, "")}.`, isError: true };
+  const tools = listing?.ok ? listing.tools : [];
+  const found = tools.find((t) => t.name === tool);
+  if (!found) {
+    const closest = rankTools(tools.map((t) => ({ server, tool: t })), tool, 10).map((r) => r.tool.name);
+    const hint = closest.length ? ` Closest: ${closest.join(", ")}.` : "";
+    return { text: `Unknown tool "${tool}" on server "${server}".${hint}`, isError: true };
+  }
+  if (found.inputSchema && typeof found.inputSchema === "object") {
+    const validate = jsonValidator.getValidator<Record<string, unknown>>(found.inputSchema as JsonSchemaType);
+    const check = validate(args);
+    if (!check.valid) {
+      return { text: JSON.stringify({ status: "validation_error", server, tool, error: check.errorMessage, expected: found.inputSchema }), isError: true };
+    }
+  }
+  if (before) {
+    const refused = await before(found);
+    if (refused) return { text: refused, isError: true };
+  }
+  const r = await deps.pool.callTool(target.spec, tool, args, signal);
+  return { text: r.text, isError: r.isError, ...(r.data !== undefined ? { data: r.data } : {}), ...(found.readOnly ? { readOnly: true } : {}) };
+}
+
 export function routerTools(
   deps: {
     servers: (projectId: string | undefined) => McpServerEntry[];
@@ -230,7 +328,8 @@ export function routerTools(
     (index.some((s) => s.tools !== null) ? `\n\n${routerIndex(index)}` : "");
   const callDescription =
     "Call one MCP tool found with search_tools, by server and tool name, with arguments matching its inputSchema." +
-    (enabled.length ? ` Servers: ${enabled.map((s) => s.name).sort(compare).join(", ")}.` : "");
+    (enabled.length ? ` Servers: ${enabled.map((s) => s.name).sort(compare).join(", ")}.` : "") +
+    " A run_code script gets the tool's structured result as a JSON value when the server returns one, else its text.";
 
   const search = define({
     name: "search_tools",
@@ -265,7 +364,7 @@ export function routerTools(
         }
         return { text: `No tool matched "${query}". Servers: ${enabled.map((s) => s.name).join(", ")}. Try other words or an exact tool name.` };
       }
-      const out = ranked.map((r) => ({ server: r.server, tool: r.tool.name, description: r.tool.description, inputSchema: r.tool.inputSchema }));
+      const out = ranked.map((r) => ({ server: r.server, tool: r.tool.name, description: r.tool.description, inputSchema: r.tool.inputSchema, ...(r.tool.outputSchema ? { outputSchema: r.tool.outputSchema } : {}) }));
       const missed = unreachable.length ? `\nCouldn't reach: ${unreachable.map((u) => `${u.name} (${u.error})`).join(", ")}; their tools aren't included.` : "";
       return { text: JSON.stringify(out, null, 2) + missed };
     },
@@ -281,34 +380,10 @@ export function routerTools(
       arguments: z.object({}).catchall(z.unknown()).optional().describe("Arguments matching the tool's inputSchema from search_tools"),
     },
     effect: "mutate",
+    returns: "unknown",
     run: async ({ server, tool, arguments: rawArgs }, ctx) => {
-      const enabled = deps.servers(ctx?.projectId).filter((s) => s.enabled === true);
-      const target = enabled.find((s) => s.name === server);
-      if (!target) {
-        const names = enabled.map((s) => s.name);
-        return { text: `Unknown MCP server "${server}". Available: ${names.length ? names.join(", ") : "none"}.`, isError: true };
-      }
-      await deps.listings.refresh([target], LIST_TIMEOUT_MS);
-      const listing = deps.listings.peek(target.spec);
-      // A server that didn't list isn't missing the tool: say what went wrong instead.
-      if (listing && !listing.ok) return { text: `Couldn't reach MCP server "${server}": ${(listing.error ?? "it didn't answer").replace(/\.$/, "")}.`, isError: true };
-      const tools = listing?.ok ? listing.tools : [];
-      const found = tools.find((t) => t.name === tool);
-      if (!found) {
-        const closest = rankTools(tools.map((t) => ({ server, tool: t })), tool, 10).map((r) => r.tool.name);
-        const hint = closest.length ? ` Closest: ${closest.join(", ")}.` : "";
-        return { text: `Unknown tool "${tool}" on server "${server}".${hint}`, isError: true };
-      }
-      const args = rawArgs ?? {};
-      if (found.inputSchema && typeof found.inputSchema === "object") {
-        const validate = jsonValidator.getValidator<Record<string, unknown>>(found.inputSchema as JsonSchemaType);
-        const check = validate(args);
-        if (!check.valid) {
-          return { text: JSON.stringify({ status: "validation_error", server, tool, error: check.errorMessage, expected: found.inputSchema }), isError: true };
-        }
-      }
-      const r = await deps.pool.callTool(target.spec, tool, args);
-      return { text: r.text, isError: r.isError };
+      const { readOnly: _r, ...r } = await callServerTool(deps, ctx?.projectId, server, tool, rawArgs ?? {}, ctx?.signal);
+      return r;
     },
   });
 

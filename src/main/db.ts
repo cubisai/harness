@@ -6,23 +6,24 @@ import { bindingKey } from "../shared/bindings";
 import { readTier } from "../shared/tiers";
 import type { PrototypeTier } from "../shared/tiers";
 import { readDirection, type DesignDirection } from "../shared/direction";
-import type {
-  ArtifactVersion,
-  EventPage,
-  PermissionMode,
-  Project,
-  Provenance,
-  SearchHit,
-  SearchQuery,
-  SearchResults,
-  SessionBinding,
-  StoredEvent,
-  Thread,
-  ThreadEvent,
-  ThreadIssue,
-  ThreadKind,
-  ThreadTotals,
-  Usage,
+import {
+  CREATOR_PRESET_REVISION,
+  type ArtifactVersion,
+  type EventPage,
+  type PermissionMode,
+  type Project,
+  type Provenance,
+  type SearchHit,
+  type SearchQuery,
+  type SearchResults,
+  type SessionBinding,
+  type StoredEvent,
+  type Thread,
+  type ThreadEvent,
+  type ThreadIssue,
+  type ThreadKind,
+  type ThreadTotals,
+  type Usage,
 } from "../shared/types";
 
 /**
@@ -367,6 +368,41 @@ export class Store {
       },
       // 35: the issue a thread works on (picked with /issue) as JSON; null = none.
       { applied: () => this.hasColumn("threads", "issue"), sql: "ALTER TABLE threads ADD COLUMN issue TEXT" },
+      // 36: workspace preset (creator vs general) and its revision; null = general.
+      {
+        applied: () => this.hasColumn("threads", "preset"),
+        sql: `ALTER TABLE threads ADD COLUMN preset TEXT;
+          ALTER TABLE threads ADD COLUMN preset_revision INTEGER;`,
+      },
+      // 37: Creator mode extension proposals and user-installed records.
+      {
+        applied: () => this.hasTable("extension_proposals"),
+        sql: `CREATE TABLE IF NOT EXISTS extension_proposals (
+          id TEXT PRIMARY KEY,
+          thread_id TEXT NOT NULL,
+          scope TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          name TEXT NOT NULL,
+          draft TEXT NOT NULL,
+          digest TEXT NOT NULL,
+          status TEXT NOT NULL,
+          error TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS extension_installs (
+          id TEXT PRIMARY KEY,
+          proposal_id TEXT NOT NULL,
+          scope TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          name TEXT NOT NULL,
+          location TEXT NOT NULL,
+          files TEXT NOT NULL,
+          digest TEXT NOT NULL,
+          installed_at INTEGER NOT NULL,
+          UNIQUE(scope, kind, name)
+        );`,
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -445,6 +481,7 @@ export class Store {
     ).map((r) => r.id);
     if (threadIds.length > 0) {
       const placeholders = threadIds.map(() => "?").join(", ");
+      this.db.prepare(`DELETE FROM extension_proposals WHERE thread_id IN (${placeholders})`).run(...threadIds);
       this.db.prepare(`DELETE FROM injection_ledger WHERE thread_id IN (${placeholders})`).run(...threadIds);
       this.db.prepare(`DELETE FROM events WHERE thread_id IN (${placeholders})`).run(...threadIds);
       this.db.prepare(`DELETE FROM threads WHERE id IN (${placeholders})`).run(...threadIds);
@@ -470,8 +507,18 @@ export class Store {
     return grouped;
   }
 
-  createThread(projectId: string, agent: string, model: string, permissionMode: PermissionMode, kind: ThreadKind = "chat", designSystem: string | null = null, expertId: string | null = null): Thread {
+  createThread(
+    projectId: string,
+    agent: string,
+    model: string,
+    permissionMode: PermissionMode,
+    kind: ThreadKind = "chat",
+    designSystem: string | null = null,
+    expertId: string | null = null,
+    preset: "creator" | null = null,
+  ): Thread {
     const now = Date.now();
+    const presetRevision = preset === "creator" ? CREATOR_PRESET_REVISION : null;
     const thread: Thread = {
       id: randomUUID(),
       projectId,
@@ -487,12 +534,29 @@ export class Store {
       kind,
       ...(kind === "design" && designSystem ? { designSystem } : {}),
       ...(expertId ? { expertId } : {}),
+      ...(preset === "creator" ? { preset: "creator", presetRevision: CREATOR_PRESET_REVISION } : {}),
     };
     this.db
       .prepare(
-        "INSERT INTO threads (id, project_id, agent, title, session_id, model, effort, permission_mode, created_at, updated_at, kind, design_system, expert_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO threads (id, project_id, agent, title, session_id, model, effort, permission_mode, created_at, updated_at, kind, design_system, expert_id, preset, preset_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(thread.id, projectId, agent, thread.title, null, model, null, permissionMode, now, now, kind, thread.designSystem ?? null, thread.expertId ?? null);
+      .run(
+        thread.id,
+        projectId,
+        agent,
+        thread.title,
+        null,
+        model,
+        null,
+        permissionMode,
+        now,
+        now,
+        kind,
+        thread.designSystem ?? null,
+        thread.expertId ?? null,
+        preset,
+        presetRevision,
+      );
     return thread;
   }
 
@@ -588,6 +652,7 @@ export class Store {
   }
 
   deleteThread(id: string): void {
+    this.db.prepare("DELETE FROM extension_proposals WHERE thread_id = ?").run(id);
     this.db.prepare("DELETE FROM threads WHERE id = ?").run(id);
     this.pruneBlobs();
   }
@@ -856,9 +921,11 @@ export class Store {
     const { thread } = data;
     this.db.exec("BEGIN");
     try {
+      const preset = thread.kind !== "design" && thread.preset === "creator" ? "creator" : null;
+      const presetRevision = preset === "creator" && typeof thread.presetRevision === "number" ? thread.presetRevision : null;
       this.db
         .prepare(
-          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, kind, design_system, prototype_tier, expert_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO threads (id, project_id, agent, title, session_id, bindings, model, effort, permission_mode, created_at, updated_at, kind, design_system, prototype_tier, expert_id, preset, preset_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           id,
@@ -877,6 +944,8 @@ export class Store {
           thread.kind === "design" ? (thread.prototypeTier ?? null) : null,
           // An expert is only ever set by the user summoning it, so an imported thread starts without one.
           null,
+          preset,
+          presetRevision,
         );
       const insert = this.db.prepare(
         `INSERT INTO events (thread_id, seq, payload, created_at, provenance, message_id, turn_id, item_id, parent_id, payload_ref, payload_bytes)
@@ -1011,7 +1080,7 @@ export class Store {
 }
 
 const THREAD_COLS =
-  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, base_branch, base_sha, merged_sha, merged_into, kind, design_system, prototype_tier, design_direction, expert_id, issue, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
+  "id, project_id, agent, title, session_id, bindings, model, effort, context_window, permission_mode, created_at, updated_at, pinned, archived, branch, worktree_path, base_branch, base_sha, merged_sha, merged_into, kind, design_system, prototype_tier, design_direction, expert_id, issue, preset, preset_revision, (SELECT path FROM projects WHERE projects.id = threads.project_id) AS project_path";
 
 export interface LedgerTarget {
   threadId: string;
@@ -1093,6 +1162,8 @@ interface ThreadRow {
   design_direction: string | null;
   expert_id: string | null;
   issue: string | null;
+  preset: string | null;
+  preset_revision: number | null;
   project_path: string | null;
 }
 
@@ -1182,5 +1253,7 @@ function toThread(r: ThreadRow): Thread {
     ...(r.kind === "design" && readDirection(r.design_direction) ? { designDirection: readDirection(r.design_direction)! } : {}),
     ...(r.expert_id ? { expertId: r.expert_id } : {}),
     ...(readIssue(r.issue) ? { issue: readIssue(r.issue)! } : {}),
+    ...(r.preset === "creator" ? { preset: "creator" as const } : {}),
+    ...(r.preset_revision !== null && r.preset_revision !== undefined ? { presetRevision: r.preset_revision } : {}),
   };
 }

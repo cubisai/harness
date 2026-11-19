@@ -23,8 +23,10 @@ export function parseBlocks(text: string): Block[] {
       const body: string[] = [];
       i++;
       while (i < lines.length && !(lines[i] ?? "").trimStart().startsWith(fence[1]!)) body.push(lines[i++] ?? "");
+      const closed = i < lines.length;
       const ui = /^ui:([a-z][a-z0-9-]*)$/.exec(fence[2] ?? "");
-      if (ui) blocks.push({ type: "ui", name: ui[1]!, body: body.join("\n") });
+      // An unclosed ui fence (a reply cut off by Stop or a token limit) stays inert code, never a live widget.
+      if (ui && closed) blocks.push({ type: "ui", name: ui[1]!, body: body.join("\n") });
       else blocks.push({ type: "code", text: body.join("\n"), ...(fence[2] ? { lang: fence[2] } : {}) });
       continue;
     }

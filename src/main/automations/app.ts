@@ -104,12 +104,13 @@ export function startAutomations(o: { store: Store; service: Service; broadcast:
     createThread: async (a) => {
       const t = o.service.createThread(a.projectId, a.agent ?? undefined);
       own.add(t.id);
-      // Nobody watches a scheduled run: unattended runs skip approvals (git guardrails still apply); "ask" keeps the user's default and waits.
-      const thread = o.store.updateThread(t.id, { title: `Automation · ${a.name}`, ...(a.model ? { model: a.model } : {}), ...(a.permissions === "unattended" ? { permissionMode: "full" as const } : {}) });
+      // Ask means Ask, even when the user's default is Full access. Unattended retains its existing guardrails.
+      const thread = o.store.updateThread(t.id, { title: `Automation · ${a.name}`, ...(a.model ? { model: a.model } : {}), permissionMode: a.permissions === "unattended" ? "full" : "ask" });
       o.broadcast({ type: "thread", thread });
       return t.id;
     },
     send: (threadId, text) => sendAndWait(o.service, o.store, threadId, text),
+    interrupt: (threadId) => o.service.interrupt(threadId),
     totals: (threadId) => {
       const t = o.store.threadTotals(threadId);
       return { costUsd: t.costUsd, inputTokens: t.inputTokens, outputTokens: t.outputTokens };

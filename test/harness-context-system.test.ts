@@ -135,3 +135,18 @@ describe("systemPrompt", () => {
     expect(a.at(-1)).not.toBe(b.at(-1));
   });
 });
+
+describe("systemPrompt servers line", () => {
+  it("points long-running commands at shell_start when the thread has the shell tools", () => {
+    const withShells = systemPrompt(parts({ shells: true }))[0]!;
+    expect(withShells).toContain("shell_start");
+    expect(withShells).not.toContain('need "&"');
+    const without = systemPrompt(parts({}))[0]!;
+    expect(without).toContain('Long-running servers need "&" and a log file.');
+    expect(without).not.toContain("shell_start");
+    expect(withShells).not.toContain("{{SERVERS}}");
+    for (const model of ["claude-sonnet-5-5", "gpt-5.5", "deepseek-v4.1-flash"]) {
+      expect(estimateText(systemPrompt(parts({ model, shells: true }))[0]!)).toBeLessThanOrEqual(650);
+    }
+  });
+});

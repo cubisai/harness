@@ -67,6 +67,21 @@ describe("live stream state", () => {
     expect(item.text.endsWith("0123456789")).toBe(true);
   });
 
+  it("caches visibility on flush and recomputes when tail truncation drops the only non-whitespace char", () => {
+    let state = flushPending(appendDelta(emptyLive(), { kind: "text-delta", itemId: "a", text: "   \n\t  " }));
+    expect(state.items[0]?.visible).toBe(false);
+    expect(visibleItems(state, "text")).toEqual([]);
+
+    state = flushPending(appendDelta(state, { kind: "text-delta", itemId: "a", text: "x" }));
+    expect(state.items[0]?.visible).toBe(true);
+    expect(visibleItems(state, "text")).toHaveLength(1);
+
+    // Push "x" out of the LIVE_ITEM_CAP window with trailing spaces: visibility must recompute to false.
+    state = flushPending(appendDelta(state, { kind: "text-delta", itemId: "a", text: " ".repeat(LIVE_ITEM_CAP) }));
+    expect(state.items[0]?.visible).toBe(false);
+    expect(visibleItems(state, "text")).toEqual([]);
+  });
+
   it("merges usage-update deltas into the live usage", () => {
     let state = appendDelta(emptyLive(), { kind: "usage-update", cacheReadTokens: 100 });
     expect(state.usage?.cacheReadTokens).toBe(100);

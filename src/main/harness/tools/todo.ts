@@ -1,5 +1,5 @@
 // The TodoWrite tool: the model's short task list for multi-step work. It is a
-// plan for the thread rather than a file or shell tool, so its access is "other".
+// plan for the thread rather than a file or shell tool, so its access is "control".
 
 import { normalizePlan } from "../../../shared/plan";
 import type { PlanEntry } from "../../../shared/types";
@@ -72,7 +72,7 @@ export const todoTool: NativeTool = {
     },
     required: ["todos"],
   },
-  access: "other",
+  access: "control",
   summarize(args) {
     return summarizeTodos(args.todos);
   },

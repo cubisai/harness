@@ -7,6 +7,8 @@ export interface LiveItem {
   text: string;
   pending: string;
   opaque: boolean;
+  /** True once flushed `text` holds at least one non-whitespace character. */
+  visible?: boolean;
   /** The Agent call a subagent's item belongs to; absent at the top level. */
   parentId?: string;
 }
@@ -50,8 +52,11 @@ export function flushPending(state: LiveThread): LiveThread {
     ...state,
     items: state.items.map((it) => {
       if (!it.pending) return it;
-      const text = it.text + it.pending;
-      return { ...it, text: text.length > LIVE_ITEM_CAP ? text.slice(-LIVE_ITEM_CAP) : text, pending: "" };
+      const raw = it.text + it.pending;
+      const truncated = raw.length > LIVE_ITEM_CAP;
+      const text = truncated ? raw.slice(-LIVE_ITEM_CAP) : raw;
+      const visible = truncated ? /\S/.test(text) : it.visible === true || /\S/.test(it.pending);
+      return { ...it, text, pending: "", visible };
     }),
   };
 }
@@ -86,7 +91,7 @@ export function applyLiveEvent(state: LiveThread, stored: StoredEvent): LiveThre
 export function visibleItems(state: LiveThread, channel: LiveItem["channel"], parentId?: string): LiveItem[] {
   // Text or reasoning that is only whitespace (a model streaming "\n\n" between tool calls, as DeepSeek
   // on CoralBricks does) has nothing to show: it would sit in the timeline as an empty cursor block.
-  return state.items.filter((it) => it.channel === channel && it.parentId === parentId && it.text.trim().length > 0);
+  return state.items.filter((it) => it.channel === channel && it.parentId === parentId && (it.visible ?? /\S/.test(it.text)));
 }
 
 /** Which half of a reasoning block to show: its text, or only a token count. */
@@ -118,7 +123,7 @@ function appendItem(state: LiveThread, key: string, channel: LiveItem["channel"]
     const item = items[i]!;
     items[i] = { ...item, pending: item.pending + text, opaque: item.opaque || opaque };
   } else {
-    items.push({ key, channel, text: "", pending: text, opaque, ...(parentId ? { parentId } : {}) });
+    items.push({ key, channel, text: "", pending: text, opaque, visible: false, ...(parentId ? { parentId } : {}) });
   }
   return { ...state, items };
 }

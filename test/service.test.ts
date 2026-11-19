@@ -42,6 +42,26 @@ function setup(script: (input: TurnInput) => Promise<void>) {
   return { store, service, driver, updates, thread };
 }
 
+describe("Service.settleFailedSend", () => {
+  it("a refused duplicate send leaves a live turn running in the window; a failed send of an idle thread clears it", async () => {
+    let release!: () => void;
+    const { service, thread, updates } = setup(() => new Promise<void>((r) => (release = r)));
+    const first = service.send({ threadId: thread.id, text: "a" });
+    await vi.waitFor(() => expect(service.isRunning(thread.id)).toBe(true));
+    await expect(service.send({ threadId: thread.id, text: "b" })).rejects.toThrow("already running");
+    const runningUpdates = () => updates.filter((u) => u.type === "running") as { running: boolean }[];
+    const before = runningUpdates().length;
+    service.settleFailedSend(thread.id);
+    expect(runningUpdates()).toHaveLength(before);
+    release();
+    await first;
+    const after = runningUpdates().length;
+    service.settleFailedSend(thread.id);
+    expect(runningUpdates()).toHaveLength(after + 1);
+    expect(runningUpdates().at(-1)!.running).toBe(false);
+  });
+});
+
 describe("Service.send", () => {
   it("stores the turn, names the thread, and remembers the session", async () => {
     const { store, service, thread, updates } = setup(async (input) => {
@@ -104,6 +124,12 @@ describe("Service.send", () => {
     expect(updates).toContainEqual({ type: "running", threadId: thread.id, running: false });
     expect(service.isRunning(thread.id)).toBe(false);
     await expect(service.send({ threadId: thread.id, text: "again" })).resolves.toBeUndefined();
+  });
+
+  it("refuses an unknown permission mode instead of storing it", () => {
+    const { service, thread } = setup(async () => {});
+    expect(() => service.updateThread(thread.id, { permissionMode: "auto" as never })).toThrow("Unknown permission mode: auto");
+    expect(service.updateThread(thread.id, { permissionMode: "full" }).permissionMode).toBe("full");
   });
 
   it("passes the thread's context window to the driver, and a model change clears it", async () => {
@@ -1158,6 +1184,27 @@ describe("the evidence gate", () => {
     await service.send({ threadId: thread.id, text: "go" });
     expect(notices(store, thread.id)).toEqual(["Worth a second look: Says tests or checks pass, but none ran this turn."]);
   });
+
+  it("flags a pass claim when the check tool failed or an Edit ran after the last passing check", async () => {
+    const failed = setupRepo(async (input) => {
+      input.onEvent({ kind: "tool-use", toolUseId: "r1", name: "Run", summary: "npm test", payload: { command: "npm test" } });
+      input.onEvent({ kind: "tool-result", toolUseId: "r1", isError: true, summary: "exit 1", payload: { exitCode: 1 } });
+      say(input, "All tests pass.");
+    });
+    await failed.service.send({ threadId: failed.thread.id, text: "fix add" });
+    expect(notices(failed.store, failed.thread.id)).toEqual(["Worth a second look: Says tests or checks pass, but the last check failed."]);
+
+    const stale = setupRepo(async (input) => {
+      input.onEvent({ kind: "tool-use", toolUseId: "r1", name: "Run", summary: "npm test", payload: { command: "npm test" } });
+      input.onEvent({ kind: "tool-result", toolUseId: "r1", isError: false, summary: "ok" });
+      writeFileSync(join(input.cwd, "src", "math.ts"), "export const add = (a: number, b: number) => a + b;\n");
+      input.onEvent({ kind: "tool-use", toolUseId: "e1", name: "Edit", summary: "src/math.ts" });
+      input.onEvent({ kind: "tool-result", toolUseId: "e1", isError: false, summary: "+1", payload: { diff: [{ path: join(input.cwd, "src", "math.ts"), unified: "@@ -1 +1 @@\n+export const add = (a: number, b: number) => a + b;" }] } });
+      say(input, "All tests pass.");
+    });
+    await stale.service.send({ threadId: stale.thread.id, text: "fix add" });
+    expect(notices(stale.store, stale.thread.id)).toEqual(["Worth a second look: Says tests or checks pass, but files were edited after the last check."]);
+  });
 });
 
 describe("titleFrom", () => {
@@ -1461,6 +1508,46 @@ describe("Chats (no project)", () => {
     const { store, service } = setupChats(fakeDriver(async () => {}));
     const other = store.addProject(tempDir());
     expect(service.createThread(other.id).worktreePath ?? null).toBeNull();
+  });
+
+  it("creates a creator thread with the default permission mode (not full) and refuses design+creator", async () => {
+    const { store, service, project } = setupChats(fakeDriver(async () => {}));
+    const other = store.addProject(tempDir());
+    const creator = service.createThread(other.id, undefined, "chat", null, null, "creator");
+    expect(creator).toMatchObject({ kind: "chat", preset: "creator", presetRevision: 1, permissionMode: "ask" });
+
+    const inChats = service.createThread(project.id, undefined, "chat", null, null, "creator");
+    expect(inChats).toMatchObject({ kind: "chat", preset: "creator", presetRevision: 1, permissionMode: "ask" });
+    expect(inChats.worktreePath).toBe(join(project.path, inChats.id));
+
+    expect(() => service.createThread(other.id, undefined, "design", null, null, "creator")).toThrow("A Creator thread is a chat thread.");
+    await expect(service.createWorktreeThread(other.id, undefined, "design", null, null, "creator")).rejects.toThrow("A Creator thread is a chat thread.");
+  });
+
+  it("includes the Creator note only on creator threads (<= 600 chars) and leaves chat and design turn inputs without preset", async () => {
+    const inputs: TurnInput[] = [];
+    const { store, service } = setupChats(
+      fakeDriver(async (input) => {
+        inputs.push(input);
+        input.onEvent({ kind: "assistant-text", text: "ok" });
+      }),
+    );
+    const p = store.addProject(tempDir());
+    const chat = service.createThread(p.id);
+    const design = service.createThread(p.id, undefined, "design");
+    const creator = service.createThread(p.id, undefined, "chat", null, null, "creator");
+
+    await service.send({ threadId: chat.id, text: "hi chat" });
+    await service.send({ threadId: design.id, text: "hi design" });
+    await service.send({ threadId: creator.id, text: "hi creator" });
+
+    expect("preset" in inputs[0]!).toBe(false);
+    expect("preset" in inputs[1]!).toBe(false);
+    expect(inputs[2]!.preset).toBeDefined();
+    expect(inputs[2]!.preset!.length).toBeGreaterThan(0);
+    expect(inputs[2]!.preset!.length).toBeLessThanOrEqual(600);
+    expect(inputs[2]!.preset).toContain("creator_inspect");
+    expect(inputs[2]!.preset).toContain("creator_propose");
   });
 });
 

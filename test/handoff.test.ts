@@ -90,6 +90,31 @@ describe("thread export/import", () => {
     expect(() => importThread(store, p.id, data)).toThrow();
     expect(store.listThreads(p.id).map((x) => x.id)).toEqual([t.id]);
   });
+
+  it("round-trips a creator preset and drops an unknown preset with a notice", () => {
+    const store = open();
+    const p = store.addProject("/tmp/p");
+    const creator = store.createThread(p.id, "claude", "m", "ask", "chat", null, null, "creator");
+    store.appendEvent(creator.id, { kind: "user", text: "make a skill" });
+    const exported = JSON.parse(JSON.stringify(exportThread(store, creator.id)));
+    expect(exported.thread).toMatchObject({ preset: "creator", presetRevision: 1 });
+
+    const restored = importThread(store, p.id, exported);
+    expect(restored).toMatchObject({ preset: "creator", presetRevision: 1 });
+    expect(store.getThread(restored.id)).toMatchObject({ preset: "creator", presetRevision: 1 });
+    expect(store.listEvents(restored.id)).toHaveLength(1);
+
+    const unknown = { ...exported, thread: { ...exported.thread, preset: "researcher", presetRevision: 99 } };
+    const fallback = importThread(store, p.id, unknown);
+    expect("preset" in fallback).toBe(false);
+    expect("presetRevision" in fallback).toBe(false);
+    const events = store.listEvents(fallback.id);
+    expect(events).toHaveLength(2);
+    expect(events[1]!.event).toEqual({
+      kind: "notice",
+      text: "This thread used preset researcher, which this version doesn't have; it opened as a regular chat.",
+    });
+  });
 });
 
 describe("buildCheckpoint", () => {

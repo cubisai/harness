@@ -32,6 +32,9 @@ function pwshScript(command: string): string {
 }
 
 /** The last `maxLines` lines of `output`, with trailing blanks dropped, cut to `maxChars` from the end. */
+/** Characters of a check's output kept while it runs: well above what tailOf reports. */
+export const OUTPUT_KEEP_CHARS = 64 * 1024;
+
 export function tailOf(output: string, maxLines = 80, maxChars = 6000): string {
   const lines = output.split(/\r?\n/);
   while (lines.length && lines[lines.length - 1] === "") lines.pop();
@@ -83,8 +86,13 @@ export function runCheck(
       return;
     }
     opts.signal?.addEventListener("abort", onAbort, { once: true });
-    child.stdout?.on("data", (buf: Buffer) => (output += buf.toString("utf8")));
-    child.stderr?.on("data", (buf: Buffer) => (output += buf.toString("utf8")));
+    // Only the tail is reported, so keep a bounded rolling window instead of the whole log.
+    const keep = (buf: Buffer) => {
+      output += buf.toString("utf8");
+      if (output.length > OUTPUT_KEEP_CHARS * 2) output = output.slice(-OUTPUT_KEEP_CHARS);
+    };
+    child.stdout?.on("data", keep);
+    child.stderr?.on("data", keep);
     child.on("error", (err) => {
       output += output ? `\n${err.message}` : err.message;
       finish(false, null);

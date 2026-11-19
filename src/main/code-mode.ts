@@ -11,7 +11,8 @@ import type { CodeMode, ThreadEvent } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
 import { appLoopTool } from "./harness/driver";
 import type { LoopTool } from "./harness/loop";
-import { CODE_DESCRIPTION, createCodeTool } from "./harness/tools/code";
+import { CODE_DESCRIPTION, createCodeTool, SHOW_NOTE, type ShownWidget } from "./harness/tools/code";
+import { scriptEnvelope } from "../shared/genui/widget";
 import { createCodeBroker } from "./harness/tools/code-broker";
 import { globTool } from "./harness/tools/glob";
 import { grepTool } from "./harness/tools/grep";
@@ -23,6 +24,9 @@ export const CODE_TOOL = "run_code";
 /** Tools a script never gets, even when they only read: no nested scripts or questions. */
 const NEVER = new Set([CODE_TOOL, "ask_user"]);
 
+/** App tools a read-only script also skips: search_tools only finds tools for call_mcp_tool, which such a script can't call. */
+const SCRIPT_SKIP = new Set(["search_tools"]);
+
 /** The native tools' exact argument names, which models otherwise guess from their own tools (`filePath`). */
 const SCRIPT_EXAMPLES = "Arguments: `await tools.read({ path: \"src/a.ts\", offset: 1, limit: 200 })`, `await tools.readMany([\"src/a.ts\", \"src/b.ts\"])`, `await tools.grep({ pattern: \"TODO\", path: \"src\", glob: \"*.ts\", limit: 200, context: 2 })`, `await tools.glob({ pattern: \"**/*.md\", limit: 200 })`; read returns the file's text (or, for a folder, its entries, with folders ending in \"/\"), glob and grep return arrays (an empty one when nothing matches), and `path` has POSIX string helpers (`join`, `dirname`, `basename`, `extname`, `normalize`).";
 
@@ -33,13 +37,14 @@ export const CODE_MODE_DESCRIPTION = `${CODE_DESCRIPTION} Scripts here only read
 const PARENT_WAIT_MS = 2000;
 
 /** Per-thread code mode: read from settings the first time a thread asks, then fixed for this app run, so a session's tool list never changes. */
-export function codeModes(read: () => CodeMode | undefined): (threadId: string) => CodeMode {
+export function codeModes(read: () => CodeMode | undefined): ((threadId: string) => CodeMode) & { forget(threadId: string): void } {
   const fixed = new Map<string, CodeMode>();
-  return (threadId) => {
+  const modeOf = (threadId: string): CodeMode => {
     let mode = fixed.get(threadId);
     if (!mode) fixed.set(threadId, (mode = read() ?? "off"));
     return mode;
   };
+  return Object.assign(modeOf, { forget: (threadId: string) => void fixed.delete(threadId) });
 }
 
 export interface CodeServerDeps {
@@ -57,6 +62,8 @@ export interface CodeServerDeps {
   outputDir: string;
   guardScript: string;
   parentWaitMs?: number;
+  /** Inline UI on: scripts may `show()` tables and stats to the user. Read once per thread, with its tool, so the tool list stays fixed. */
+  uiBlocks?: () => boolean;
 }
 
 /** A native tool run for a script, in the thread's folder. */
@@ -79,7 +86,7 @@ const readsOnly = (t: HarnessTool): boolean => !NEVER.has(t.name) && (t.effect ?
  * Claude's in-process server. Read-only: a script can't write, edit, run
  * commands or ask; the agent does those itself.
  */
-export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string): HarnessTool } {
+export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string): HarnessTool; forget(threadId: string): void } {
   const states = new Map<string, Map<string, string>>();
   const reads = new Map<string, Map<string, number>>();
   const tools = new Map<string, HarnessTool>();
@@ -93,11 +100,11 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
     const ids = { threadId, ...(projectId ? { projectId } : {}) };
     return [
       ...[readTool, globTool, grepTool].map((t) => scriptTool(t, ctxFor)),
-      ...deps.appTools(threadId).filter(readsOnly).map((t) => appLoopTool(t, ids, deps.outputDir)),
+      ...deps.appTools(threadId).filter((t) => readsOnly(t) && !SCRIPT_SKIP.has(t.name)).map((t) => appLoopTool(t, ids, deps.outputDir)),
     ];
   };
 
-  const run = async (threadId: string, code: string, signal: AbortSignal | undefined, parentId?: string): Promise<{ text: string; isError?: boolean }> => {
+  const run = async (threadId: string, code: string, signal: AbortSignal | undefined, parentId: string | undefined, canShow: boolean): Promise<{ text: string; isError?: boolean }> => {
     const cwd = deps.cwdOf(threadId);
     if (!cwd) return { text: "This thread's folder is gone, so run_code can't run here.", isError: true };
     const turn = deps.turnSignal?.(threadId);
@@ -116,6 +123,15 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
       outputDir: deps.outputDir,
       state,
       broker: createCodeBroker({ tools: () => available, emit: (e) => deps.emit(threadId, e), outputDir: deps.outputDir, parentOf: () => parent() }),
+      ...(canShow
+        ? {
+            show: async (widgets: ShownWidget[], callId: string) => {
+              // The widget belongs to the agent's run_code row; without one (it never showed), the sandbox's own id.
+              const owner = (await parent()) ?? callId;
+              widgets.forEach((w, i) => deps.emit(threadId, { kind: "widget", envelope: scriptEnvelope(w.spec, owner, i, w.complete) }));
+            },
+          }
+        : {}),
     });
     const result = await sandbox.run({ code }, { id: `code-${randomUUID().slice(0, 8)}`, signal: combined, onOutput: () => {} });
     return { text: result.text, ...(result.isError ? { isError: true } : {}) };
@@ -125,17 +141,24 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
     tool(threadId) {
       let tool = tools.get(threadId);
       if (!tool) {
+        const canShow = deps.uiBlocks?.() === true;
         tool = {
           name: CODE_TOOL,
-          description: CODE_MODE_DESCRIPTION,
+          description: canShow ? `${CODE_MODE_DESCRIPTION} ${SHOW_NOTE}` : CODE_MODE_DESCRIPTION,
           input: { code: z.string().describe("The JavaScript to run, as the body of an async function.") },
           autoAllow: true,
           effect: "read",
-          run: ({ code }, ctx) => run(threadId, code, ctx?.signal, ctx?.parentId),
+          run: ({ code }, ctx) => run(threadId, code, ctx?.signal, ctx?.parentId, canShow),
         } satisfies HarnessTool<{ code: z.ZodString }> as unknown as HarnessTool;
         tools.set(threadId, tool);
       }
       return tool;
+    },
+    /** A deleted thread's script store, read times and tool go with it. */
+    forget(threadId) {
+      states.delete(threadId);
+      reads.delete(threadId);
+      tools.delete(threadId);
     },
   };
 }

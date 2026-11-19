@@ -1,6 +1,7 @@
-import type { AgentCatalogEntry, DesignSystemDoc, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, MemoryScope, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
+import type { AgentCatalogEntry, DesignSystemDoc, ExtensionInstallView, ExtensionProposalView, LiveUpdate, McpOverview, MemoryNote, MemoryOverview, MemoryScope, Project, SettingsView, SkillEntry, SkillOrigin, StoredEvent, Thread, ThreadEvent, UnskilledApi } from "../../shared/types";
 import type { AutomationTemplate, AutomationView, Schedule } from "../../shared/automations";
 import type { ExpertDef } from "../../shared/experts";
+import type { AppInfo } from "../../shared/types";
 
 /**
  * A fake backend for `bun run preview:ui`: the real renderer in a plain
@@ -19,6 +20,14 @@ export function installMock(): void {
   const listeners = new Set<(u: LiveUpdate) => void>();
   const emit = (u: LiveUpdate) => listeners.forEach((l) => l(u));
   const openTerminals = new Set<string>();
+  const mockProposals = new Map<string, ExtensionProposalView>();
+  // The dashboard template as an installed app; vite.preview.config.ts serves it under /__app/ with the bridge.
+  const mockApps: AppInfo[] = [
+    { key: "g~sales-dashboard", name: "sales-dashboard", scope: "global", title: "Sales", description: "Revenue, orders and top products for a chosen period.", icon: "chart-bar", grants: [{ server: "shop", tools: ["sales_summary"] }], path: "/Users/you/Library/Application Support/CubiQ/apps/sales-dashboard", url: "/__app/dashboard/index.html" },
+  ];
+  const mockAppStore = new Map<string, unknown>();
+  const mockInstalls = new Map<string, ExtensionInstallView>();
+  if (scene === "creator" || scene === "app") mockInstalls.set("installed-sales", { id: "installed-sales", proposalId: "demo-sales", scope: { kind: "global" }, kind: "app", name: "sales-dashboard", targetPath: mockApps[0]!.path, installedAt: now });
   let settings: SettingsView = {
     theme: "system",
     defaultAgent: null,
@@ -126,6 +135,96 @@ export function installMock(): void {
       ev(22, { kind: "compaction", trigger: "auto", preTokens: 12400, postTokens: 4100 }),
     ],
   };
+
+  // Creator review cards in every state: staged skill, staged stdio connector, failed (long error), installed.
+  if (scene === "creator") {
+    const t1 = threads.p1?.find((x) => x.id === "t1");
+    if (t1) Object.assign(t1, { title: "Make a commit message skill", preset: "creator" });
+    const base = { threadId: "t1", projectName: "acme-web", projectChoice: { id: "p1", name: "acme-web" }, createdAt: now, updatedAt: now };
+    const proposals: ExtensionProposalView[] = [
+      {
+        ...base,
+        id: "pr1",
+        scope: { kind: "project", projectId: "p1" },
+        status: "staged",
+        draft: {
+          kind: "skill",
+          name: "conventional-commits",
+          description: "Writes a Conventional Commits message for the staged changes: type, optional scope, an imperative subject under 72 characters.",
+          files: [
+            { path: "SKILL.md", bytes: 1840 },
+            { path: "reference/types.md", bytes: 612 },
+          ],
+          skillMd:
+            "---\nname: conventional-commits\ndescription: Writes a Conventional Commits message.\n---\n\n# Conventional commits\n\n1. Read the staged diff.\n2. Pick one type: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.\n3. Write `type(scope): subject` in the imperative, under 72 characters.\n",
+        },
+      },
+      {
+        ...base,
+        id: "pr2",
+        scope: { kind: "global" },
+        status: "staged",
+        draft: {
+          kind: "connector",
+          name: "github",
+          type: "stdio",
+          target: "npx -y @modelcontextprotocol/server-github --toolsets repos,issues,pull_requests --read-only",
+          requiredVars: ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+        },
+      },
+      {
+        ...base,
+        id: "pr3",
+        scope: { kind: "project", projectId: "p1" },
+        status: "failed",
+        retryable: true,
+        error:
+          "A skill named release-notes-from-merged-pull-requests-since-last-tag already exists in Project: acme-web. Ask the agent for a different name, or remove the existing one from Library → Skills first.",
+        draft: { kind: "skill", name: "release-notes-from-merged-pull-requests-since-last-tag", description: "Drafts release notes from merged PRs.", files: [{ path: "SKILL.md", bytes: 920 }], skillMd: "# Release notes\n" },
+      },
+      {
+        ...base,
+        id: "pr4",
+        scope: { kind: "global" },
+        status: "installed",
+        installId: "inst-pr4",
+        draft: { kind: "connector", name: "linear", type: "http", target: "https://mcp.linear.app/mcp", requiredVars: [] },
+      },
+      {
+        ...base,
+        id: "pr5",
+        scope: { kind: "global" },
+        status: "staged",
+        draft: {
+          kind: "app",
+          name: "sales-dashboard",
+          title: "Sales",
+          description: "Revenue and orders.",
+          files: [
+            { path: "app.json", bytes: 210 },
+            { path: "index.html", bytes: 1800 },
+          ],
+          grants: [
+            { server: "shop", tool: "sales_summary", access: "read" },
+            { server: "shop", tool: "refund_order", access: "write" },
+          ],
+          update: false,
+          draftKey: "d~t1~sales-dashboard",
+        },
+      },
+    ];
+    for (const p of proposals) mockProposals.set(p.id, p);
+    events.t1 = [
+      ev(1, { kind: "user", text: "Create a skill that writes conventional commit messages, and add the GitHub MCP server." }),
+      ev(2, { kind: "assistant-text", text: "Here are both drafts. Nothing is installed until you choose **Install**." }),
+      ev(3, { kind: "extension-proposal", proposalId: "pr1" }),
+      ev(4, { kind: "extension-proposal", proposalId: "pr2" }),
+      ev(5, { kind: "assistant-text", text: "An earlier attempt and an existing connector, for reference:" }),
+      ev(6, { kind: "extension-proposal", proposalId: "pr3" }),
+      ev(7, { kind: "extension-proposal", proposalId: "pr4" }),
+      ev(8, { kind: "extension-proposal", proposalId: "pr5" }),
+    ];
+  }
 
   // Sample skills across every origin, so the Library tab and the / menu show
   // project, harness, shared, bundled and legacy rows (and a shadowed one).
@@ -305,6 +404,10 @@ export function installMock(): void {
         if (opts.designSystem) th.designSystem = opts.designSystem;
       }
       if (opts?.expertId) th.expertId = opts.expertId;
+      if (opts?.preset === "creator") {
+        th.preset = "creator";
+        th.presetRevision = 1;
+      }
       threads[pid] = [th, ...(threads[pid] ?? [])];
       return th;
     },
@@ -559,6 +662,82 @@ export function installMock(): void {
         : { ...mcp, servers: mcp.servers.filter((x) => x.name !== name) };
       return mcp;
     },
+    getExtensionProposal: async (id) => mockProposals.get(id) ?? null,
+    getExtensionThemePreview: async () => { throw new Error("Page theme previews require the desktop app."); },
+    installExtension: async (id, pick) => {
+      const p = mockProposals.get(id);
+      if (!p) throw new Error("Extension proposal not found.");
+      const scope: ExtensionProposalView["scope"] = p.draft.kind === "app" || pick === "global" ? { kind: "global" } : pick === "project" && p.projectChoice ? { kind: "project", projectId: p.projectChoice.id } : p.scope;
+      const updated: ExtensionProposalView = { ...p, scope, status: "installed", installId: `inst-${id}`, updatedAt: Date.now(), error: undefined, retryable: false };
+      mockProposals.set(id, updated);
+      mockInstalls.set(updated.installId!, {
+        id: updated.installId!,
+        proposalId: id,
+        scope: updated.scope,
+        kind: updated.draft.kind,
+        name: updated.draft.name,
+        targetPath: updated.draft.kind === "skill" ? `/Users/you/.cubiq/skills/${updated.draft.name}` : "/Users/you/Library/Application Support/CubiQ/mcp.json",
+        installedAt: Date.now(),
+      });
+      return updated;
+    },
+    rejectExtension: async (id) => {
+      const p = mockProposals.get(id);
+      if (!p) throw new Error("Extension proposal not found.");
+      const updated: ExtensionProposalView = { ...p, status: "rejected", updatedAt: Date.now(), error: undefined, retryable: false };
+      mockProposals.set(id, updated);
+      return updated;
+    },
+    listExtensionInstalls: async () => [...mockInstalls.values()],
+    listApps: async () => (scene === "creator" || scene === "app" ? mockApps : []),
+    appInfo: async (key) => mockApps.find((a) => a.key === key) ?? (key.startsWith("d~") ? { ...mockApps[0]!, key, scope: "draft" as const } : null),
+    setAppEnabled: async (key, enabled) => {
+      const i = mockApps.findIndex((a) => a.key === key);
+      if (i < 0) throw new Error("App not found.");
+      mockApps[i] = { ...mockApps[i]!, enabled };
+      emit({ type: "apps-changed" });
+    },
+    prepareAppEdit: async (key, threadId) => {
+      const app = mockApps.find((a) => a.key === key);
+      if (!app) throw new Error("App not found.");
+      return { app: { ...app, key: `d~${threadId}~${app.name}`, scope: "draft", enabled: true }, prompt: `Help me edit ${app.title}. Preview and check the draft, then propose a reviewed Update.\n\nRequested changes: ` };
+    },
+    callApp: async (_key, _projectId, server, tool, args) => {
+      if (server !== "shop" || tool !== "sales_summary") return { ok: false, error: `"${server}.${tool}" is not in this app's grants (app.json).` };
+      const days = Math.min(90, Math.max(1, Number(args.days) || 7));
+      const start = Date.UTC(2026, 10, 18) - (days - 1) * 86_400_000;
+      const rows = Array.from({ length: days }, (_, i) => {
+        const orders = 18 + ((i * 7) % 13) + (i % 7 === 5 ? 9 : 0);
+        return { date: new Date(start + i * 86_400_000).toISOString().slice(5, 10), orders, revenue: orders * (41 + ((i * 11) % 17)) };
+      });
+      const sum = rows.reduce((t, r) => t + r.revenue, 0);
+      const n = rows.reduce((t, r) => t + r.orders, 0);
+      return {
+        ok: true,
+        result: {
+          currency: "USD",
+          days: rows,
+          previous: { revenue: Math.round(sum * 0.91), orders: Math.round(n * 0.95) },
+          topProducts: [
+            { name: "Cold brew 1L", units: Math.round(n * 0.31), revenue: Math.round(sum * 0.27) },
+            { name: "House blend 250g", units: Math.round(n * 0.22), revenue: Math.round(sum * 0.24) },
+            { name: "Oat latte", units: Math.round(n * 0.4), revenue: Math.round(sum * 0.19) },
+            { name: "Ceramic cup", units: Math.round(n * 0.05), revenue: Math.round(sum * 0.08) },
+          ],
+        },
+      };
+    },
+    appStoreGet: async (key, name) => mockAppStore.get(`${key}:${name}`) ?? null,
+    appStoreSet: async (key, name, value) => (mockAppStore.set(`${key}:${name}`, value), { ok: true, result: null }),
+    uninstallExtension: async (installId) => {
+      const inst = mockInstalls.get(installId);
+      mockInstalls.delete(installId);
+      if (inst?.kind === "app") {
+        const i = mockApps.findIndex((a) => a.name === inst.name);
+        if (i >= 0) mockApps.splice(i, 1);
+        emit({ type: "apps-changed" });
+      }
+    },
     setMcpServerEnabled: async (name, enabled, projectId) => {
       const set = (x: McpOverview["servers"][number]) => (x.name === name ? { ...x, enabled } : x);
       mcp = projectId
@@ -607,7 +786,12 @@ export function installMock(): void {
       (window as unknown as { __opened?: unknown[] }).__opened = [...((window as unknown as { __opened?: unknown[] }).__opened ?? []), { ...target, editor }];
       return target.path.includes("missing") ? { ok: false, error: `${target.path} doesn't exist.` } : { ok: true, editor: editor ?? "cursor" };
     },
-    updateStatus: async () => ({ current: "0.1.0", ready: scene === "update" ? "0.2.0" : null, supported: true }),
+    updateStatus: async () => ({
+      current: "0.1.0",
+      ready: scene === "update" ? "0.2.0" : null,
+      notes: scene === "update" ? "Added\n- Release notes in About and the update card\nFixed\n- macOS builds without a Developer ID update themselves" : null,
+      supported: true,
+    }),
     aboutInfo: async () => ({
       name: "CubiQ",
       version: "0.1.2",
@@ -621,6 +805,16 @@ export function installMock(): void {
         { hash: "abc1234", date: "2026-09-27", subject: "Add the About sheet with a git build stamp" },
         { hash: "def5678", date: "2026-09-26", subject: "Keep the composer focused after a permission prompt" },
         { hash: "9a0b1c2", date: "2026-09-25", subject: "Show rate limits in the Message Center" },
+      ],
+      releases: [
+        {
+          version: "0.1.2",
+          date: "2026-11-19",
+          groups: [
+            { title: "Added", items: ["One-line installers for macOS, Linux and Windows", "Release notes in About and the update card"] },
+            { title: "Fixed", items: ["macOS builds without a Developer ID update themselves"] },
+          ],
+        },
       ],
     }),
     uiImage: async () => null,

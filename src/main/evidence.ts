@@ -60,13 +60,55 @@ export function claimsPass(answer: string): boolean {
 const CHECK_COMMAND =
   /\b(?:test|tests|vitest|jest|mocha|ava|pytest|unittest|tox|nox|rspec|phpunit|ctest|tsc|typecheck|lint|eslint|biome|ruff|mypy|pyright|clippy|check|build|gradle|gradlew|mvn|make)\b/i;
 
+/** Commands that only print, read, search, or manage files/git, even when arguments mention "test" or "build". */
+const NON_CHECK_VERB =
+  /^(?:echo|printf|cat|head|tail|less|more|ls|pwd|find|grep|egrep|fgrep|rg|ripgrep|git|sed|awk|cp|mv|rm|mkdir|rmdir|touch|chmod|chown|true|false|sleep|wc|sort|uniq|cut|tr|diff|stat|file|which|type)\b/i;
+
 /** Harness tools that are a check run of their own, under any MCP prefix (`mcp__cubiq__design_lint`, `cubiq_design_lint`). */
 const CHECK_TOOL = /(?:^|[_.])design_lint$/;
 
+export function isCheckTool(tool: string): boolean {
+  return CHECK_TOOL.test(tool);
+}
+
+/** Whether a shell command (or any sub-command in a `&&`/`||`/`;`/`|`/`\n` chain) runs a check. */
+export function isCheckCommand(command: string): boolean {
+  for (const raw of command.split(/&&|\|\||[;|\n]/)) {
+    let seg = raw.trim();
+    while (/^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s]*)\s+/.test(seg)) {
+      seg = seg.replace(/^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s]*)\s+/, "").trim();
+    }
+    if (!seg || /^cd(?:\s|$)/i.test(seg)) continue;
+    // The program's own name: `./node_modules/.bin/vitest` → `vitest`, `/usr/bin/git` → `git`.
+    const verb = seg.replace(/^\S*\//, "");
+    if (NON_CHECK_VERB.test(verb)) continue;
+    if (CHECK_COMMAND.test(seg)) return true;
+  }
+  return false;
+}
+
 /** Whether any of the turn's commands looks like a test, typecheck, lint or build run, or it called a check tool. */
 export function ranChecks(commands: readonly string[], tools: readonly string[] = []): boolean {
-  return commands.some((c) => CHECK_COMMAND.test(c)) || tools.some((t) => CHECK_TOOL.test(t));
+  return commands.some(isCheckCommand) || tools.some(isCheckTool);
 }
+
+export type EvidenceStep =
+  | {
+      kind: "check";
+      command?: string;
+      tool?: string;
+      ok: boolean;
+      exitCode?: number | null;
+      cwd?: string;
+      revision?: string | number;
+    }
+  | {
+      kind: "edit";
+      path?: string;
+      revision?: string | number;
+    };
+
+export type VerificationStatus = "passed" | "failed" | "stale" | "not-run";
 
 export interface EvidenceInput {
   /** Test files that existed before the turn and changed in it. */
@@ -80,8 +122,44 @@ export interface EvidenceInput {
   commands: string[];
   /** The names of the tools the turn called: a design turn's `design_lint` is its check run. */
   tools?: string[];
+  /** Ordered ledger of check runs and edits during the turn, when tracked. */
+  steps?: readonly EvidenceStep[];
   /** The project's check gate ran this turn and passed. */
   checkPassed: boolean;
+  /** The project's check gate ran this turn and failed. */
+  checkFailed?: boolean;
+}
+
+/** Resolve the turn's verification status from its ordered ledger (or legacy command/tool lists). */
+export function verificationStatus(i: Pick<EvidenceInput, "commands" | "tools" | "steps" | "checkPassed" | "checkFailed">): VerificationStatus {
+  if (i.checkPassed) return "passed";
+  if (i.checkFailed) return "failed";
+  if (i.steps) {
+    let status: VerificationStatus = "not-run";
+    let passedRevision: string | number | undefined;
+    for (const s of i.steps) {
+      if (s.kind === "check") {
+        const isCheck =
+          (s.command !== undefined ? isCheckCommand(s.command) : false) ||
+          (s.tool !== undefined ? isCheckTool(s.tool) : false) ||
+          (s.command === undefined && s.tool === undefined);
+        if (!isCheck) continue;
+        const ok = s.ok && (s.exitCode === undefined || s.exitCode === null || s.exitCode === 0);
+        if (ok) {
+          status = "passed";
+          passedRevision = s.revision;
+        } else {
+          status = "failed";
+        }
+      } else if (s.kind === "edit") {
+        if (status === "passed") status = "stale";
+      } else if (passedRevision !== undefined && (s as { revision?: string | number }).revision !== undefined && (s as { revision?: string | number }).revision !== passedRevision) {
+        if (status === "passed") status = "stale";
+      }
+    }
+    return status;
+  }
+  return ranChecks(i.commands, i.tools) ? "passed" : "not-run";
 }
 
 const list = (paths: string[]) => {
@@ -98,6 +176,11 @@ export function evidenceFlags(i: EvidenceInput): string[] {
   const weakenedPaths = new Set(i.weakened.map((w) => w.path));
   const edited = i.editedTests.filter((p) => !weakenedPaths.has(p));
   if (edited.length && !aboutTests) flags.push(`Changed existing tests: ${list(edited)}. Check they weren't loosened to pass.`);
-  if (claimsPass(i.answer) && !ranChecks(i.commands, i.tools) && !i.checkPassed) flags.push("Says tests or checks pass, but none ran this turn.");
+  if (claimsPass(i.answer)) {
+    const status = verificationStatus(i);
+    if (status === "not-run") flags.push("Says tests or checks pass, but none ran this turn.");
+    else if (status === "failed") flags.push("Says tests or checks pass, but the last check failed.");
+    else if (status === "stale") flags.push("Says tests or checks pass, but files were edited after the last check.");
+  }
   return flags;
 }

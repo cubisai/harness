@@ -155,7 +155,7 @@ describe("store reliability (D7)", () => {
           secretsEncrypted: false,
         }),
       ),
-      updateStatus: vi.fn(() => Promise.resolve({ current: "0.1.0", ready: null, supported: false })),
+      updateStatus: vi.fn(() => Promise.resolve({ current: "0.1.0", ready: null, notes: null, supported: false })),
       listLimits: vi.fn(() => Promise.resolve([])),
       pendingState: vi.fn(() => Promise.resolve({ running: [], permissions: [], plans: [], questions: [] })),
       listAllThreads: vi.fn(() => Promise.resolve({})),

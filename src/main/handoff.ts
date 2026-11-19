@@ -28,7 +28,27 @@ export function importThread(store: Store, projectId: string, data: unknown): Th
   const { thread, events, blobs } = validateExport(data);
   store.getProject(projectId);
   for (const [sha, content] of Object.entries(blobs)) store.writeBlob(sha, content);
-  return store.restoreThread(projectId, { thread, events });
+  const rawPreset = (thread as { preset?: unknown }).preset;
+  const unknownPreset = rawPreset !== undefined && rawPreset !== null && rawPreset !== "creator" ? String(rawPreset) : null;
+  const normalizedThread: Thread =
+    rawPreset === "creator"
+      ? {
+          ...thread,
+          preset: "creator",
+          ...(typeof thread.presetRevision === "number" ? { presetRevision: thread.presetRevision } : {}),
+        }
+      : (() => {
+          const { preset: _p, presetRevision: _pr, ...rest } = thread as Thread & { preset?: unknown; presetRevision?: unknown };
+          return rest;
+        })();
+  const restored = store.restoreThread(projectId, { thread: normalizedThread, events });
+  if (unknownPreset !== null) {
+    store.appendEvent(restored.id, {
+      kind: "notice",
+      text: `This thread used preset ${unknownPreset}, which this version doesn't have; it opened as a regular chat.`,
+    });
+  }
+  return restored;
 }
 
 function validateExport(data: unknown): ThreadExport {

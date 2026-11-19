@@ -29,6 +29,8 @@ export interface ToolCallPart {
   input: Record<string, unknown>;
   /** Set when the arguments weren't valid JSON: the raw text, so the loop can tell the model. */
   invalidInput?: string;
+  /** Opaque provider metadata sent back unchanged with the call (Gemini's OpenAI-compatible `extra_content.google.thought_signature`). */
+  extra?: Record<string, unknown>;
 }
 
 export type AssistantPart = { type: "text"; text: string } | ReasoningPart | ToolCallPart;

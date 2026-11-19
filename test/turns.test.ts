@@ -74,6 +74,13 @@ describe("workSummary", () => {
   });
 });
 
+describe("workSummary scripts", () => {
+  it("names run_code calls as scripts, not other steps", () => {
+    expect(workSummary([tool(0, "1", "run_code", "x"), tool(0, "2", "mcp__cubiq__run_code", "y")])).toBe("ran 2 scripts");
+    expect(workSummary([tool(0, "1", "Bash", "ls"), tool(0, "2", "run_code", "x")])).toBe("ran 1 command and 1 script");
+  });
+});
+
 describe("workDuration", () => {
   it("reads as seconds, then minutes, then hours", () => {
     expect(workDuration(41_400)).toBe("41s");

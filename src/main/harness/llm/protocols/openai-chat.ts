@@ -28,7 +28,11 @@ function lower(m: LlmMessage): unknown[] {
   if (m.role === "assistant") {
     const text = m.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("");
     const reasoning = m.content.flatMap((p) => (p.type === "reasoning" ? [p.text] : [])).join("");
-    const calls = m.content.flatMap((p) => (p.type === "tool-call" ? [{ id: p.id, type: "function", function: { name: p.name, arguments: p.invalidInput ?? JSON.stringify(p.input) } }] : []));
+    const calls = m.content.flatMap((p) =>
+      p.type === "tool-call"
+        ? [{ id: p.id, type: "function", function: { name: p.name, arguments: p.invalidInput ?? JSON.stringify(p.input) }, ...(p.extra ? { extra_content: p.extra } : {}) }]
+        : [],
+    );
     return [
       {
         role: "assistant",
@@ -72,7 +76,7 @@ function finishReason(raw: string | null, hasCalls: boolean): FinishReason {
 
 function stepper(): StreamStepper {
   const parts = new PartBuilder();
-  const calls = new Map<number, { id: string; name: string; args: string }>();
+  const calls = new Map<number, { id: string; name: string; args: string; extra?: Record<string, unknown> }>();
   let usage: LlmUsage = emptyUsage();
   let reason: string | null = null;
 
@@ -119,6 +123,8 @@ function stepper(): StreamStepper {
         entry.args += fn.arguments;
         if (fn.arguments) events.push({ type: "tool-input-delta", id: entry.id || `call_${index}`, name: entry.name, delta: fn.arguments });
       }
+      // Gemini sends its thought signature here; it has to go back unchanged.
+      if (typeof f.extra_content === "object" && f.extra_content !== null && !Array.isArray(f.extra_content)) entry.extra = f.extra_content as Record<string, unknown>;
       calls.set(index, entry);
     }
     return events;
@@ -136,7 +142,11 @@ function stepper(): StreamStepper {
     },
     end() {
       const ordered = [...calls.entries()].sort(([a], [b]) => a - b);
-      for (const [index, c] of ordered) parts.push(toolCall(c.id || `call_${index}`, c.name, c.args));
+      for (const [index, c] of ordered) {
+        const part = toolCall(c.id || `call_${index}`, c.name, c.args);
+        if (c.extra) part.extra = c.extra;
+        parts.push(part);
+      }
       return [finishEvent(finishReason(reason, ordered.length > 0), parts.done(), usage)];
     },
   };

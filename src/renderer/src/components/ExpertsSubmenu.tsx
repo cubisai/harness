@@ -22,12 +22,12 @@ export function recentExperts(experts: ExpertDef[], usage: Record<string, number
  * is empty and the right kind, on a new thread from the start, or on a confirm
  * step when the open thread already has messages.
  */
-export function pickMode(input: { thread: { kind: string; expertId?: string } | null; messages: number; running: boolean; def: { id: string; threadKind?: "design" } }): "here" | "same" | "confirm" | "new" {
+export function pickMode(input: { thread: { kind: string; preset?: string; expertId?: string } | null; messages: number; running: boolean; def: { id: string; threadKind?: "design" } }): "here" | "same" | "confirm" | "new" {
   const { thread, messages, running, def } = input;
   if (!thread) return "new";
   if (thread.expertId === def.id && messages === 0) return "same";
   const wanted = def.threadKind === "design" ? "design" : "chat";
-  if (wanted !== thread.kind) return "new";
+  if (wanted !== thread.kind || thread.preset === "creator") return "new";
   if (messages === 0 && !running) return "here";
   return "confirm";
 }
@@ -46,7 +46,7 @@ export function chooseExpert(id: string, close: () => void): "here" | "same" | "
   const messages = eventCount(threadId ? s.events[threadId] : undefined, threadId ? s.history[threadId]?.totals : undefined);
   const running = Boolean(threadId ? s.running[threadId] : false);
   const def: { id: string; threadKind?: "design" } = s.experts?.find((e) => e.id === id) ?? { id };
-  const mode = pickMode({ thread: thread ? { kind: thread.kind ?? "chat", expertId: thread.expertId } : null, messages, running, def });
+  const mode = pickMode({ thread: thread ? { kind: thread.kind ?? "chat", preset: thread.preset, expertId: thread.expertId } : null, messages, running, def });
   if (mode === "confirm") return "confirm";
   if (mode === "same") {
     close();

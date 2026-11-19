@@ -1,11 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { ChevronRight, Copy, Pencil, RotateCcw, X } from "lucide-react";
 import { artifactKind, isPreviewable, PLAN_ARTIFACT, TEAM_ARTIFACT_PREFIX, withoutExportSources } from "../../../shared/artifact-kind";
 import { skillsOf } from "../../../shared/skill-list";
 import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
 import type { TurnScore } from "../../../shared/learn";
-import { prettyTool, type RunResult } from "../../../shared/tools";
+import { WidgetView } from "../genui/WidgetView";
+import { prettyTool, toolLabel, type RunResult } from "../../../shared/tools";
 import { anchorDelta, anchorFor, collapseTarget, stillPinned, trimmedReserve, type ScrollAnchor } from "../disclosure";
 import { displayOrder } from "../event-order";
 import { type FileRef, parseFileRef } from "../fileref";
@@ -24,8 +25,11 @@ import { SubagentCard } from "./SubagentCard";
 import { useDismissedPlans } from "./TodoDock";
 import { activityOf, WaitingLine } from "./WaitingLine";
 import { useSmoothText } from "../hooks/useSmoothText";
+import { UiAnswersProvider, UiOriginProvider } from "../genui/origin";
 import { createSegmenter, type Segment, type TurnChanges, workDuration, workSummary } from "../turns";
 import { computeWindow, ESTIMATE_PX, WINDOW_MIN_SEGMENTS } from "../windowing";
+
+const ProposalCard = lazy(() => import("./ProposalCard").then((m) => ({ default: m.ProposalCard })));
 
 type ToolEvent = Extract<ThreadEvent, { kind: "tool-use" }>;
 type ResultEvent = Extract<ThreadEvent, { kind: "tool-result" }>;
@@ -459,6 +463,7 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
       }}
     >
       <div className="thread-inner" ref={inner}>
+        <UiAnswersProvider threadId={threadId} events={events}>
         {history?.hasMore && <EarlierMessages loading={history.loadingOlder} onLoad={loadEarlier} />}
         {expertId && events.length === 0 && <ExpertIntro expertId={expertId} />}
         {windowing ? (
@@ -479,6 +484,7 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
             <SegmentRow key={segmentKey(seg)} seg={seg} results={results} children={children} running={running} threadId={threadId} last={i === lastTurnEnd} />
           ))
         )}
+        </UiAnswersProvider>
         {reasoningMode === "text" &&
           reasoningItems.map((item, i) => (
             <LiveReasoning key={item.key} text={item.text} newest={i === reasoningItems.length - 1 && textItems.length === 0} />
@@ -563,7 +569,9 @@ function WorkGroup({ seg, results, children, running, threadId }: { seg: Extract
   const rows = seg.items.map((e) =>
     e.event.kind === "assistant-text" ? (
       <div className="work-note" key={e.seq}>
-        <Markdown text={e.event.text} onFile={openRef} />
+        <UiOriginProvider seq={e.seq}>
+          <Markdown text={e.event.text} onFile={openRef} />
+        </UiOriginProvider>
       </div>
     ) : (
       <EventRow key={e.seq} stored={e} results={results} children={children} running={running} threadId={threadId} />
@@ -822,7 +830,9 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
     case "assistant-text":
       return (
         <div className="msg-assistant">
-          <Markdown text={e.text} onFile={openRef} />
+          <UiOriginProvider seq={stored.seq}>
+            <Markdown text={e.text} onFile={openRef} />
+          </UiOriginProvider>
         </div>
       );
     case "thinking":
@@ -842,6 +852,12 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
       );
     case "tool-result":
       return null; // shown on its tool row
+    case "widget":
+      return (
+        <div className="msg-assistant">
+          <WidgetView envelope={e.envelope} />
+        </div>
+      );
     case "turn-end":
       return (
         <div className="turn-meta">
@@ -857,6 +873,12 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
       return <div className="notice">{e.text}</div>;
     case "issue-offer":
       return threadId ? <IssueOfferCard stored={stored} offer={e} threadId={threadId} /> : null;
+    case "extension-proposal":
+      return threadId ? (
+        <Suspense fallback={null}>
+          <ProposalCard key={e.proposalId} proposalId={e.proposalId} threadId={threadId} />
+        </Suspense>
+      ) : null;
     case "plan": {
       // The live list is in the todo dock; history keeps one quiet line that opens to the list.
       const { done, total } = todoProgress(e.entries);
@@ -1021,7 +1043,7 @@ export function ToolRow(props: {
     <details className="tool" open={open} onToggle={(e) => onToggle(e.currentTarget.open)}>
       <summary className="tool-row" title={result?.summary ?? tool.summary}>
         <span className={`dot ${state}`} />
-        <span className="name">{prettyTool(tool.name)}</span>
+        <span className="name">{toolLabel(tool.name, tool.payload)}</span>
         {fileRef ? (
           <button
             className="summary file-link"

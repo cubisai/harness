@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { AUTO_SYSTEM, parseReferenceSystemId, REFERENCE_SYSTEM_PREFIX, STYLE_PREFIX, type DesignDirection } from "../../../shared/direction";
 import type { DesignReferenceCard } from "../../../shared/design-mutation";
 import { stylePreviewUrl } from "../../../shared/style-preview";
+import { StyleSpecimen } from "./StyleSpecimen";
 import type { DesignEntry, DesignKitGroup, DesignMigrationPreview, DesignThemeCard, Thread } from "../../../shared/types";
 import { api } from "../api";
 import { StudioMenu, type StudioMenuItem } from "../design/StudioBar";
@@ -166,32 +167,6 @@ function ScaledFrame({ title, url }: { title: string; url: string }) {
   return (
     <div className="sp-move-frame" ref={box}>
       <iframe title={title} sandbox="allow-scripts" tabIndex={-1} src={url} style={{ transform: `scale(${scale})` }} />
-    </div>
-  );
-}
-
-/** The width a style's sample page is laid out at: a desktop page, scaled down to whatever box the picker has. */
-const SPECIMEN_WIDTH = 960;
-
-/** A style's sample page, always laid out at desktop width and scaled to fit its box. */
-function Specimen({ title, url }: { title: string; url: string }) {
-  const box = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ scale: 0.375, height: 0 });
-  useEffect(() => {
-    const el = box.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const resize = () => {
-      const scale = el.clientWidth / SPECIMEN_WIDTH || 0.375;
-      setSize({ scale, height: el.clientHeight / scale });
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  return (
-    <div className="sp-specimen" ref={box}>
-      <iframe title={title} sandbox="" tabIndex={-1} src={url} style={{ width: SPECIMEN_WIDTH, height: size.height || undefined, transform: `scale(${size.scale})` }} />
     </div>
   );
 }
@@ -700,7 +675,7 @@ export function StylePicker({ projectId, thread, value, direction, disabled, onD
               <div className="sp-preview">
                 {preview ? (
                   <>
-                    <Specimen key={`${preview.id}-${dark}`} title={`${preview.name} sample`} url={stylePreviewUrl(projectId, preview.id, dark ? "dark" : "light")} />
+                    <StyleSpecimen key={`${preview.id}-${dark}`} title={`${preview.name} sample`} url={stylePreviewUrl(projectId, preview.id, dark ? "dark" : "light")} />
                     <div className="sp-preview-name">{preview.name}</div>
                     {preview.description && <div className="sp-preview-desc">{preview.description}</div>}
                     <div className="sp-preview-facts">

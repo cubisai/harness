@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { elapsed, inboxModel, nthVisibleThread, shortTime, visibleThreads, waitingThreads } from "../src/renderer/src/sections";
+import { elapsed, inboxModel, nthVisibleThread, shortTime, visibleThreads, waitingThreads, workspaceModeOf } from "../src/renderer/src/sections";
 import type { Thread } from "../src/shared/types";
 
 const NOW = new Date(2026, 9, 2, 15, 0, 0).getTime();
@@ -56,6 +56,32 @@ describe("inboxModel", () => {
     expect(ids(visibleThreads(m, { groupByProject: true, collapsed: { p1: true } }))).toEqual(["b", "d", "c", "e"]);
     expect(nthVisibleThread(m, 3, { groupByProject: true })?.id).toBe("a");
     expect(nthVisibleThread(m, 9, { groupByProject: true })).toBeNull();
+  });
+
+  it("filters mixed chat, design and creator threads per mode while always showing running threads", () => {
+    const mixed = {
+      p1: [
+        thread("chat-1", "p1", MIN),
+        thread("old", "p1", 2 * MIN),
+        thread("design-1", "p1", 3 * MIN, { kind: "design" }),
+        thread("creator-1", "p1", 4 * MIN, { preset: "creator" }),
+        thread("creator-pin", "p1", 5 * MIN, { preset: "creator", pinned: true }),
+      ],
+    };
+    expect(workspaceModeOf(mixed.p1[0]!)).toBe("chat");
+    expect(workspaceModeOf(mixed.p1[1]!)).toBe("chat");
+    expect(workspaceModeOf(mixed.p1[2]!)).toBe("design");
+    expect(workspaceModeOf(mixed.p1[3]!)).toBe("creator");
+
+    const chatMode = inboxModel(["p1"], mixed, { running: { "creator-1": true }, mode: "chat" });
+    expect(ids(chatMode.running)).toEqual(["creator-1"]);
+    expect(ids(chatMode.pinned)).toEqual([]);
+    expect(ids(chatMode.recent)).toEqual(["chat-1", "old"]);
+
+    const creatorMode = inboxModel(["p1"], mixed, { running: { "design-1": true }, mode: "creator" });
+    expect(ids(creatorMode.running)).toEqual(["design-1"]);
+    expect(ids(creatorMode.pinned)).toEqual(["creator-pin"]);
+    expect(ids(creatorMode.recent)).toEqual(["creator-1"]);
   });
 });
 

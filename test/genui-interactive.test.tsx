@@ -55,9 +55,13 @@ describe("interactive UI blocks", () => {
     expect(form).toContain('type="number"');
     expect(form).toContain('class="ui-toggle"');
     expect(form).toContain(">Send</button>");
-    const stat = render(fence("stat", "Users | 12,400 | +8%\nChurn | 2.1% | -0.3pt"));
-    expect(stat).toContain('class="ui-stat-delta up"');
-    expect(stat).toContain('class="ui-stat-delta down"');
+    // A change is coloured only when the block says which way is better (user decision 2026-11-17).
+    const neutral = render(fence("stat", "Users | 12,400 | +8%\nChurn | 2.1% | -0.3pt"));
+    expect(neutral).toContain('<div class="ui-stat-delta">+8%</div>');
+    expect(neutral).toContain('<div class="ui-stat-delta">-0.3pt</div>');
+    const judged = render(fence("stat", "Users | 12,400 | +8% | better: up\nChurn | 2.1% | +0.3pt | lower is better"));
+    expect(judged).toContain('class="ui-stat-delta good"');
+    expect(judged).toContain('class="ui-stat-delta bad"');
   });
 
   it("sends a form as one compact line", () => {
@@ -66,18 +70,18 @@ describe("interactive UI blocks", () => {
     expect(statMarkdown({ name: "stat", stats: [{ label: "Users", value: "12k", delta: "+8%" }] })).toBe("- Users: **12k** (+8%)");
   });
 
-  it("sends a reply in the open thread, queueing it while a turn runs", () => {
+  it("sends a reply in the open thread, queueing it while a turn runs", async () => {
     const send = vi.fn(async () => true);
     const enqueue = vi.fn();
     useStore.setState({ selectedThreadId: null, send, enqueue, running: {} });
-    expect(sendUiReply("Pro")).toBe(false);
+    expect(await sendUiReply("Pro")).toBe(false);
     useStore.setState({ selectedThreadId: "t1" });
-    expect(sendUiReply("Pro")).toBe(true);
-    expect(send).toHaveBeenCalledWith("Pro");
+    expect(await sendUiReply("Pro")).toBe(true);
+    expect(send).toHaveBeenCalledWith("Pro", undefined, "t1");
     useStore.setState({ running: { t1: true } });
-    sendUiReply("Team");
+    await sendUiReply("Team");
     expect(enqueue).toHaveBeenCalledWith("t1", "Team");
-    expect(sendUiReply("   ")).toBe(false);
+    expect(await sendUiReply("   ")).toBe(false);
   });
 });
 

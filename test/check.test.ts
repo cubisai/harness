@@ -58,6 +58,13 @@ describe("runCheck", () => {
     expect(r.durationMs).toBeGreaterThanOrEqual(0);
   });
 
+  it("keeps the final lines of a log far larger than its buffer", async () => {
+    const r = await runCheck(nodeCmd("const l='x'.repeat(999)+'\\\\n';for(let i=0;i<3000;i++)process.stdout.write(l);process.stdout.write('LAST LINE')"), tempDir(), { timeoutMs: 20_000 });
+    expect(r.ok).toBe(true);
+    expect(r.tail.endsWith("LAST LINE")).toBe(true);
+    expect(r.tail.length).toBeLessThanOrEqual(6001);
+  });
+
   it("passes and keeps stdout", async () => {
     const r = await runCheck(nodeCmd("process.stdout.write('hi')"), tempDir(), { timeoutMs: 10_000 });
     expect(r.ok).toBe(true);

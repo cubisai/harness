@@ -586,7 +586,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const guideText = config.guide?.(input.cwd, input.design) ?? "";
       const memoryText = input.projectId ? config.memory?.(input.projectId, input.threadId, input.sessionId ?? null) ?? null : null;
       const codeMode = input.threadId && config.codeTool ? (config.codeMode?.(input.threadId) ?? "off") : "off";
-      const systemAppend = [guideText, TODO_HINT, input.expert, memoryText, codeMode !== "off" ? `${CODE_HINT} ${CODE_NUDGE}` : null].filter((part): part is string => Boolean(part)).join("\n\n");
+      const systemAppend = [guideText, TODO_HINT, input.expert, input.preset, memoryText, codeMode !== "off" ? `${CODE_HINT} ${CODE_NUDGE}` : null].filter((part): part is string => Boolean(part)).join("\n\n");
       const harnessTools = [...input.tools, ...(codeMode !== "off" ? [config.codeTool!(input.threadId)] : []), claudeTodoTool];
       const bashHooks = [...(hasShells ? [noBackgroundBash] : []), guard];
       // Claude writes its list up front and rarely comes back to it: stopping with parts still open,

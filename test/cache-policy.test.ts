@@ -78,6 +78,28 @@ describe("tool set pinning", () => {
     expect(drained).toEqual([{ set: changed }]);
     expect(pinnedFingerprint(THREAD)).toBe(fingerprint(changed));
   });
+
+  it("detects nested schema changes while ignoring host-only tool properties", () => {
+    const base = toolSetOf([tool("configure", { item: z.object({ mode: z.enum(["fast", "safe"]), retries: z.number().optional() }) })], [docs]);
+    const diffEnum = toolSetOf([tool("configure", { item: z.object({ mode: z.enum(["fast", "strict"]), retries: z.number().optional() }) })], [docs]);
+    const diffNestedKey = toolSetOf([tool("configure", { item: z.object({ mode: z.enum(["fast", "safe"]), timeoutMs: z.number().optional() }) })], [docs]);
+    const diffDesc = toolSetOf([tool("configure", { item: z.object({ mode: z.enum(["fast", "safe"]).describe("execution mode"), retries: z.number().optional() }) })], [docs]);
+    const hostOnly = toolSetOf(
+      [
+        {
+          ...tool("configure", { item: z.object({ mode: z.enum(["fast", "safe"]), retries: z.number().optional() }) }),
+          autoAllow: false,
+          run: async () => ({ text: "different host implementation" }),
+        },
+      ],
+      [docs],
+    );
+
+    expect(fingerprint(base)).not.toBe(fingerprint(diffEnum));
+    expect(fingerprint(base)).not.toBe(fingerprint(diffNestedKey));
+    expect(fingerprint(base)).not.toBe(fingerprint(diffDesc));
+    expect(fingerprint(base)).toBe(fingerprint(hostOnly));
+  });
 });
 
 describe("isMiss", () => {

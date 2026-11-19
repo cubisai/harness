@@ -47,8 +47,12 @@ describe("claimsPass", () => {
 
 describe("ranChecks", () => {
   it("recognises test, typecheck, lint and build commands", () => {
-    for (const c of ["npm test", "bun run typecheck", "pytest -q", "go test ./...", "cargo clippy", "npx tsc --noEmit", "make check"]) expect(ranChecks([c]), c).toBe(true);
-    expect(ranChecks(["ls -la", "cat src/a.ts", "git status"])).toBe(false);
+    for (const c of ["npm test", "bun run typecheck", "pytest -q", "go test ./...", "cargo clippy", "npx tsc --noEmit", "make check", "cd pkg && npm test", "CI=1 vitest run", "./node_modules/.bin/vitest run", "/usr/local/bin/pytest -q"]) {
+      expect(ranChecks([c]), c).toBe(true);
+    }
+    for (const c of ["ls -la", "cat src/a.ts", "git status", "echo tests pass", "echo 'all tests pass'", "printf 'build succeeded'", "git commit -m 'fix test'", "rg test src/", "cat test/a.test.ts", "/usr/bin/git log --grep test", "/bin/echo build ok"]) {
+      expect(ranChecks([c]), c).toBe(false);
+    }
   });
 
   it("counts a design_lint call under any MCP prefix, and no other tool", () => {
@@ -84,8 +88,43 @@ describe("evidenceFlags", () => {
   it("flags a pass claim only when nothing checked it", () => {
     const claim = { ...base, answer: "Done. All tests pass." };
     expect(evidenceFlags(claim)).toEqual(["Says tests or checks pass, but none ran this turn."]);
+    expect(evidenceFlags({ ...claim, commands: ["echo tests pass"] })).toEqual(["Says tests or checks pass, but none ran this turn."]);
     expect(evidenceFlags({ ...claim, commands: ["npm test"] })).toEqual([]);
     expect(evidenceFlags({ ...claim, checkPassed: true })).toEqual([]);
+  });
+
+  it("distinguishes failed and stale checks from a verified pass in the evidence ledger", () => {
+    const claim: EvidenceInput = { ...base, answer: "Done. All tests pass." };
+    expect(
+      evidenceFlags({
+        ...claim,
+        commands: ["npm test"],
+        steps: [{ kind: "check", command: "npm test", ok: false, exitCode: 1 }],
+      }),
+    ).toEqual(["Says tests or checks pass, but the last check failed."]);
+
+    expect(
+      evidenceFlags({
+        ...claim,
+        commands: ["npm test"],
+        steps: [
+          { kind: "check", command: "npm test", ok: true, exitCode: 0 },
+          { kind: "edit", path: "src/add.ts" },
+        ],
+      }),
+    ).toEqual(["Says tests or checks pass, but files were edited after the last check."]);
+
+    expect(
+      evidenceFlags({
+        ...claim,
+        commands: ["npm test", "npm test"],
+        steps: [
+          { kind: "check", command: "npm test", ok: false, exitCode: 1 },
+          { kind: "edit", path: "src/add.ts" },
+          { kind: "check", command: "npm test", ok: true, exitCode: 0 },
+        ],
+      }),
+    ).toEqual([]);
   });
 
   it("shortens long file lists", () => {

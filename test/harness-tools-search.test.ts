@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BUILT_IN_GUARD } from "../src/main/guard";
-import { globTool, globToRegExp } from "../src/main/harness/tools/glob";
+import { globTool, globToRegExp, splitPattern } from "../src/main/harness/tools/glob";
+import { readTool } from "../src/main/harness/tools/read";
 import { grepTool } from "../src/main/harness/tools/grep";
 import { ToolError, type ToolContext } from "../src/main/harness/tools/types";
 
@@ -71,6 +72,45 @@ describe("globTool", () => {
   it("treats *.md as top-level only", async () => {
     const res = await globTool.run({ pattern: "*.md" }, ctx());
     expect(res.text.trim()).toBe("README.md");
+  });
+
+  it("searches from an absolute pattern's own folder, returning paths read can open", async () => {
+    const res = await globTool.run({ pattern: `${root.split("\\").join("/")}/src/*.ts` }, ctx());
+    expect(res.text.trim()).toBe("src/a.ts");
+    const outside = mkdtempSync(join(tmpdir(), "harness-out-"));
+    try {
+      writeFileSync(join(outside, "x.md"), "outside\n");
+      const out = await globTool.run({ pattern: join(outside, "*.md") }, ctx());
+      expect(out.text.trim()).toBe(join(outside, "x.md").split("\\").join("/"));
+      const read = await readTool.run({ path: out.text.trim() }, ctx());
+      expect(read.text).toContain("outside");
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("returns paths relative to the thread's folder when path is set", async () => {
+    const res = await globTool.run({ pattern: "**/*.ts", path: "src" }, ctx());
+    expect(res.text.split("\n").sort()).toEqual(["src/a.ts", "src/deep/c.ts"]);
+    const read = await readTool.run({ path: "src/deep/c.ts" }, ctx());
+    expect(read.text).toContain("gamma");
+    const data = await globTool.run({ pattern: "*.tsx", path: "src" }, ctx({ script: true }));
+    expect(data.data).toEqual(["src/b.tsx"]);
+  });
+
+  it("follows ../ out of the search folder", async () => {
+    const res = await globTool.run({ pattern: "../*.tsx" }, ctx({ cwd: join(root, "src", "deep") }));
+    expect(res.text.trim()).toBe(join(root, "src", "b.tsx").split("\\").join("/"));
+  });
+
+  it("keeps ordinary relative patterns as they were", () => {
+    expect(splitPattern("**/*.ts")).toBeUndefined();
+    expect(splitPattern("src/*.ts")).toBeUndefined();
+    expect(splitPattern("/a/b/*.ts")).toEqual({ dir: "/a/b", glob: "*.ts" });
+    expect(splitPattern("/a/b/c.ts")).toEqual({ dir: "/a/b", glob: "c.ts" });
+    expect(splitPattern("/*.ts")).toEqual({ dir: "/", glob: "*.ts" });
+    expect(splitPattern("C:\\repo\\src\\**\\*.ts")).toEqual({ dir: "C:/repo/src", glob: "**/*.ts" });
+    expect(splitPattern("C:\\*.ts")).toEqual({ dir: "C:/", glob: "*.ts" });
   });
 
   it("reports the pattern when nothing matches", async () => {

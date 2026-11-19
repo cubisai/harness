@@ -23,3 +23,6 @@ bench/results/
 /.cubiq/
 /*.mov
 /Screenshot*.png
+
+# Local browser QA evidence may contain real connector data.
+/test-output/

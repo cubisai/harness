@@ -7,13 +7,15 @@ import "../styles/about.css";
 
 /**
  * The About CubiQ sheet: the app icon and version, the runtime versions, and
- * the git build stamp with a short changelog. Opened from the macOS app menu
+ * the release notes from CHANGELOG.md (the git build stamp's commits when a
+ * build has none), and a downloaded update's notes with Restart. Opened from the macOS app menu
  * (`open-about`) or Settings → Updates. `info` is a test seam for a static
  * render; the app passes nothing and the sheet fetches on open.
  */
 export function AboutSheet({ info: initial }: { info?: AboutInfo | null } = {}) {
   const open = useStore((s) => s.aboutOpen);
   const setOpen = useStore((s) => s.setAboutOpen);
+  const update = useStore((s) => s.appUpdate);
   const [fetched, setFetched] = useState<AboutInfo | null>(null);
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -81,10 +83,39 @@ export function AboutSheet({ info: initial }: { info?: AboutInfo | null } = {}) 
           )}
         </div>
 
+        {update?.ready && (
+          <section>
+            <h3>Ready to install · {update.ready}</h3>
+            {update.notes ? <NotesText text={update.notes} /> : <p className="about-empty">This release has no notes.</p>}
+          </section>
+        )}
+
         <section>
           <h3>What's new</h3>
           {!info ? (
             <p className="about-empty">{failed ? "Couldn't read version info." : "Loading…"}</p>
+          ) : info.releases?.length ? (
+            <div className="about-releases">
+              {info.releases.map((r) => (
+                <div className="about-release" key={r.version}>
+                  <p className="about-release-head">
+                    <span className="about-release-version">{r.version}</span>
+                    {r.date && <span className="about-date">{r.date}</span>}
+                    {r.version === info.version && <span className="about-release-current">Installed</span>}
+                  </p>
+                  {r.groups.map((g) => (
+                    <div key={g.title}>
+                      <p className="about-group">{g.title}</p>
+                      <ul className="about-notes">
+                        {g.items.map((item, i) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
           ) : info.changelog.length > 0 ? (
             <ul className="about-changelog">
               {info.changelog.map((row) => (
@@ -105,11 +136,49 @@ export function AboutSheet({ info: initial }: { info?: AboutInfo | null } = {}) 
           <button className="button" disabled={!info} onClick={copy}>
             {copied ? "Copied" : "Copy info"}
           </button>
-          <button className="button primary" onClick={() => setOpen(false)}>
-            Close
-          </button>
+          {update?.ready ? (
+            <>
+              <button className="button" onClick={() => setOpen(false)}>
+                Later
+              </button>
+              <button className="button primary" onClick={() => void api().installUpdate()}>
+                Restart to update
+              </button>
+            </>
+          ) : (
+            <button className="button primary" onClick={() => setOpen(false)}>
+              Close
+            </button>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Plain-text release notes: "- " lines are bullets, other lines group titles. */
+function NotesText({ text }: { text: string }) {
+  const blocks: { title: string | null; items: string[] }[] = [];
+  for (const line of text.split("\n")) {
+    if (line.startsWith("- ")) {
+      if (!blocks.length) blocks.push({ title: null, items: [] });
+      blocks[blocks.length - 1]!.items.push(line.slice(2));
+    } else blocks.push({ title: line, items: [] });
+  }
+  return (
+    <div className="about-release">
+      {blocks.map((b, i) => (
+        <div key={i}>
+          {b.title && <p className="about-group">{b.title}</p>}
+          {b.items.length > 0 && (
+            <ul className="about-notes">
+              {b.items.map((item, j) => (
+                <li key={j}>{item}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

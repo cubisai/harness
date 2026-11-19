@@ -155,8 +155,9 @@ describe("ExpertsSubmenu", () => {
     expect(pickMode({ thread: { kind: "chat", expertId: "e1" }, messages: 0, running: false, def: { id: "e1" } })).toBe("same");
   });
 
-  it("pickMode starts a new thread for a design expert on a chat thread", () => {
+  it("pickMode starts a new thread for a design expert on a chat thread, and for any chat expert on a creator thread", () => {
     expect(pickMode({ thread: { kind: "chat" }, messages: 0, running: false, def: { id: "d1", threadKind: "design" } })).toBe("new");
+    expect(pickMode({ thread: { kind: "chat", preset: "creator" }, messages: 0, running: false, def: { id: "e1" } })).toBe("new");
   });
 
   it("pickMode confirms a new thread when the thread has messages", () => {

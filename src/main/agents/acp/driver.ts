@@ -1358,6 +1358,7 @@ export function createAcpDriver(
       // earlier session was lost, the seed's history prefix; only then are they dropped.
       const g = l.guidePending ? deps.guide?.(input.cwd, input.design) ?? "" : "";
       const e = l.guidePending ? input.expert ?? "" : "";
+      const p = l.guidePending ? input.preset ?? "" : "";
       const m = l.guidePending && input.projectId ? deps.memory?.(input.projectId, input.threadId, null) ?? "" : "";
       const fresh = l.guidePending;
       // Code mode (run_code attached): one fixed line inside the guide; OpenCode v2's points at run_code in its own Code Mode catalog.
@@ -1369,13 +1370,14 @@ export function createAcpDriver(
       if (hint || lateHint) l.codeHintSent = true;
       // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.
       if (fresh) deps.extensions?.(input.cwd, input.projectId ?? null);
-      if (g || e || m) l.guidePending = false;
+      if (g || e || p || m) l.guidePending = false;
       const h = l.historyPending;
       l.historyPending = null;
       const lead = [
         ...(g ? [{ type: "text", text: `<harness-guide>\n${g}${hint ? `\n\n${hint}` : ""}\n</harness-guide>` }] : []),
         ...(lateHint ? [{ type: "text", text: `<harness-guide>\n${lateHint}\n</harness-guide>` }] : []),
         ...(e ? [{ type: "text", text: e }] : []),
+        ...(p ? [{ type: "text", text: p }] : []),
         ...(m ? [{ type: "text", text: m }] : []),
         ...(h ? [{ type: "text", text: `${h}\n---` }] : []),
       ];

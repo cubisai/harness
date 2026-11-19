@@ -1,6 +1,7 @@
 // The contract between the main process and the renderer. Everything that
 // crosses the preload bridge is one of these types.
 
+import type { WidgetEnvelope } from "./genui/widget";
 import type { PrototypeTier } from "./tiers";
 import type { DesignDirection } from "./direction";
 import type { ExpertDef, ExpertImportResult } from "./experts";
@@ -60,6 +61,7 @@ export interface Project {
 }
 
 export type PermissionMode = "ask" | "auto-edit" | "plan" | "full";
+export const PERMISSION_MODES: readonly PermissionMode[] = ["ask", "auto-edit", "plan", "full"];
 
 export type Theme = "system" | "light" | "dark";
 /** How much the UI animates. `prefers-reduced-motion: reduce` always wins and means instant. */
@@ -445,8 +447,12 @@ export interface AppUpdateStatus {
   current: string;
   /** A downloaded version waiting for a restart. */
   ready: string | null;
+  /** The ready version's release notes as plain text lines ("- " bullets), when the release has any. */
+  notes: string | null;
   /** False in dev builds and packages that can't update themselves. */
   supported: boolean;
+  /** Only in the first status after an update: the version that ran before. */
+  updatedFrom?: string | null;
 }
 
 /** Settings as the renderer sees them: API keys only as set / not set. */
@@ -461,6 +467,9 @@ export interface SettingsView extends Settings {
 }
 
 export type ThreadKind = "chat" | "design";
+export type AgentPresetId = "general" | "creator";
+export type WorkspaceMode = "chat" | "design" | "creator";
+export const CREATOR_PRESET_REVISION = 1;
 
 export interface Thread {
   id: string;
@@ -510,6 +519,10 @@ export interface Thread {
   expertId?: string;
   /** The issue this thread works on, picked with /issue; absent = none. */
   issue?: ThreadIssue;
+  /** The workspace preset ("creator"); absent = general (older rows and exports). */
+  preset?: "creator";
+  /** The preset prompt/tool revision this thread was created with; absent when preset is absent. */
+  presetRevision?: number;
 }
 
 export type IssueTracker = "github" | "gitlab" | "gitea" | "local";
@@ -740,6 +753,10 @@ export type ThreadEvent = (
   | { kind: "handoff"; phase: "seeded" | "reply" | "signal"; text: string; from?: string; to?: string; tokens?: number; tier?: number }
   /** The project's check command after a turn that changed files; ok null = still running. */
   | { kind: "check"; command: string; ok: boolean | null; exitCode: number | null; timedOut: boolean; durationMs: number; tail: string; round: number }
+  /** A table, stat or chart a run_code script showed the user from its own data (`show()`); never sent back to a model. */
+  | { kind: "widget"; envelope: WidgetEnvelope }
+  /** Creator mode: a validated skill or MCP connector proposal awaiting user review in the transcript. */
+  | { kind: "extension-proposal"; proposalId: string }
 ) &
   EventIds;
 
@@ -1339,7 +1356,127 @@ export type LiveUpdate =
   /** An automation run changed state (finished, waiting on the user, paused at its budget). */
   | { type: "automation-run"; notice: AutomationNotice }
   /** An automation run's result was delivered into its thread. */
-  | { type: "automation-delivered"; automationId: string; runId: number; threadId: string; title: string };
+  | { type: "automation-delivered"; automationId: string; runId: number; threadId: string; title: string }
+  /** Creator apps were installed, updated or removed: list them again. */
+  | { type: "apps-changed" }
+  | { type: "automations-changed"; projectId: string }
+  /** A Creator thread previews its draft app: open it in the App tab if that thread is on screen. */
+  | { type: "app-open"; threadId: string; app: AppInfo }
+  /** A previewed draft's files changed: reload its frame. */
+  | { type: "app-reload"; key: string };
+
+export type ProposalScope = { kind: "project"; projectId: string } | { kind: "global" };
+export type ProposalStatus = "staged" | "installed" | "rejected" | "failed";
+
+export interface ExtensionSkillSummary {
+  kind: "skill";
+  name: string;
+  description: string;
+  files: { path: string; bytes: number }[];
+  skillMd: string;
+}
+
+export interface ExtensionConnectorSummary {
+  kind: "connector";
+  name: string;
+  type: McpServerSpec["type"];
+  /** Redacted command line (stdio) or URL (remote) shown on the review card. */
+  target: string;
+  requiredVars: string[];
+}
+
+export interface ExtensionAppSummary {
+  kind: "app";
+  name: string;
+  title: string;
+  description: string;
+  icon?: string;
+  /** `change` only when this proposal updates an installed app: what it does to that file. */
+  files: { path: string; bytes: number; change?: "added" | "changed" | "removed" }[];
+  /** Each granted connector tool; `access` from the server's listing (`readOnlyHint`), "unknown" when not listed. */
+  grants: { server: string; tool: string; access: "read" | "write" | "unknown" }[];
+  /** Installing replaces an app of the same name installed at this scope. */
+  update: boolean;
+  /** The draft's frame key, so the card can preview it. */
+  draftKey: string;
+}
+
+export interface ThemeTokenOverride {
+  name: string;
+  scheme: "light" | "dark";
+  value: string;
+}
+
+export interface ExtensionThemeSummary {
+  kind: "theme";
+  name: string;
+  title: string;
+  description: string;
+  baseName: string;
+  tokens: (ThemeTokenOverride & { before: string })[];
+  previewUrl: string;
+  update: boolean;
+}
+
+export interface ExtensionAutomationSummary {
+  kind: "automation";
+  name: string;
+  input: AutomationInput;
+  scheduleText: string;
+  update: boolean;
+}
+
+export interface ExtensionProposalView {
+  id: string;
+  threadId: string;
+  scope: ProposalScope;
+  projectName: string | null;
+  /** The thread's own project, when it has one: the card offers it next to Global. */
+  projectChoice: { id: string; name: string } | null;
+  status: ProposalStatus;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+  installId?: string;
+  retryable?: boolean;
+  draft: ExtensionSkillSummary | ExtensionConnectorSummary | ExtensionAppSummary | ExtensionThemeSummary | ExtensionAutomationSummary;
+}
+
+/** An installed Creator app, as the sidebar and Library list it. */
+export interface AppInfo {
+  /** The frame key (`g~name`, `p~<projectId>~name`, or a Creator thread's draft `d~<threadId>~name`). */
+  key: string;
+  name: string;
+  scope: "global" | "project" | "draft";
+  projectId?: string;
+  title: string;
+  description: string;
+  icon?: string;
+  grants: { server: string; tools: string[] }[];
+  /** Disabled apps stay in Library but cannot open or call connectors. Omitted means enabled. */
+  enabled?: boolean;
+  path: string;
+  /** The entry page's `cubiq-app://` URL. */
+  url: string;
+  /** Why it can't open (bad or missing app.json). */
+  error?: string;
+}
+
+/** What a frame's bridge request gets back: a result, an error, or a question for the user first. */
+export type AppCallResult =
+  | { ok: true; result: unknown }
+  | { ok: false; error: string }
+  | { ok: false; approval: { token: string; server: string; tool: string; args: string } };
+
+export interface ExtensionInstallView {
+  id: string;
+  proposalId: string;
+  scope: ProposalScope;
+  kind: "skill" | "connector" | "app" | "theme" | "automation";
+  name: string;
+  targetPath: string;
+  installedAt: number;
+}
 
 /** The API the preload script exposes as `window.unskilled`. */
 export interface UnskilledApi {
@@ -1360,7 +1497,7 @@ export interface UnskilledApi {
   listThreads(projectId: string): Promise<Thread[]>;
   /** Every project's threads, grouped by project id; a project with none is absent. */
   listAllThreads(): Promise<Record<string, Thread[]>>;
-  createThread(projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: ThreadKind; designSystem?: string; expertId?: string }): Promise<Thread>;
+  createThread(projectId: string, agent?: string, opts?: { worktree?: boolean; kind?: ThreadKind; designSystem?: string; expertId?: string; preset?: "creator" }): Promise<Thread>;
   /** Pick a design thread's design system (null = the default); the next turn copies it into the design folder. */
   setDesignSystem(threadId: string, id: string | null): Promise<Thread>;
   /** Pick a design thread's prototype tier (null = Working); the next turn tells the agent. */
@@ -1525,6 +1662,23 @@ export interface UnskilledApi {
   /** Add or replace a server. Env or header values left empty keep what was stored. */
   saveMcpServer(entry: McpServerEntry, previousName?: string, projectId?: string | null): Promise<McpOverview>;
   removeMcpServer(name: string, projectId?: string | null): Promise<McpOverview>;
+  getExtensionProposal(id: string): Promise<ExtensionProposalView | null>;
+  getExtensionThemePreview(id: string): Promise<string>;
+  /** `scope` is the user's pick on the card; omitted, the proposal's own scope is kept. */
+  installExtension(id: string, scope?: "project" | "global"): Promise<ExtensionProposalView>;
+  rejectExtension(id: string): Promise<ExtensionProposalView>;
+  listExtensionInstalls(projectId?: string | null): Promise<ExtensionInstallView[]>;
+  /** Installed Creator apps for a project (its own, then global ones it doesn't shadow), or global only. */
+  listApps(projectId: string | null): Promise<AppInfo[]>;
+  /** One app by frame key (an installed app or a Creator thread's draft), or null when there is none. */
+  appInfo(key: string): Promise<AppInfo | null>;
+  setAppEnabled(key: string, enabled: boolean): Promise<void>;
+  prepareAppEdit(key: string, threadId: string): Promise<{ app: AppInfo; prompt: string }>;
+  /** A bridge call from an app's frame; `approval` resends a call the user said yes to. */
+  callApp(key: string, projectId: string | null, server: string, tool: string, args: Record<string, unknown>, approval?: { token: string; remember?: boolean }): Promise<AppCallResult>;
+  appStoreGet(key: string, name: string): Promise<unknown>;
+  appStoreSet(key: string, name: string, value: unknown): Promise<AppCallResult>;
+  uninstallExtension(installId: string): Promise<void>;
   setMcpServerEnabled(name: string, enabled: boolean, projectId?: string | null): Promise<McpOverview>;
   testMcpServer(name: string, projectId?: string | null): Promise<McpTestResult>;
   /** Use (or stop using) a global server in one project. */
@@ -1687,6 +1841,15 @@ export interface AboutInfo {
   node: string;
   os: string;
   changelog: { hash: string; date: string; subject: string }[];
+  /** Release notes from CHANGELOG.md, newest first; empty in a build without it. */
+  releases: AboutRelease[];
+}
+
+/** One CHANGELOG.md release: its version, date and grouped bullets. */
+export interface AboutRelease {
+  version: string;
+  date: string | null;
+  groups: { title: string; items: string[] }[];
 }
 
 /** What the harness itself adds to a fresh session's context, estimated at ~4 chars per token. */

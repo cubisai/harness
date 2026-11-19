@@ -1,6 +1,7 @@
 import type { ExpertDef } from "../../shared/experts";
 import type { AutomationNotice } from "../../shared/automations";
 import { create } from "zustand";
+import type { AppInfo } from "../../shared/types";
 import type {
   BackgroundShell,
   ArtifactFile,
@@ -30,14 +31,15 @@ import type {
   Thread,
   ThreadKind,
   ThreadTotals,
+  WorkspaceMode,
 } from "../../shared/types";
 import type { DocumentStatus } from "../../shared/design-mutation";
 import { api } from "./api";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
-import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
+import { clampLayout, DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
-import { threadKind, waitingThreads } from "./sections";
+import { waitingThreads, workspaceModeOf } from "./sections";
 import { readSession, restoreDraft, restoreTarget, writeSession } from "./session";
 import { setupMessage, setupQuestions } from "./issueSetup";
 import { buildInCodePrompt, buildThreadPatch, designDirName, handoffPath } from "../../shared/design";
@@ -57,10 +59,10 @@ export interface DesignSelection {
   names?: string[];
 }
 
-/** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. */
-export type InspectorTab = "changes" | "browser" | "files" | "artifact";
+/** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact; App runs a Creator app. */
+export type InspectorTab = "changes" | "browser" | "files" | "artifact" | "app";
 
-export type LibraryTab = "experts" | "skills" | "connectors" | "mcp" | "agents" | "memory" | "automations" | "learned";
+export type LibraryTab = "experts" | "skills" | "connectors" | "apps" | "mcp" | "agents" | "memory" | "automations" | "learned";
 
 /** A new thread's pickers before it exists; reset once the thread is created. */
 interface Draft {
@@ -136,6 +138,7 @@ interface State {
   openInEditor(target: { path?: string; line?: number; column?: number }, editor?: string): Promise<void>;
   /** The Library sheet's tab, or null when it's closed. */
   libraryTab: LibraryTab | null;
+  automationsRevision: Record<string, number>;
   /** A skill for the Library to show first. */
   librarySkill: string | null;
   /** The agent new threads start with: the last one picked. */
@@ -147,10 +150,10 @@ interface State {
   selectedThreadId: string | null;
   /** Thread ids by how recently they were selected (oldest first), so the per-thread caches can be bounded. */
   selectedOrder: string[];
-  /** Chat or Design mode: which threads the sidebar lists and what New thread makes. Follows the selected thread. */
-  threadKind: ThreadKind;
-  /** Switch mode; a selected thread of the other kind gives way to the project's latest of this kind, if any. */
-  setThreadKind(kind: ThreadKind): Promise<void>;
+  /** Chat, Design or Creator mode: which threads the sidebar lists and what New thread makes. Follows the selected thread. */
+  threadKind: WorkspaceMode;
+  /** Switch workspace mode; a selected thread of another mode gives way to the project's latest of this mode, if any. */
+  setThreadKind(kind: WorkspaceMode): Promise<void>;
   events: Record<string, StoredEvent[]>; // by thread id
   /** Each thread's loaded history window: where it starts, whether older events exist, and its whole-thread totals. */
   history: Record<string, { firstSeq: number; hasMore: boolean; loadingOlder: boolean; totals: ThreadTotals | null }>;
@@ -341,6 +344,16 @@ interface State {
   /** Show a thread file in the panel (path relative to the thread's folder, or absolute inside it). */
   openArtifact(path: string, threadId?: string): void;
   closeArtifact(): void;
+  /** Installed Creator apps for the selected project (and global ones), as last listed. */
+  apps: AppInfo[];
+  loadApps(): Promise<void>;
+  /** The Creator app shown in the panel's App tab; it stays open across threads. */
+  appOpen: AppInfo | null;
+  /** Per frame key, how many times main said a previewed draft's files changed (the App tab reloads on each). */
+  appReloads: Record<string, number>;
+  openApp(app: AppInfo): void;
+  editApp(app: AppInfo): Promise<string | null>;
+  closeApp(): void;
   toggleTerminal(): void;
   /** Add the current terminal to `terminals` if missing, so its shell is mounted. */
   ensureTerminal(): void;
@@ -403,14 +416,21 @@ export function eventCount(events: StoredEvent[] | undefined, totals: ThreadTota
   return Math.max(loaded, totals.events + live);
 }
 
-/** createThread's options: the kind being shown, and a design thread's system (an explicit one beats the draft's). */
+/** createThread's options: the mode being shown, and a design thread's system (an explicit one beats the draft's). */
 function createOpts(
-  kind: ThreadKind,
+  mode: WorkspaceMode,
   draft: Draft,
   opts?: { worktree?: boolean; designSystem?: string; expertId?: string },
-): { worktree?: boolean; kind: ThreadKind; designSystem?: string; expertId?: string } {
+): { worktree?: boolean; kind: ThreadKind; designSystem?: string; expertId?: string; preset?: "creator" } {
+  const kind: ThreadKind = mode === "design" ? "design" : "chat";
   const designSystem = kind === "design" ? (opts?.designSystem ?? draft.designSystem) : undefined;
-  return { ...(opts?.worktree !== undefined ? { worktree: opts.worktree } : {}), kind, ...(designSystem ? { designSystem } : {}), ...(opts?.expertId ? { expertId: opts.expertId } : {}) };
+  return {
+    ...(opts?.worktree !== undefined ? { worktree: opts.worktree } : {}),
+    kind,
+    ...(mode === "creator" ? { preset: "creator" as const } : {}),
+    ...(designSystem ? { designSystem } : {}),
+    ...(opts?.expertId ? { expertId: opts.expertId } : {}),
+  };
 }
 
 /** The updates a freshly created thread needs to match the user's draft picks. */
@@ -544,6 +564,7 @@ export const useStore = create<State>((set, get) => ({
   pendingSwitch: null,
   pendingSwitchModel: null,
   libraryTab: null,
+  automationsRevision: {},
   librarySkill: null,
   editors: [],
   notice: null,
@@ -647,9 +668,9 @@ export const useStore = create<State>((set, get) => ({
     if (s.threadKind === kind) return;
     set({ threadKind: kind });
     const current = s.selectedThreadId ? Object.values(s.threads).flat().find((t) => t.id === s.selectedThreadId) : undefined;
-    if (current && threadKind(current) === kind) return;
+    if (current && workspaceModeOf(current) === kind) return;
     const latest = (s.threads[s.selectedProjectId ?? ""] ?? [])
-      .filter((t) => !t.archived && threadKind(t) === kind)
+      .filter((t) => !t.archived && workspaceModeOf(t) === kind)
       .sort((a, b) => b.updatedAt - a.updatedAt)[0];
     await get().selectThread(latest?.id ?? null);
   },
@@ -731,6 +752,9 @@ export const useStore = create<State>((set, get) => ({
   inspectorOpen: false,
   inspectorTab: "changes",
   artifact: null,
+  apps: [],
+  appOpen: null,
+  appReloads: {},
   artifactFiles: {},
   turnScores: {},
   browserMounted: false,
@@ -973,7 +997,7 @@ export const useStore = create<State>((set, get) => ({
       const threads: Record<string, Thread[]> = {};
       for (const p of projects) threads[p.id] = allThreads[p.id] ?? [];
       const limits = Object.fromEntries(limitList.map((l) => [l.agent, l]));
-      set((s) => ({ projects, skills, agents, threads, settings, paneLayout: sanitizeLayout(settings.paneLayout), appUpdate, limits: { ...limits, ...s.limits } }));
+      set((s) => ({ projects, skills, agents, threads, settings, paneLayout: sanitizeLayout(settings.paneLayout), appUpdate, aboutOpen: s.aboutOpen || Boolean(appUpdate?.updatedFrom), limits: { ...limits, ...s.limits } }));
       // A window that loads mid-turn picks up what's live: running threads and the cards waiting on the user.
       const now = Date.now();
       set((s) => ({
@@ -1118,7 +1142,7 @@ export const useStore = create<State>((set, get) => ({
       // Keep the selection order so the per-thread caches can be bounded below.
       selectedOrder: id ? [...s.selectedOrder.filter((x) => x !== id), id] : s.selectedOrder,
       // Jumping to a thread (⌘K, the Message Center) lands in its mode.
-      ...(picked ? { threadKind: threadKind(picked) } : {}),
+      ...(picked ? { threadKind: workspaceModeOf(picked) } : {}),
       finished: threadSeen(s.finished, id),
       // Opening a thread also clears the run notices it delivered into.
       automationNotices: id ? s.automationNotices.filter((n) => n.threadId !== id) : s.automationNotices,
@@ -1521,6 +1545,73 @@ export const useStore = create<State>((set, get) => ({
       .catch(() => {});
   },
 
+  async loadApps() {
+    const projectId = get().selectedProjectId;
+    try {
+      const apps = await api().listApps(projectId);
+      // A reply for a project the user already left is dropped.
+      if (get().selectedProjectId === projectId) {
+        const open = get().appOpen;
+        const fresh = open && open.scope !== "draft" ? apps.find((a) => a.key === open.key) : null;
+        set({ apps, ...(fresh && fresh.enabled !== false && !fresh.error ? { appOpen: fresh } : {}) });
+        if (open && open.scope !== "draft" && (!fresh || fresh.enabled === false || fresh.error)) get().closeApp();
+      }
+    } catch {
+      // The list stays as it was.
+    }
+  },
+
+  openApp(app) {
+    const s = get();
+    if (app.enabled === false || app.error) {
+      s.showNotice(app.error ?? "This app is disabled. Enable it in Library → Apps.");
+      return;
+    }
+    const opens = !s.inspectorOpen;
+    set({ appOpen: app, inspectorOpen: true, inspectorTab: "app" });
+    const narrow = typeof window !== "undefined" && Number.isFinite(window.innerWidth) && clampLayout(window.innerWidth, { ...s.paneLayout, inspectorCollapsed: false }, true).inspectorAutoCollapsed;
+    // An explicit Open/Preview must show something, even where the normal chat floor auto-hides the panel.
+    if (narrow || (opens && s.paneLayout.inspectorCollapsed)) s.setPaneLayout({ inspectorCollapsed: false, ...(narrow ? { sidebarCollapsed: true } : {}) }, true);
+  },
+
+  async editApp(app) {
+    const s = get();
+    try {
+      const project = s.selectedProjectId ? s.projects.find((p) => p.id === s.selectedProjectId) : await api().openChats();
+      if (!project) throw new Error("Choose a project or open Chats first.");
+      const current = s.selectedThreadId ? findThread(s.threads, s.selectedThreadId) : undefined;
+      const agent = s.draft.agent ?? current?.agent ?? s.lastAgent ?? undefined;
+      const draft = current && current.agent === agent ? { model: current.model ?? undefined, effort: current.effort ?? undefined, contextWindow: current.contextWindow, ...s.draft } : s.draft;
+      // Always a new Creator chat, never a design thread, worktree or an automatic model turn.
+      let thread = await api().createThread(project.id, agent, { kind: "chat", preset: "creator" });
+      thread = await api().updateThread(thread.id, { ...draftPatch(draft, thread), title: `Edit ${app.title}` });
+      const prepared = await api().prepareAppEdit(app.key, thread.id);
+      set((x) => ({
+        projects: x.projects.some((p) => p.id === project.id) ? x.projects : [...x.projects, project],
+        threads: { ...x.threads, [project.id]: upsertThread(x.threads[project.id], thread) },
+        events: { ...x.events, [thread.id]: [] },
+        history: { ...x.history, [thread.id]: { firstSeq: 0, hasMore: false, loadingOlder: false, totals: null } },
+        selectedProjectId: project.id,
+        selectedThreadId: thread.id,
+        threadKind: "creator",
+        draft: {},
+        pendingSkills: [],
+        lastAgent: thread.agent,
+        libraryTab: null,
+        composerDraft: { text: prepared.prompt, nonce: (x.composerDraft?.nonce ?? 0) + 1 },
+      }));
+      get().openApp(prepared.app);
+      return thread.id;
+    } catch (err) {
+      get().showNotice(`Couldn't edit the app: ${ipcErrorText(err)}`);
+      return null;
+    }
+  },
+
+  closeApp() {
+    set((s) => ({ appOpen: null, ...(s.inspectorTab === "app" ? { inspectorTab: "changes" as const, inspectorOpen: false } : {}) }));
+  },
+
   closeArtifact() {
     set((s) => ({ artifact: null, ...(s.inspectorTab === "artifact" ? { inspectorTab: "changes" as const, inspectorOpen: false } : {}) }));
   },
@@ -1725,6 +1816,21 @@ export const useStore = create<State>((set, get) => ({
         return;
       case "projects-changed":
         void api().listProjects().then((projects) => set({ projects }));
+        return;
+      case "apps-changed":
+        void get().loadApps();
+        return;
+      case "automations-changed":
+        if (typeof update.projectId !== "string" || !update.projectId || update.projectId.length > 160) return;
+        set((s) => ({ automationsRevision: { ...s.automationsRevision, [update.projectId]: (s.automationsRevision[update.projectId] ?? 0) + 1 } }));
+        return;
+      case "app-open":
+        // Only the window showing that Creator thread opens it; elsewhere it would take over the panel.
+        if (get().selectedThreadId === update.threadId) get().openApp(update.app);
+        else if (get().appOpen?.key === update.app.key) set({ appOpen: update.app });
+        return;
+      case "app-reload":
+        set((s) => ({ appReloads: { ...s.appReloads, [update.key]: (s.appReloads[update.key] ?? 0) + 1 } }));
         return;
       case "open-about":
         set({ aboutOpen: true });
