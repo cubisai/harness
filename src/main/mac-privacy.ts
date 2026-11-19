@@ -1,5 +1,5 @@
 import { readdirSync } from "node:fs";
-import { basename, sep } from "node:path";
+import { basename } from "node:path";
 
 /**
  * macOS privacy (TCC) for project folders. CubiQ needs no camera, microphone,
@@ -21,8 +21,9 @@ export interface PrivacyBlock {
 
 /** Which pane lists the folder: Files and Folders covers the home folders and volumes, the rest needs Full Disk Access. */
 export function privacyPaneFor(path: string, home: string): Pick<PrivacyBlock, "pane" | "paneName"> {
-  const inHome = (name: string) => path === `${home}${sep}${name}` || path.startsWith(`${home}${sep}${name}${sep}`);
-  if (["Desktop", "Documents", "Downloads"].some(inHome) || path.startsWith(`${sep}Volumes${sep}`) || inHome(`Library${sep}Mobile Documents`)) {
+  // macOS paths only (this runs on darwin), so "/" rather than the host separator.
+  const inHome = (name: string) => path === `${home}/${name}` || path.startsWith(`${home}/${name}/`);
+  if (["Desktop", "Documents", "Downloads"].some(inHome) || path.startsWith("/Volumes/") || inHome("Library/Mobile Documents")) {
     return { pane: FILES_AND_FOLDERS, paneName: "Files and Folders" };
   }
   return { pane: FULL_DISK_ACCESS, paneName: "Full Disk Access" };

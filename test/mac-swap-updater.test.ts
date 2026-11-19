@@ -108,7 +108,7 @@ describe("MacSwapBackend", () => {
     await new MacSwapBackend(none.deps).checkForUpdates();
     expect(none.calls.downloads).toEqual([]);
 
-    const odd = fakeDeps({ check: async () => found({ files: [{ url: "../../x-arm64-mac.zip", sha512: "GOOD" }] }) });
+    const odd = fakeDeps({ check: async () => found({ files: [{ url: `../../${zipName}`, sha512: "GOOD" }] }) });
     await expect(new MacSwapBackend(odd.deps).checkForUpdates()).rejects.toThrow(/unexpected update file name/);
 
     const noZip = fakeDeps({ check: async () => found({ files: [{ url: "CubiQ-0.2.0-arm64.dmg", sha512: "GOOD" }] }) });
