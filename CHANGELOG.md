@@ -6,6 +6,8 @@ Maintainers: add a line under **Unreleased** as you go, then run `bun run releas
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-19
+
 ### Added
 
 - One-line installers: `curl -fsSL https://raw.githubusercontent.com/cubisai/harness/main/scripts/install/install.sh | bash` on macOS and Linux, `irm https://raw.githubusercontent.com/cubisai/harness/main/scripts/install/install.ps1 | iex` on Windows

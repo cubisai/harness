@@ -1,7 +1,7 @@
 {
   "name": "aiharness",
   "productName": "CubiQ",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "packageManager": "bun@1.4.2",
   "description": "A minimal desktop coding-agent harness.",
