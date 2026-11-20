@@ -113,7 +113,7 @@ export function withThread(url: string, threadId: string | undefined): string {
   return u.toString();
 }
 
-/** A tool-server URL that names a design thread (`?d=`) without naming the caller, which adds its design tools. */
+/** A tool-server URL that adds a design thread's tools (`?d=`), without adding its question tools. */
 export function withDesign(url: string, threadId: string | undefined): string {
   if (!threadId) return url;
   const u = new URL(url);
@@ -121,7 +121,7 @@ export function withDesign(url: string, threadId: string | undefined): string {
   return u.toString();
 }
 
-/** A tool-server URL that adds a thread's background-shell tools (`?s=`), without naming it as the caller. */
+/** A tool-server URL that adds a thread's background-shell tools (`?s=`), without adding question tools. */
 export function withShells(url: string, threadId: string | undefined): string {
   if (!threadId) return url;
   const u = new URL(url);
@@ -129,7 +129,7 @@ export function withShells(url: string, threadId: string | undefined): string {
   return u.toString();
 }
 
-/** A tool-server URL that adds code mode's run_code for a thread (`?c=`), without naming it as the caller. */
+/** A tool-server URL that adds code mode's run_code for a thread (`?c=`), without adding question tools. */
 export function withCode(url: string, threadId: string | undefined): string {
   if (!threadId) return url;
   const u = new URL(url);
@@ -164,22 +164,25 @@ export function withBrowserOnDemandFlag(url: string, on: boolean): string {
  * `/mcp-up/<scope>/<name>` hands the request to `upstream` (the gateway to
  * the user's remote servers), behind the same Bearer. A design
  * thread (named by `?d=`, or `?t=`) also gets `design(threadId)`, the design
- * tools; `?d=` alone names no caller, so it adds no thread tools. `?c=<threadId>`
+ * tools; `?d=` alone adds no question tools, but does identify the origin for mandatory host checks. `?c=<threadId>`
  * adds `code(threadId)`, code mode's run_code for that thread; the driver puts
  * it on the URL at session start, so a session's list never changes. `?s=<threadId>`
- * adds that thread's background-shell tools, on the same terms. `?b=1` swaps the
+ * adds that thread's background-shell tools, on the same terms. Each thread flag identifies the originating
+ * caller for main-side permission checks; only `?t=` adds questions. `?b=1` swaps the
  * browser tools that never ask for browser_tools/browser_call (Browser tools on demand).
  */
 export async function startToolServer(
   tools: () => HarnessTool[],
   extra?: (projectId: string | undefined, threadId?: string) => HarnessTool[],
-  routed?: (projectId: string | undefined) => HarnessTool[],
+  routed?: (projectId: string | undefined, threadId?: string) => HarnessTool[],
   threadTools?: () => HarnessTool[],
   heartbeatMs = HEARTBEAT_MS,
   upstream?: (req: IncomingMessage, res: ServerResponse, scope: string, name: string) => Promise<void>,
   design?: (threadId: string) => HarnessTool[],
   code?: (threadId: string) => HarnessTool[],
   shells?: (threadId: string) => HarnessTool[],
+  /** Decorate the final tools, including on-demand browser wrappers, with main-only enforcement. */
+  managed?: (tools: HarnessTool[], threadId?: string) => HarnessTool[],
 ): Promise<ToolServer> {
   const token = randomBytes(24).toString("hex");
   const http = createServer(async (req, res) => {
@@ -222,22 +225,27 @@ export async function startToolServer(
       path === "/mcp-skills"
         ? [...base, ...(extra?.(projectId, threadId) ?? [])]
         : path === "/mcp-routed"
-          ? [...base, ...(extra?.(projectId, threadId) ?? []), ...(routed?.(projectId) ?? [])]
+          ? [...base, ...(extra?.(projectId, threadId) ?? []), ...(routed?.(projectId, threadId ?? shellId ?? codeId) ?? [])]
           : base;
     const waiting = threadId ? (threadTools?.() ?? []) : [];
     list.push(...waiting);
     if (codeId) list.push(...(code?.(codeId) ?? []));
     if (shellId) list.push(...(shells?.(shellId) ?? []));
+    const callerId = threadId ?? shellId ?? codeId ?? designId;
+    // Gate both the deferred inner tools and the new browser_call/browser_tools
+    // wrappers. Decorating only the final pair would miss exact inner targets.
+    if (managed) list.splice(0, list.length, ...managed(list, callerId));
     if (browserOnDemand) list.splice(0, list.length, ...withBrowserOnDemand(list));
-    const waitingNames = new Set(waiting.map((t) => t.name));
+    if (managed) list.splice(0, list.length, ...managed(list, callerId));
+    const waitingNames = new Set([...waiting.map((t) => t.name), ...list.filter((t) => t.pluginRulesHandled || t.name.startsWith("plugin_") || t.name === "call_mcp_tool").map((t) => t.name)]);
     // A call the agent abandons (the request closes before the answer) aborts, so a waiting ask_user card goes away.
     const gone = new AbortController();
     res.on("close", () => {
       if (!res.writableFinished) gone.abort();
     });
     const ctx =
-      projectId || threadId || codeId
-        ? { ...(projectId ? { projectId } : {}), ...(threadId ? { threadId } : {}), ...(threadId || codeId ? { signal: gone.signal } : {}) }
+      projectId || callerId
+        ? { ...(projectId ? { projectId } : {}), ...(callerId ? { threadId: callerId, signal: gone.signal } : {}) }
         : undefined;
     for (const t of list) {
       server.registerTool(t.name, { description: t.description, inputSchema: t.input, ...(t.effect ? { annotations: { readOnlyHint: t.effect === "read" } } : {}) }, async (args: unknown, handlerExtra) => {

@@ -40,6 +40,9 @@ export interface AppRegistryDeps {
   projectPath(projectId: string): string | null;
   /** A Creator thread's drafts folder (`<thread folder>/.cubiq/app-drafts`), or null when it isn't a Creator thread. */
   draftsDir?(threadId: string): string | null;
+  /** Reviewed bundle recovery/integrity gate. Drafts and ordinary apps keep their existing behaviour. */
+  installedError?(key: string): string | null;
+  installedParts?(key: string): import("../../shared/plugin-parts").PluginPartView[];
 }
 
 export const projectAppsDir = (projectPath: string): string => join(projectPath, ".cubiq", "apps");
@@ -150,6 +153,7 @@ export class AppRegistry {
   root(key: string): string | null {
     if (!this.isEnabled(key)) return null;
     const k = decodeAppKey(key);
+    if (k && k.scope !== "draft" && this.deps.installedError?.(key)) return null;
     const dir = k ? this.dirOf(k) : null;
     return dir && this.read(dir, k!.scope !== "draft").manifest ? dir : null;
   }
@@ -157,6 +161,7 @@ export class AppRegistry {
   manifest(key: string): AppManifest | null {
     if (!this.isEnabled(key)) return null;
     const k = decodeAppKey(key);
+    if (k && k.scope !== "draft" && this.deps.installedError?.(key)) return null;
     const dir = k ? this.dirOf(k) : null;
     return dir ? this.read(dir, k!.scope !== "draft").manifest : null;
   }
@@ -188,6 +193,8 @@ export class AppRegistry {
 
   private entry(k: AppKey, dir: string): AppInfo {
     const { manifest, error } = this.read(dir, k.scope !== "draft");
+    const key = encodeAppKey(k), runtimeError = k.scope !== "draft" ? this.deps.installedError?.(key) : null;
+    const parts = k.scope !== "draft" ? this.deps.installedParts?.(key) : undefined;
     return {
       key: encodeAppKey(k),
       name: k.name,
@@ -201,11 +208,14 @@ export class AppRegistry {
       ...(this.favorites.has(encodeAppKey(k)) ? { favorite: this.favorites.get(encodeAppKey(k))! } : {}),
       path: dir,
       url: appUrl(encodeAppKey(k), manifest?.entry ?? "index.html"),
-      ...(error ? { error } : {}),
+      ...(runtimeError || error ? { error: runtimeError || error! } : {}),
+      ...(parts?.length ? { parts } : {}),
       ...(manifest?.placement === "floating" ? { placement: "floating" as const, ...(manifest.size ? { size: manifest.size } : {}) } : {}),
       ...(manifest?.placement === "page" ? { placement: "page" as const } : {}),
       ...(manifest?.placement === "dock" || manifest?.placement === "panel" ? { placement: manifest.placement, ...(manifest.height ? { height: manifest.height } : {}) } : {}),
       ...(manifest?.style === "own" ? { style: "own" as const } : {}),
+      ...(manifest?.tools?.length ? { tools: manifest.tools } : {}),
+      ...(manifest?.cards?.length ? { cards: manifest.cards } : {}),
     };
   }
 

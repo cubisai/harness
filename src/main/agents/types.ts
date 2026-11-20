@@ -20,12 +20,18 @@ export interface ToolOutput {
 /** Who is calling a harness tool, when the transport knows (the HTTP tool server does). */
 export interface ToolContext {
   projectId?: string;
-  /** The thread whose turn called the tool, when the tool server knows it (`?t=`). */
+  /** The originating thread when main's transport knows it (`?t=`, `?s=`, `?c=` or `?d=`). */
   threadId?: string;
   /** The agent row this tool call itself renders as, when the driver executes it directly (Codex dynamic tools). */
   parentId?: string;
   /** Aborts when the caller gives up on the call (the HTTP request closed). */
   signal?: AbortSignal;
+  /** An explicit native Ask requirement, supplied only by a trusted adapter. */
+  requireApproval?: true;
+  /** An ordinary native approval handed to the host; only a verified read-Allow may skip it. */
+  normalApproval?: true;
+  /** Opaque, single-use main authority for one validated delegated call. */
+  managedApproval?: object;
 }
 
 /**
@@ -39,6 +45,13 @@ export interface HarnessTool<Shape extends ZodRawShape = ZodRawShape> {
   input: Shape;
   /** Safe to run without asking in "ask" mode. */
   autoAllow: boolean;
+  /** Main's run() enforces bundle rules (also marks calls that may wait on host approval). Not a model-facing permission. */
+  pluginRulesHandled?: true;
+  /** Main-only routing, not an approval. A true reply requires run() to perform
+   * the exact permission gate; never serialized into a tool schema. */
+  deferPermission?(args: Record<string, unknown> | undefined, ctx: ToolContext): boolean;
+  /** A main-created one-call shim (browser_call), never an arbitrary script. */
+  approvalTarget?(args: Record<string, unknown>): { tool: HarnessTool; args: Record<string, unknown> } | undefined;
   /** What running it does, for scheduling (not permission): "read" calls may overlap; "mutate" calls run alone, in order. Absent: the legacy rule (autoAllow runs like a read). */
   effect?: "read" | "mutate";
   /** The TypeScript type a script's call resolves to (code mode); absent = string. */
@@ -110,6 +123,17 @@ export interface TurnInput {
   onSessionLost?(reason: string): Promise<SessionSeed | null>;
   /** `signal` withdraws the card unanswered (the asker went away); the call then resolves "deny". */
   requestPermission(req: { toolName: string; summary: string; canAlwaysAllow: boolean; signal?: AbortSignal }): Promise<PermissionDecision>;
+  /** Trusted main routing for this originating turn. Accepting an engine's outer
+   * ask only moves the user decision into the managed execution gate. */
+  managedPermission?(target: import("../../shared/plugin-parts").PluginRuleTarget, args?: Record<string, unknown>, requirement?: "ask"): boolean;
+  /** Main wraps the final descriptor list, including tools appended by a driver. */
+  managedTools?(tools: HarnessTool[]): HarnessTool[];
+  /** A main-created native-loop adapter, with its actual body and originating call.
+   * No descriptor/schema or model-supplied approval changes are involved. */
+  managedRun?(tool: HarnessTool, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutput>;
+  /** The native harness's code mode can call native writes, unlike the read-only
+   * MCP run_code tool. Main gates it as an unknown/mutating invocation. */
+  managedRunCode?(args: Record<string, unknown>, execute: (args: Record<string, unknown>, signal: AbortSignal) => Promise<ToolOutput>, signal: AbortSignal): Promise<ToolOutput>;
   /** Plan mode: the agent presented a plan and waits for the user's decision. */
   requestPlanDecision(p: { plan: string }): Promise<PlanDecision>;
   /** The agent asks the user questions (Claude's AskUserQuestion, Codex's request_user_input); resolves "dismiss" when skipped or stopped. Absent: the driver answers "dismiss". */

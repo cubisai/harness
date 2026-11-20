@@ -59,6 +59,8 @@ export interface AutomationInput {
 
 /** One automation as the Library lists it. */
 export interface AutomationView extends AutomationInput {
+  owner?: import("./plugin-parts").PluginOwner;
+  unavailable?: string;
   id: string;
   projectId: string;
   /** describeSchedule(), e.g. "daily at 09:00 (Europe/London)". */

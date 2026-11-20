@@ -11,7 +11,8 @@ import { FileIcon } from "./FileIcon";
 import { designChipLabel, designIntent, designPlaceholder, systemChips } from "../design/intent";
 import { elementLabel, withScope } from "../../../shared/selection";
 import { designDirName } from "../../../shared/design";
-import { exactCommand, isCommandSkill, issueCommand, matchCommands, type ComposerCommand } from "../commands";
+import { exactCommand, isCommandSkill, issueCommand, matchCommands, pluginSkillSelections, selectedPluginCommand, type ComposerCommand, type PluginSelections } from "../commands";
+import type { PluginCommandInvocation } from "../../../shared/plugin-parts";
 import { folderPaths, mentionQueryAt, mentionsIn, rankMentions } from "../mentions";
 import { nextMode } from "../modes";
 import { findThread, useStore } from "../store";
@@ -74,7 +75,12 @@ export function Composer({
   // Design-only skills are offered in design threads (and a design draft) only; threadKind follows the open thread.
   const designKind = useStore((s) => s.threadKind) === "design";
   // The issue skills run as "/" commands, so "$" leaves them out.
-  const skills = useMemo(() => allSkills.filter((s) => !isCommandSkill(s) && s.mode !== "creator" && (designKind || s.mode !== "design")), [allSkills, designKind]);
+  const skills = useMemo(() => allSkills.filter((s) => s.enabled !== false && !isCommandSkill(s) && s.mode !== "creator" && (designKind || s.mode !== "design")), [allSkills, designKind]);
+  const pluginCommands = useStore((s) => s.pluginCommands);
+  const pluginCommandsError = useStore((s) => s.pluginCommandsError);
+  const pluginCommandsLoading = useStore((s) => s.pluginCommandsLoading);
+  const [pluginCommand, setPluginCommand] = useState<PluginCommandInvocation | null>(null);
+  useEffect(() => { void useStore.getState().loadPluginCommands(); }, []);
   const running = useStore((s) => (threadId ? Boolean(s.running[threadId]) : false));
   const insert = useStore((s) => s.composerInsert);
   const { send, interrupt, enqueue, startThread, sendInBackground } = useStore.getState();
@@ -142,7 +148,7 @@ export function Composer({
   const menuOpen = query !== null;
 
   const cmdQuery = picked.length ? null : commandQuery(text);
-  const commandMatches = useMemo(() => (cmdQuery === null ? [] : matchCommands(cmdQuery)), [cmdQuery]);
+  const commandMatches = useMemo(() => (cmdQuery === null ? [] : matchCommands(cmdQuery, pluginCommands)), [cmdQuery, pluginCommands]);
   const commandOpen = cmdQuery !== null;
 
   const mentionQuery = mentionQueryAt(text, caret);
@@ -312,6 +318,7 @@ export function Composer({
   useEffect(() => {
     if (!draft) return;
     setText(draft.text);
+    setPluginCommand(draft.pluginCommand ?? null);
     setCaret(draft.text.length);
     pendingCaret.current = draft.text.length;
     useStore.setState({ composerDraft: null });
@@ -364,6 +371,14 @@ export function Composer({
 
   // Run a "/" command: set the permission mode, ask for the model picker, open the context or MCP sheet, or start a new thread.
   const runCommand = (c: ComposerCommand) => {
+    if (c.plugin) {
+      // Picking/completing a saved prompt only prepares it. The next ordinary
+      // Send/Enter is the explicit action that may start a turn.
+      const next = `/${c.name} `;
+      setPluginCommand({ ...c.plugin });
+      setText(next); setCaret(next.length); pendingCaret.current = next.length;
+      area.current?.focus(); return;
+    }
     setText("");
     setCaret(0);
     const s = useStore.getState();
@@ -387,6 +402,11 @@ export function Composer({
   };
 
   const submit = () => {
+    let selections: PluginSelections;
+    try {
+      const command = selectedPluginCommand(text, pluginCommands, pluginCommand);
+      selections = { ...pluginSkillSelections(picked), ...(command ? { pluginCommand: command } : {}) };
+    } catch (e) { useStore.getState().showNotice(e instanceof Error ? e.message : String(e)); return; }
     // "/issue <description>", "/triage 12", "/pr 12" run their bundled skill with the argument.
     const issueRun = !picked.length && issueCommand(text);
     if (issueRun) {
@@ -441,13 +461,15 @@ export function Composer({
     const pending = files;
     const sources = pending.map((f) => f.source);
     const go = () => {
-      if (!threadId) void startThread(body, names, mentions, sources);
-      else if (running) enqueue(threadId, body, names, mentions, sources);
+      if (!threadId) void startThread(body, names, mentions, sources, selections);
+      else if (running) enqueue(threadId, body, names, mentions, sources, selections);
       else
-        void send(body, names, undefined, mentions, sources.length ? { files: sources } : undefined).then((ok) => {
+        void send(body, names, undefined, mentions, { ...selections, ...(sources.length ? { files: sources } : {}) }).then((ok) => {
           if (ok) return;
           setText((cur) => cur || text);
           setFiles((cur) => (cur.length ? cur : pending));
+          setPicked((cur) => (cur.length ? cur : picked));
+          setPluginCommand((cur) => cur ?? selections.pluginCommand ?? null);
         });
     };
     // The intent reaches the main process before the message, which takes it into the turn.
@@ -460,11 +482,17 @@ export function Composer({
     setRefs([]);
     setFiles([]);
     setPicked([]);
+    setPluginCommand(null);
     setCaret(0);
   };
 
   // Alt+Return starts the message as its own thread in the background and leaves this one open.
   const submitInBackground = () => {
+    let selections: PluginSelections;
+    try {
+      const command = selectedPluginCommand(text, pluginCommands, pluginCommand);
+      selections = { ...pluginSkillSelections(picked), ...(command ? { pluginCommand: command } : {}) };
+    } catch (e) { useStore.getState().showNotice(e instanceof Error ? e.message : String(e)); return; }
     // "/codemode [on|off]" sets code mode for new threads (no argument flips it); it never goes to the agent.
     const codeMatch = !picked.length && /^\/codemode(?:\s+(on|off))?$/i.exec(text.trim());
     if (codeMatch) {
@@ -485,12 +513,13 @@ export function Composer({
     const body = withRefs(composeMessage(text, chips), refPaths);
     if (!body && !picked.length && !files.length) return;
     const mentions = [...mentionsIn(text, knownSet), ...refPaths];
-    void sendInBackground(body, picked.map((p) => p.name), undefined, mentions, files.map((f) => f.source));
+    void sendInBackground(body, picked.map((p) => p.name), selections, mentions, files.map((f) => f.source));
     setText("");
     setChips([]);
     setRefs([]);
     setFiles([]);
     setPicked([]);
+    setPluginCommand(null);
     setCaret(0);
   };
 
@@ -550,6 +579,7 @@ export function Composer({
         e.preventDefault();
         const c = commandMatches[menuIndex];
         if (c) {
+          if (c.plugin) setPluginCommand({ ...c.plugin });
           const next = `/${c.name} `;
           pendingCaret.current = next.length;
           setText(next);
@@ -730,6 +760,8 @@ export function Composer({
         )}
         {commandOpen && (
           <div className="skill-menu" role="listbox">
+            {pluginCommandsLoading && <div className="empty-line">Loading plugin commands…</div>}
+            {pluginCommandsError && <div className="empty-line">Plugins unavailable · <button className="button ghost" onClick={() => void useStore.getState().loadPluginCommands()}>Retry</button></div>}
             {commandMatches.length === 0 && <div className="empty-line">No command matches “{cmdQuery}”</div>}
             {commandMatches.map((c, i) => (
               <div

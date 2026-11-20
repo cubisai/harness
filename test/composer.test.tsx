@@ -130,6 +130,24 @@ describe("queued send", () => {
     expect(sent).toEqual([{ threadId: "t", text: "again", attachments: [held] }]);
   });
 
+  it("queues the exact plugin command/skill revisions and does not substitute an Update at drain", () => {
+    const skill = { name: "p-notes-review", origin: "plugin", owner: { key: "g~notes", title: "Notes", enabled: true, revision: "one" } } as import("../src/shared/types").SkillEntry;
+    useStore.setState({ skills: [skill] });
+    const pluginCommand = { key: "g~notes", name: "review", revision: "one" };
+    useStore.getState().enqueue("t", "/notes.review", [skill.name], undefined, undefined, { pluginCommand });
+    useStore.setState({ skills: [{ ...skill, owner: { ...skill.owner!, revision: "two" } }] });
+    useStore.getState().apply({ type: "running", threadId: "t", running: false });
+    expect(sent[0]).toMatchObject({ pluginCommand, pluginSkills: [{ key: "g~notes", name: skill.name, revision: "one" }] });
+    useStore.setState({ skills: [] });
+  });
+
+  it("Retry sends saved plugin identities rather than resolving current skill ownership", async () => {
+    useStore.setState({ running: {}, skills: [] });
+    const pluginCommand = { key: "g~notes", name: "review", revision: "old" }, pluginSkills = [{ key: "g~notes", name: "p-notes-review", revision: "old" }];
+    await useStore.getState().send("again", ["p-notes-review"], "t", undefined, { pluginCommand, pluginSkills });
+    expect(sent[0]).toMatchObject({ pluginCommand, pluginSkills });
+  });
+
   it("sends queued messages one turn at a time, in order", () => {
     const s = useStore.getState();
     s.enqueue("t", "first");

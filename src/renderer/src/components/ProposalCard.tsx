@@ -3,6 +3,8 @@ import { AlertTriangle, CalendarClock, ChevronRight, LayoutGrid, Palette, Plug, 
 import type { ExtensionProposalView } from "../../../shared/types";
 import { api } from "../api";
 import { Markdown } from "../markdown";
+import { PluginParts } from "./PluginParts";
+import { AppThemeControls } from "./AppThemeControls";
 import { useStore } from "../store";
 import "../styles/creator.css";
 import { StyleSpecimen } from "./StyleSpecimen";
@@ -294,6 +296,10 @@ export function ProposalCardView({ proposal, busy, actionError, previewOpen, onT
         ) : draft.kind === "app" ? (
           <>
             <p className="proposal-desc">{draft.description}</p>
+            {!!draft.tools?.length && <><div className="proposal-grants-label">Agent tools</div><ul className="proposal-grants">{draft.tools.map((t) => <li key={t.name}><code>{t.name}</code><span>{t.description}</span></li>)}</ul><p className="proposal-desc">Tools can change this plugin's saved data. They ask before running, except in Full access; Plan mode blocks them.</p></>}
+            <PluginParts parts={draft.parts} />
+            {(waiting || status === "installed") && draft.parts?.some((p) => p.kind === "app-theme" && p.change !== "removed") && <AppThemeControls key={proposal.id} {...(proposal.status === "installed" ? { pluginKey: `g~${draft.name}` } : { proposalId: proposal.id })} />}
+            {!!draft.cards?.length && <p className="proposal-desc">Chat cards: {draft.cards.join(", ")}. Cards cannot change data.</p>}
             {draft.grants.length > 0 ? (
               <>
                 <div className="proposal-grants-label">Can use</div>

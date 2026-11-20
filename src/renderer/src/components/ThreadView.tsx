@@ -8,6 +8,7 @@ import { skillsOf } from "../../../shared/skill-list";
 import type { ArtifactKind, Attachment, StoredEvent, ThreadEvent } from "../../../shared/types";
 import type { TurnScore } from "../../../shared/learn";
 import { WidgetView } from "../genui/WidgetView";
+import { PluginChatCard } from "./PluginChatCard";
 import { prettyTool, toolLabel, type RunResult } from "../../../shared/tools";
 import { anchorDelta, anchorFor, collapseTarget, stillPinned, trimmedReserve, type ScrollAnchor } from "../disclosure";
 import { displayOrder } from "../event-order";
@@ -777,7 +778,7 @@ function TurnFooter({ seg, threadId, running, last }: { seg: Extract<Segment, { 
           className="foot-button"
           title="Send the same message again"
           disabled={running}
-          onClick={() => void useStore.getState().send(seg.prompt!.text, seg.prompt!.skills, threadId, undefined, seg.prompt!.attachments ? { attachments: seg.prompt!.attachments } : undefined)}
+          onClick={() => void useStore.getState().send(seg.prompt!.text, seg.prompt!.skills, threadId, undefined, { attachments: seg.prompt!.attachments, pluginCommand: seg.prompt!.pluginCommand, pluginSkills: seg.prompt!.pluginSkills })}
         >
           <RotateCcw size={13} />
         </button>
@@ -851,7 +852,7 @@ function UserMessage({ stored, threadId }: { stored: StoredEvent; threadId?: str
         <button className="foot-button" title="Copy" onClick={() => void navigator.clipboard?.writeText(e.text)}>
           <Copy size={13} />
         </button>
-        <button className="foot-button" title="Edit: put it back in the message box" onClick={() => useStore.getState().setComposerDraft(e.text)}>
+        <button className="foot-button" title="Edit: put it back in the message box" onClick={() => useStore.getState().setComposerDraft(e.text, { pluginCommand: e.pluginCommand, pluginSkills: e.pluginSkills })}>
           <Pencil size={13} />
         </button>
       </div>
@@ -889,6 +890,8 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
       );
     case "tool-result":
       return null; // shown on its tool row
+    case "plugin-card":
+      return threadId ? <PluginChatCard pluginKey={e.key} name={e.card} data={e.data} threadId={threadId} /> : null;
     case "widget":
       return (
         <div className="msg-assistant">

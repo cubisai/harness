@@ -95,8 +95,9 @@ export interface FrameControls {
  * One Creator app in a sandboxed frame, with its bridge calls relayed to main and data-changing calls asked of the
  * user first. Hosts (the plugin modal, a floating widget) draw the header through `head`.
  */
-export function AppFrame({ app, head, onPill }: { app: AppInfo; head(controls: FrameControls): ReactNode; onPill?(text: string): void }) {
-  const projectId = useStore((s) => s.selectedProjectId);
+export function AppFrame({ app, head, onPill, card }: { app: AppInfo; head(controls: FrameControls): ReactNode; onPill?(text: string): void; card?: { threadId: string; data: unknown } }) {
+  const selectedProjectId = useStore((s) => s.selectedProjectId);
+  const projectId = selectedProjectId; // A card's originating project is resolved from its thread ID in main.
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [nonce, setNonce] = useState(0);
   // A previewed draft reloads itself when its files change.
@@ -122,7 +123,10 @@ export function AppFrame({ app, head, onPill }: { app: AppInfo; head(controls: F
     frameRef.current?.contentWindow?.postMessage({ cubiqApp: 1, id, ...body }, "*");
   }, []);
 
-  const postTheme = useCallback(() => frameRef.current?.contentWindow?.postMessage(themeMessage(), "*"), []);
+  const postTheme = useCallback(() => {
+    frameRef.current?.contentWindow?.postMessage(themeMessage(), "*");
+    if (card) frameRef.current?.contentWindow?.postMessage({ cubiqApp: 1, op: "card", data: card.data }, "*");
+  }, [card]);
 
   // Another app in the same host: earlier questions and logs belong to the old one.
   useEffect(() => {
@@ -144,12 +148,9 @@ export function AppFrame({ app, head, onPill }: { app: AppInfo; head(controls: F
 
   useEffect(() => {
     const onTheme = () => postTheme();
-    const mq = matchMedia("(prefers-color-scheme: dark)");
     window.addEventListener("unskilled-theme", onTheme);
-    mq.addEventListener("change", onTheme);
     return () => {
       window.removeEventListener("unskilled-theme", onTheme);
-      mq.removeEventListener("change", onTheme);
     };
   }, [postTheme]);
 
@@ -170,6 +171,7 @@ export function AppFrame({ app, head, onPill }: { app: AppInfo; head(controls: F
       if (size > MAX_MESSAGE_CHARS) return;
       const load = loadRef.current;
       const id = typeof m.id === "number" ? m.id : -1;
+      if (card && ["pill", "notify", "open", "ask"].includes(m.op)) return;
       switch (m.op) {
         case "ready":
           postTheme();
@@ -200,8 +202,8 @@ export function AppFrame({ app, head, onPill }: { app: AppInfo; head(controls: F
           const args = m.args && typeof m.args === "object" && !Array.isArray(m.args) ? (m.args as Record<string, unknown>) : {};
           const server = m.server;
           const tool = m.tool;
-          void api()
-            .callApp(app.key, projectId, server, tool, args)
+          const called = card ? api().callAppCard(app.key, card.threadId, server, tool, args) : api().callApp(app.key, projectId, server, tool, args);
+          void called
             .then((r) => {
               if (r.ok) reply(load, id, r);
               else if ("approval" in r) setAsks((a) => [...a, { id, server, tool, args, shown: r.approval.args, token: r.approval.token }]);
@@ -219,6 +221,7 @@ export function AppFrame({ app, head, onPill }: { app: AppInfo; head(controls: F
           return;
         case "store.set":
           if (typeof m.key !== "string") return;
+          if (card) { reply(load, id, { ok: false, error: "Transcript cards cannot change saved plugin data." }); return; }
           void api()
             .appStoreSet(app.key, m.key, m.value)
             .then((r) => reply(load, id, "approval" in r ? { ok: false, error: "Not allowed." } : r))
@@ -228,7 +231,7 @@ export function AppFrame({ app, head, onPill }: { app: AppInfo; head(controls: F
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [app, projectId, postTheme, reply, allow]);
+  }, [app, projectId, postTheme, reply, allow, card]);
 
   const answer = (ask: Ask, decision: "deny" | "once" | "always") => {
     setAsks((a) => a.filter((x) => x !== ask));

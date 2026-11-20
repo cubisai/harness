@@ -77,6 +77,58 @@ function makeDeps(store: AutomationStore, over: Partial<RunnerDeps> = {}): Runne
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("AutomationRunner.tick", () => {
+  it("blocks scheduled/manual/recovered admission while a plugin owner is Off", async () => {
+    let now = 1_000;
+    const { db } = open(() => now);
+    db.create(base());
+    const createThread = async () => { throw new Error("must not start"); };
+    const queued = db.claimRun("a1", "a1@manual-before-crash", now)!;
+    const runner = new AutomationRunner(makeDeps(db, { now: () => now, createThread, owner: () => ({ key: "g~reviewer", title: "Reviewer", enabled: false, revision: "r1" }) }));
+    now = 300_000;
+    expect(runner.tick()).toBe(0);
+    expect(() => runner.runNow("a1")).toThrow("Off");
+    expect((await runner.recover()).requeued).toBe(0);
+    await runner.drain();
+    expect(db.run(queued.id)?.status).toBe("cancelled");
+    expect(db.runs("a1")).toHaveLength(1);
+  });
+  it("does not execute a cancelled queue entry even after the owner is On again", async () => {
+    const { db } = open(() => 1_000);
+    db.create(base());
+    let sends = 0;
+    const runner = new AutomationRunner(makeDeps(db, { send: async () => { sends++; return { text: "late" }; }, owner: () => ({ key: "g~reviewer", title: "Reviewer", enabled: true, revision: "r2" }) }));
+    const r = runner.runNow("a1")!;
+    db.finishRun(r.id, { status: "cancelled" });
+    await runner.drain();
+    expect(sends).toBe(0);
+    expect(db.run(r.id)?.status).toBe("cancelled");
+  });
+  it("drops late send results after an owner revision changes, without publishing or overwriting cancellation", async () => {
+    const { db } = open(() => 1_000);
+    db.create(base());
+    const destination = fakeDestination();
+    let revision = "r1", interrupts = 0;
+    const runner = new AutomationRunner(makeDeps(db, {
+      destination, owner: () => ({ key: "g~reviewer", title: "Reviewer", enabled: true, revision }),
+      interrupt: () => { interrupts++; },
+      send: async () => { revision = "r2"; return { text: "late result" }; },
+    }));
+    const r = runner.runNow("a1")!;
+    await runner.drain();
+    expect(db.run(r.id)?.status).toBe("cancelled");
+    expect(destination.payloads).toEqual([]);
+    expect(interrupts).toBe(1);
+  });
+  it("does not republish a crash's pending delivery while its owner is unavailable", async () => {
+    const { db } = open(() => 1_000);
+    db.create(base());
+    const r = db.claimRun("a1", "a1@manual-before-crash", 1_000)!;
+    db.deliveryIntent("pending", r.id, "dest");
+    const destination = fakeDestination();
+    const runner = new AutomationRunner(makeDeps(db, { destination, owner: () => ({ key: "g~reviewer", title: "Reviewer", enabled: false }) }));
+    expect((await runner.recover()).republished).toBe(0);
+    expect(destination.payloads).toEqual([]);
+  });
   it("claims one run per due instant, dedupes a re-tick, and never wakes a disabled automation", () => {
     let now = 1_000;
     const { db } = open(() => now);

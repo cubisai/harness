@@ -16,5 +16,6 @@ export function parseTokens(css: string): Token[];
 export function layerOf(name: string): Layer;
 
 export function generateTokensMd(css: string): string;
+export function generateChromeThemeTokens(css: string): string;
 
 export function normalizeEol(text: string): string;

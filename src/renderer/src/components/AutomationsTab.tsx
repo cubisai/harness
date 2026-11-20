@@ -4,6 +4,7 @@ import type { AutomationInput, AutomationNotice, AutomationPermissions, Automati
 import { api } from "../api";
 import { useStore } from "../store";
 import { Select } from "./Select";
+import { PluginOwnerNote } from "./PluginParts";
 import "../styles/automations.css";
 
 const KINDS: { value: Schedule["kind"]; label: string }[] = [
@@ -256,6 +257,7 @@ export function AutomationsTab({ overview: initial }: { overview?: AutomationsOv
         <span className="automations-state">{a.enabled ? "On" : "Off"}</span>
       </span>
       <span className="automations-meta">{a.scheduleText}</span>
+      {a.owner && <span className="automations-meta">{a.owner.title}{a.unavailable ? " · Off or unavailable" : ""}</span>}
       <span className="automations-meta">{lastRunText(a.lastRun, Date.now())}</span>
     </div>
   );
@@ -267,6 +269,7 @@ export function AutomationsTab({ overview: initial }: { overview?: AutomationsOv
       : draft.name !== saved.name || draft.prompt !== saved.prompt || draft.schedule !== saved.schedule || draft.missed !== saved.missed || draft.enabled !== saved.enabled || draft.budgetUsd !== saved.budgetUsd || draft.agent !== saved.agent || draft.model !== saved.model || draft.permissions !== saved.permissions);
 
   const selectedTemplate = draft ? data.templates.find((t) => t.id === draft.template) : undefined;
+  const ownedView = draft?.id ? data.automations.find((a) => a.id === draft.id) : undefined;
 
   return (
     <div className="library-split automations-tab">
@@ -287,6 +290,8 @@ export function AutomationsTab({ overview: initial }: { overview?: AutomationsOv
               void save();
             }}
           >
+            <PluginOwnerNote owner={ownedView?.owner} onManage={() => useStore.setState({ libraryTab: "apps" })} />
+            {ownedView?.unavailable && <p className="form-error">{ownedView.unavailable}</p>}
             {draft.id === undefined && (
               <div className="automations-row">
                 <span className="label">Template</span>
@@ -428,18 +433,18 @@ export function AutomationsTab({ overview: initial }: { overview?: AutomationsOv
             {error && <p className="form-error automations-error">{error}</p>}
             {notice && <p className="note">{notice}</p>}
             <div className="automations-actions">
-              {draft.id && (
+              {draft.id && !ownedView?.owner && (
                 <button type="button" className="button ghost danger" onClick={() => (confirmDelete ? void remove() : setConfirmDelete(true))}>
                   {confirmDelete ? "Confirm delete" : "Delete"}
                 </button>
               )}
               <span className="grow" />
               {draft.id && (
-                <button type="button" className="button" onClick={() => void runNow()}>
+                <button type="button" className="button" disabled={Boolean(ownedView?.unavailable)} onClick={() => void runNow()}>
                   Run now
                 </button>
               )}
-              <button type="submit" className="button primary">
+              <button type="submit" className="button primary" disabled={Boolean(ownedView?.unavailable)}>
                 Save
               </button>
             </div>

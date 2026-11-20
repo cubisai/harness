@@ -15,3 +15,5 @@ The loop: look at the data, build, preview, check, propose.
 4. **Propose.** `creator_propose { kind: "app", name, scope: "global" }` stages the draft's files as they are now for the user's review. Apps always install globally (sidebar → Apps, in every project). The card lists the files and the connector tools the app can use (read, or can change data). Re-proposing an installed app's name shows **Update** with what changed per file. Edits after proposing need a new proposal.
 
 Then say in one or two lines what the app shows and where it is (sidebar → Apps). Don't claim it is installed until the card says so.
+
+Apps with tools also have their `cubiq.onTool` registration checked in `toolEntry` (or `entry`), without executing a handler. A card specimen uses `card: "name", cardData: "<JSON>"` and renders its declared entry at 680px wide. Both checks refuse writes. Read `plugin-tools` / `chat-card`; render checks alone do not prove agent-callable behaviour.

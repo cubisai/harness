@@ -354,6 +354,18 @@ export function installMock(): void {
   let automationRunSeq = 1;
 
   const api: UnskilledApi = {
+    appThemeState: async () => ({ version: 0, selected: null, themes: [], active: null, preview: null }),
+    previewAppTheme: async () => { throw new Error("No plugin themes in this preview fixture."); },
+    applyAppTheme: async () => { throw new Error("No plugin themes in this preview fixture."); },
+    cancelAppThemePreview: async () => ({ version: 1, selected: null, themes: [], active: null, preview: null }),
+    revertAppTheme: async () => ({ version: 1, selected: null, themes: [], active: null, preview: null }),
+    listPluginCommands: async () => [],
+    listPluginConnectors: async () => [],
+    savePluginConnector: async () => {},
+    connectPluginConnector: async () => ({ ok: true }),
+    cancelPluginConnectorSignIn: async () => {},
+    disconnectPluginConnector: async () => {},
+    checkPluginConnector: async () => {},
     platform: params.get("platform") ?? "darwin",
     opaqueSidebar: params.has("opaque"),
     listProjects: async () => projects,
@@ -694,6 +706,8 @@ export function installMock(): void {
     },
     listExtensionInstalls: async () => [...mockInstalls.values()],
     listApps: async () => (scene === "creator" || scene === "app" ? mockApps : []),
+    appCardInfo: async () => null,
+    callAppCard: async () => ({ ok: false, error: "No card connector in this preview." }),
     appInfo: async (key) => mockApps.find((a) => a.key === key) ?? (key.startsWith("d~") ? { ...mockApps[0]!, key, scope: "draft" as const } : null),
     setAppEnabled: async (key, enabled) => {
       const i = mockApps.findIndex((a) => a.key === key);

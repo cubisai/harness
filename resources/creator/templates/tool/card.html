@@ -1,0 +1,7 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Saved item</title><link rel="stylesheet" href="style.css"></head>
+<body><main><p class="meta">Saved to your reading list</p><h1 id="title">No item yet</h1><p id="count" role="status">No result data.</p></main><script>
+cubiq.onCard((data) => {
+  document.getElementById("title").textContent = typeof data?.title === "string" ? data.title : "No item";
+  document.getElementById("count").textContent = Number.isInteger(data?.count) ? `${data.count} saved item${data.count === 1 ? "" : "s"}.` : "No count available.";
+});
+</script></body></html>

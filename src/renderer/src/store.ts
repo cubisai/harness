@@ -35,6 +35,10 @@ import type {
 } from "../../shared/types";
 import type { DocumentStatus } from "../../shared/design-mutation";
 import { api } from "./api";
+import { pluginSkillSelections, type PluginSelections } from "./commands";
+import type { PluginCommandView } from "../../shared/plugin-parts";
+import type { AppThemeState } from "../../shared/app-themes";
+import { applyChromePalette } from "./app-themes";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
 import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
 import { readAppRecents, writeAppRecents } from "./plugins";
@@ -48,6 +52,8 @@ import type { SelectedElement } from "../../shared/selection";
 import type { PrototypeTier } from "../../shared/tiers";
 import type { TurnScore } from "../../shared/learn";
 import type { DesignChip, SystemWhere } from "./design/intent";
+
+let pluginCommandRequest = 0;
 
 /** A design thread's canvas selection: the page it is on and its elements. */
 /** What the next message is about, chosen from the Composer rather than typed. */
@@ -84,6 +90,8 @@ interface State {
   skills: SkillEntry[];
   agents: AgentInfo[];
   settings: SettingsView | null;
+  appThemes: AppThemeState | null;
+  loadAppThemes(): Promise<void>;
   settingsOpen: boolean;
   setSettingsOpen(open: boolean): void;
   /** The About sheet is open (macOS app menu, or Settings → Updates). */
@@ -254,8 +262,8 @@ interface State {
   /** Take (and clear) a thread's pending reference images. */
   takeDesignRefs(threadId: string): { path: string; thumb: string }[];
   /** Text to put back in the message box (Edit on a sent message); consumed by the composer. */
-  composerDraft: { text: string; nonce: number } | null;
-  setComposerDraft(text: string): void;
+  composerDraft: { text: string; nonce: number } & PluginSelections | null;
+  setComposerDraft(text: string, selections?: PluginSelections): void;
   startPick(): Promise<void>;
   /** A skill to pre-fill in the composer, set by the empty-state shortcuts. */
   /** Skills picked from ⌘K or the Library, waiting for the composer to add them as chips. */
@@ -304,11 +312,11 @@ interface State {
   /** Change a design thread's prototype tier. */
   setPrototypeTier(threadId: string, tier: PrototypeTier): Promise<void>;
   /** Start `text` as a new thread in the open project without leaving the current one; it reports through the Message Center. */
-  sendInBackground(text: string, skills?: string[], opts?: { worktree?: boolean }, mentions?: string[], files?: AttachmentSource[]): Promise<void>;
+  sendInBackground(text: string, skills?: string[], opts?: { worktree?: boolean } & PluginSelections, mentions?: string[], files?: AttachmentSource[]): Promise<void>;
   /** Start a chat thread (same project and agent, in the background) that builds a design thread's design into the codebase. */
   buildDesignInCode(designThreadId: string): Promise<void>;
   /** From the project's start screen: open a new thread and send `text` in it. */
-  startThread(text: string, skills?: string[], mentions?: string[], files?: AttachmentSource[]): Promise<void>;
+  startThread(text: string, skills?: string[], mentions?: string[], files?: AttachmentSource[], selections?: PluginSelections): Promise<void>;
   /** Add skills for the composer to pick up (deduped, in order). */
   addPendingSkills(names: string[]): void;
   takePendingSkills(): string[];
@@ -323,12 +331,12 @@ interface State {
    * Start a turn on the open thread (or `threadId`); resolves false when it couldn't start (no thread, already running, or the send failed).
    * `files` are copied into the thread first; `attachments` are ones it already holds (Retry).
    */
-  send(text: string, skills?: string[], threadId?: string, mentions?: string[], opts?: { background?: boolean; files?: AttachmentSource[]; attachments?: Attachment[] }): Promise<boolean>;
+  send(text: string, skills?: string[], threadId?: string, mentions?: string[], opts?: { background?: boolean; files?: AttachmentSource[]; attachments?: Attachment[] } & PluginSelections): Promise<boolean>;
   /** Compact a thread's session now (/compact), with an optional focus for the summary. */
   compact(threadId: string, focus: string | null): Promise<void>;
   /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
-  outbox: Record<string, { text: string; skills?: string[]; mentions?: string[]; files?: AttachmentSource[] }[]>;
-  enqueue(threadId: string, text: string, skills?: string[], mentions?: string[], files?: AttachmentSource[]): void;
+  outbox: Record<string, ({ text: string; skills?: string[]; mentions?: string[]; files?: AttachmentSource[] } & PluginSelections)[]>;
+  enqueue(threadId: string, text: string, skills?: string[], mentions?: string[], files?: AttachmentSource[], selections?: PluginSelections): void;
   /** Remove the queued message at `index`; drops the thread's key once its queue is empty. */
   dequeue(threadId: string, index: number): void;
   interrupt(): Promise<void>;
@@ -352,6 +360,10 @@ interface State {
   closeArtifact(): void;
   /** Installed Creator apps for the selected project (and global ones), as last listed. */
   apps: AppInfo[];
+  pluginCommands: PluginCommandView[];
+  pluginCommandsError: string | null;
+  pluginCommandsLoading: boolean;
+  loadPluginCommands(): Promise<void>;
   loadApps(): Promise<void>;
   /** The Creator app open in the plugin modal. */
   appOpen: AppInfo | null;
@@ -512,10 +524,17 @@ function drainQueue(s: State): Record<string, LiveThread> {
 }
 
 /** "system" follows the OS; "light"/"dark" pin the CSS tokens (styles/app.css). */
+export function acceptAppThemeState(state: AppThemeState): void {
+  if (state.version <= (useStore.getState().appThemes?.version ?? -1)) return;
+  useStore.setState({ appThemes: state });
+  if (typeof document !== "undefined") applyChromePalette(state.preview?.theme ?? state.active, isDark() ? "dark" : "light");
+}
+
 export function applyTheme(theme: SettingsView["theme"]): void {
   if (theme === "system") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
-  window.dispatchEvent(new Event("unskilled-theme"));
+  const state = useStore.getState().appThemes;
+  applyChromePalette(state?.preview?.theme ?? state?.active ?? null, isDark() ? "dark" : "light");
 }
 
 /** The motion preference on <html data-motion>; app.css plays entrances only for subtle/full. */
@@ -535,7 +554,7 @@ export function applyDensity(density: SettingsView["density"]): void {
 
 export function isDark(): boolean {
   const forced = document.documentElement.dataset.theme;
-  return forced ? forced === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  return forced ? forced === "dark" : typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
 export const useStore = create<State>((set, get) => ({
@@ -544,6 +563,11 @@ export const useStore = create<State>((set, get) => ({
   skills: [],
   agents: [],
   settings: null,
+  appThemes: null,
+  async loadAppThemes() {
+    try { if (api().appThemeState) acceptAppThemeState(await api().appThemeState()); }
+    catch (err) { get().showNotice(ipcErrorText(err)); }
+  },
   settingsOpen: false,
   setSettingsOpen(open) {
     set({ settingsOpen: open });
@@ -785,6 +809,9 @@ export const useStore = create<State>((set, get) => ({
   inspectorTab: "changes",
   artifact: null,
   apps: [],
+  pluginCommands: [],
+  pluginCommandsError: null,
+  pluginCommandsLoading: false,
   appOpen: null,
   appReloads: {},
   appPage: null,
@@ -883,8 +910,8 @@ export const useStore = create<State>((set, get) => ({
     if (refs.length) set((s) => ({ pendingRefs: Object.fromEntries(Object.entries(s.pendingRefs).filter(([id]) => id !== threadId)) }));
     return refs;
   },
-  setComposerDraft(text) {
-    set((s) => ({ composerDraft: { text, nonce: (s.composerDraft?.nonce ?? 0) + 1 } }));
+  setComposerDraft(text, selections) {
+    set((s) => ({ composerDraft: { text, ...selections, nonce: (s.composerDraft?.nonce ?? 0) + 1 } }));
   },
 
   async loadBrowserState() {
@@ -1028,6 +1055,7 @@ export const useStore = create<State>((set, get) => ({
         .listEditors()
         .then((editors) => set({ editors }));
       applyTheme(settings.theme);
+      await get().loadAppThemes();
       applyMotion(settings.motion);
       applyDensity(settings.density);
       applyZoom(settings.zoom);
@@ -1323,7 +1351,9 @@ export const useStore = create<State>((set, get) => ({
     if (!projectId) return;
     let thread: Thread;
     const draft = get().draft;
+    let selections: PluginSelections;
     try {
+      selections = { ...pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))), ...opts };
       thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, createOpts(get().threadKind, draft, opts ?? (get().settings?.background?.worktree ? { worktree: true } : undefined)));
       const patch = draftPatch(draft, thread);
       if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
@@ -1343,14 +1373,14 @@ export const useStore = create<State>((set, get) => ({
       draft: {},
       lastAgent: thread.agent,
     }));
-    await get().send(text, skills, thread.id, mentions, { background: true, ...(files?.length ? { files } : {}) });
-    get().showNotice("Started in the background. The Message Center says when it's done.");
+    if (await get().send(text, skills, thread.id, mentions, { ...selections, background: true, ...(files?.length ? { files } : {}) })) get().showNotice("Started in the background. The Message Center says when it's done.");
   },
 
-  async startThread(text, skills, mentions, files) {
+  async startThread(text, skills, mentions, files, selections) {
+    const pinned = { ...pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))), ...selections };
     // Send only to the thread newThread made: the selection can change while it awaits.
     const id = await get().newThread();
-    if (id) await get().send(text, skills, id, mentions, files?.length ? { files } : undefined);
+    if (id) await get().send(text, skills, id, mentions, { ...pinned, ...(files?.length ? { files } : {}) });
   },
 
   addPendingSkills(names) {
@@ -1428,11 +1458,12 @@ export const useStore = create<State>((set, get) => ({
   },
 
   outbox: {},
-  enqueue(threadId, text, skills, mentions, files) {
+  enqueue(threadId, text, skills, mentions, files, selections) {
+    const pinned = { ...pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))), ...selections };
     set((s) => ({
       outbox: {
         ...s.outbox,
-        [threadId]: [...(s.outbox[threadId] ?? []), { text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}), ...(files?.length ? { files } : {}) }],
+        [threadId]: [...(s.outbox[threadId] ?? []), { text, ...pinned, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}), ...(files?.length ? { files } : {}) }],
       },
     }));
   },
@@ -1454,6 +1485,7 @@ export const useStore = create<State>((set, get) => ({
     if (!id || get().running[id]) return false;
     set((s) => ({ running: { ...s.running, [id]: true } }));
     try {
+      const selected = opts?.pluginSkills ?? pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))).pluginSkills;
       // New files are copied into the thread before the turn starts, so the message can point at them.
       const saved = opts?.files?.length ? await api().saveAttachments(id, opts.files) : [];
       const attachments = [...(opts?.attachments ?? []), ...saved];
@@ -1464,6 +1496,8 @@ export const useStore = create<State>((set, get) => ({
         ...(mentions?.length ? { mentions } : {}),
         ...(attachments.length ? { attachments } : {}),
         ...(opts?.background ? { background: true } : {}),
+        ...(opts?.pluginCommand ? { pluginCommand: opts.pluginCommand } : {}),
+        ...(selected?.length ? { pluginSkills: selected } : {}),
       });
       return true;
     } catch (err) {
@@ -1594,7 +1628,18 @@ export const useStore = create<State>((set, get) => ({
       .catch(() => {});
   },
 
+  async loadPluginCommands() {
+    const request = ++pluginCommandRequest;
+    set({ pluginCommandsLoading: true });
+    try {
+      const commands = await api().listPluginCommands();
+      if (request === pluginCommandRequest) set({ pluginCommands: commands, pluginCommandsError: null });
+    } catch (e) { if (request === pluginCommandRequest) set({ pluginCommands: [], pluginCommandsError: ipcErrorText(e) }); }
+    finally { if (request === pluginCommandRequest) set({ pluginCommandsLoading: false }); }
+  },
+
   async loadApps() {
+    void get().loadPluginCommands();
     const projectId = get().selectedProjectId;
     try {
       const apps = await api().listApps(projectId);
@@ -1847,7 +1892,7 @@ export const useStore = create<State>((set, get) => ({
           const next = get().outbox[update.threadId]?.[0];
           if (next) {
             set((s) => ({ outbox: { ...s.outbox, [update.threadId]: s.outbox[update.threadId]!.slice(1) } }));
-            void get().send(next.text, next.skills, update.threadId, next.mentions, next.files?.length ? { files: next.files } : undefined);
+            void get().send(next.text, next.skills, update.threadId, next.mentions, { ...(next.files?.length ? { files: next.files } : {}), ...(next.pluginCommand ? { pluginCommand: next.pluginCommand } : {}), ...(next.pluginSkills ? { pluginSkills: next.pluginSkills } : {}) });
           }
         }
         if (!update.running && get().takeOver.mode !== "idle") {
@@ -1931,6 +1976,9 @@ export const useStore = create<State>((set, get) => ({
         return;
       case "apps-changed":
         void get().loadApps();
+        return;
+      case "app-themes-changed":
+        void get().loadAppThemes();
         return;
       case "automations-changed":
         if (typeof update.projectId !== "string" || !update.projectId || update.projectId.length > 160) return;

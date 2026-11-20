@@ -80,6 +80,10 @@ export function appBridgeScript(opts: { ownStyle?: boolean } = {}): string {
   const pending = new Map();
   let seq = 0;
   const themeListeners = new Set();
+  const toolHandlers = new Map();
+  const cardListeners = new Set();
+  let cardData, hasCard = false;
+  let toolMode = false, toolBusy = false;
   let scheme = "light";
   const post = (msg) => parent.postMessage(Object.assign({ cubiqApp: 1 }, msg), "*");
   const request = (op, payload) => new Promise((resolve, reject) => {
@@ -91,6 +95,23 @@ export function appBridgeScript(opts: { ownStyle?: boolean } = {}): string {
     if (e.source !== parent) return;
     const m = e.data;
     if (!m || m.cubiqApp !== 1) return;
+    if (m.op === "tool-mode") { toolMode = true; return; }
+    if (m.op === "card") {
+      cardData = m.data; hasCard = true;
+      for (const f of cardListeners) { try { f(cardData); } catch (err) { report("error", err); } }
+      return;
+    }
+    if (m.op === "tool-invoke") {
+      if (!toolMode || toolBusy || typeof m.name !== "string") return;
+      const fn = toolHandlers.get(m.name);
+      if (!fn) { post({ op: "tool-result", id: m.id, ok: false, error: "No handler registered for this tool." }); return; }
+      toolBusy = true;
+      Promise.resolve().then(() => fn(m.args)).then(
+        (result) => post({ op: "tool-result", id: m.id, ok: true, result }),
+        (err) => post({ op: "tool-result", id: m.id, ok: false, error: text(err).slice(0, 2000) })
+      ).finally(() => { toolBusy = false; });
+      return;
+    }
     if (m.op === "theme") {
       const root = document.documentElement;
       for (const [k, v] of Object.entries(m.vars || {})) root.style.setProperty("--cq-" + k, String(v));
@@ -129,6 +150,13 @@ ${
     }),
     theme: () => scheme,
     onTheme: (f) => { themeListeners.add(f); return () => themeListeners.delete(f); },
+    /** Register an agent-callable tool. Only the hidden tool host can invoke it. */
+    onTool: (name, fn) => {
+      if (typeof name !== "string" || typeof fn !== "function" || toolHandlers.has(name)) throw new Error("A tool needs a unique name and a handler.");
+      toolHandlers.set(name, fn); post({ op: "tool-register", name });
+    },
+    /** A transcript card's result data; replayed immediately for a late listener. */
+    onCard: (fn) => { cardListeners.add(fn); if (hasCard) fn(cardData); return () => cardListeners.delete(fn); },
     /** A floating widget's label while it is minimised (up to 40 characters; empty shows the title). */
     pill: (text) => post({ op: "pill", text: String(text == null ? "" : text).slice(0, 40) }),
     /** A short toast in CubiQ, headed with the app's title (up to 200 characters; a few per minute at most). */

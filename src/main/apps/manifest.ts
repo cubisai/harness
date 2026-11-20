@@ -4,13 +4,18 @@
 
 import { extname } from "node:path";
 import { validateRelativeFilePath } from "../extensions/manifest";
+import type { PluginCard, PluginTool } from "../../shared/plugin-tools";
+import { parsePluginInput } from "./tool-schema";
+import type { PluginContributions } from "../../shared/plugin-parts";
+import { parseContributions } from "./parts";
+import { validateProposal } from "../extensions/manifest";
 
 export const APP_MANIFEST = "app.json";
 export const APP_MAX_FILES = 64;
 export const APP_MAX_FILE_BYTES = 512 * 1024;
 export const APP_MAX_TOTAL_BYTES = 2 * 1024 * 1024;
 /** Text files only: a proposal carries file contents as strings, and drawings are SVG. */
-export const APP_ALLOWED_EXTENSIONS: ReadonlySet<string> = new Set([".html", ".css", ".js", ".mjs", ".json", ".svg", ".md", ".txt"]);
+export const APP_ALLOWED_EXTENSIONS: ReadonlySet<string> = new Set([".html", ".css", ".js", ".mjs", ".json", ".svg", ".md", ".txt", ".yaml", ".yml", ".csv"]);
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 /** An MCP server name, as `src/main/mcp/servers.ts` accepts it. */
@@ -63,6 +68,11 @@ export interface AppManifest {
   height?: number;
   /** "own": no CubiQ base sheet (font, background) and a transparent frame; the theme variables still arrive. */
   style?: "cubiq" | "own";
+  /** Agent-callable handlers in a fresh hidden frame; never run at startup. */
+  tools?: PluginTool[];
+  toolEntry?: string;
+  cards?: PluginCard[];
+  contributes?: PluginContributions;
 }
 
 export interface AppFile {
@@ -84,7 +94,7 @@ export function parseAppManifest(text: string, paths: ReadonlySet<string>, expec
     return { manifest: null, errors: [`app.json is not valid JSON: ${(e as Error).message}`] };
   }
   if (!isRecord(raw)) return { manifest: null, errors: ["app.json must be a JSON object."] };
-  const known = new Set(["name", "title", "description", "icon", "entry", "grants", "cacheSec", "placement", "size", "height", "style"]);
+  const known = new Set(["name", "title", "description", "icon", "entry", "grants", "cacheSec", "placement", "size", "height", "style", "tools", "toolEntry", "cards", "contributes"]);
   for (const k of Object.keys(raw)) if (!known.has(k)) errors.push(`Unknown app.json field "${k}". Fields: ${[...known].join(", ")}.`);
 
   const name = raw.name;
@@ -144,6 +154,29 @@ export function parseAppManifest(text: string, paths: ReadonlySet<string>, expec
   }
   if (grants.length > MAX_GRANT_SERVERS) errors.push(`An app may use at most ${MAX_GRANT_SERVERS} connectors.`);
 
+  const localHtml = (v: unknown): v is string => typeof v === "string" && extname(v).toLowerCase() === ".html" && paths.has(v);
+  const partName = /^[a-z][a-z0-9_]{0,31}$/;
+  const tools: PluginTool[] = [];
+  if (raw.tools !== undefined && (!Array.isArray(raw.tools) || raw.tools.length > 16)) errors.push('app.json "tools" is a list of at most 16 tools.');
+  for (const t of Array.isArray(raw.tools) ? raw.tools.slice(0, 16) : []) {
+    try {
+      if (!isRecord(t) || Object.keys(t).some((k) => !["name", "description", "inputSchema"].includes(k)) || typeof t.name !== "string" || !partName.test(t.name) || tools.some((x) => x.name === t.name)) throw new Error("Each tool needs a unique name (lowercase letters, digits, underscores; max 32).");
+      if (typeof t.description !== "string" || !t.description.trim() || t.description.length > 500) throw new Error("Each tool needs a description of 1-500 characters.");
+      tools.push({ name: t.name, description: t.description.trim(), inputSchema: parsePluginInput(t.inputSchema) });
+    } catch (e) { errors.push(`app.json tools: ${(e as Error).message}`); }
+  }
+  if (raw.toolEntry !== undefined && (!tools.length || !localHtml(raw.toolEntry))) errors.push('app.json "toolEntry" needs tools and must name a local .html file.');
+  const cards: PluginCard[] = [];
+  if (raw.cards !== undefined && (!Array.isArray(raw.cards) || raw.cards.length > 8)) errors.push('app.json "cards" is a list of at most 8 cards.');
+  for (const c of Array.isArray(raw.cards) ? raw.cards.slice(0, 8) : []) {
+    if (!isRecord(c) || Object.keys(c).some((k) => !["name", "entry", "height"].includes(k)) || typeof c.name !== "string" || !partName.test(c.name) || cards.some((x) => x.name === c.name) || !localHtml(c.entry) || (c.height !== undefined && (typeof c.height !== "number" || !Number.isInteger(c.height) || c.height < 80 || c.height > 600))) {
+      errors.push("Each card needs a unique name, a local HTML entry and optional height (80-600 pixels).");
+    } else cards.push({ name: c.name, entry: c.entry, height: typeof c.height === "number" ? c.height : 200 });
+  }
+
+  let contributes: PluginContributions | undefined;
+  try { contributes = parseContributions(raw.contributes, paths); }
+  catch (e) { errors.push(`app.json contributes: ${(e as Error).message}`); }
   if (errors.length) return { manifest: null, errors };
   return {
     manifest: {
@@ -160,6 +193,9 @@ export function parseAppManifest(text: string, paths: ReadonlySet<string>, expec
       ...(raw.placement === "dock" ? { placement: "dock" as const, height: height ?? DOCK_HEIGHT.default } : {}),
       ...(raw.placement === "panel" ? { placement: "panel" as const, height: height ?? PANEL_HEIGHT.default } : {}),
       ...(raw.style === "own" ? { style: "own" as const } : {}),
+      ...(tools.length ? { tools, ...(typeof raw.toolEntry === "string" ? { toolEntry: raw.toolEntry } : {}) } : {}),
+      ...(cards.length ? { cards } : {}),
+      ...(contributes ? { contributes } : {}),
     },
     errors,
   };
@@ -197,6 +233,13 @@ export function validateApp(name: string, files: unknown): AppCheck {
   if (errors.length || !manifestFile) return { ok: false, errors };
   const { manifest, errors: mErrors } = parseAppManifest(manifestFile.content, new Set(out.map((f) => f.path)), name);
   if (!manifest) return { ok: false, errors: mErrors };
+  for (const skill of manifest.contributes?.skills ?? []) {
+    const files = out.filter((f) => f.path.startsWith(`${skill.path}/`)).map((f) => ({ path: f.path.slice(skill.path.length + 1), content: f.content }));
+    const check = validateProposal({ kind: "skill", name: skill.name, description: skill.description, files }, { scope: { kind: "global" } });
+    if (!check.ok) errors.push(...check.errors.map((e) => `${skill.name}: ${e}`));
+    else if (check.proposal.draft.kind === "skill") for (const f of check.proposal.draft.files) out.find((o) => o.path === `${skill.path}/${f.path}`)!.content = f.content;
+  }
+  if (errors.length) return { ok: false, errors };
   return { ok: true, manifest, files: out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)) };
 }
 

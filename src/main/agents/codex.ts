@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
+import { deferManagedPermission, managedTarget } from "./managed-permission";
 import { withBrowserOnDemandFlag, withCode, withDesign, withProject, withShells } from "../mcp-http";
 import { BROWSER_CALL } from "../browser/on-demand";
 import { carriesThreadOwnTools, isCreatorTool } from "../shell-tools";
@@ -965,6 +966,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const owner = t.parent?.threadId ?? t.threadId;
     const allowed = alwaysAllowed.get(owner);
     if (allowed?.has(`${p.serverName}/${tool}`)) return { action: "accept", content: null };
+    // The display fields are not exact arguments and never become an approval.
+    // Main's execution gate validates/asks about the actual input after deferral.
+    if (deferManagedPermission(t.input, managedTarget(t.input, p.serverName, tool))) return { action: "accept", content: null };
     const decision = await t.input.requestPermission({
       toolName: TOOL_SERVERS.has(p.serverName) ? tool : `${p.serverName} · ${tool}`,
       summary: (p._meta.tool_params_display ?? []).map((d) => `${d.display_name ?? d.name}: ${String(d.value)}`).join(", ") || tool,
@@ -1176,7 +1180,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         const servers = (json: string) => ((JSON.parse(json) as { mcp_servers?: Record<string, unknown> } | null)?.mcp_servers ?? {});
         const notice = mcpChangeNotice(servers(was), servers(signature), true, "Codex");
         if (notice) input.onEvent({ kind: "notice", text: notice });
-        await conn.request("thread/unsubscribe", { threadId: input.sessionId }).catch(() => {});
+        try { await conn.request("thread/unsubscribe", { threadId: input.sessionId }); }
+        catch { throw new Error("Codex could not unload this session's old MCP configuration. Start a fresh session before continuing."); }
         loaded.delete(input.sessionId);
         input.onSessionRebuilt?.();
       }

@@ -62,12 +62,13 @@ export function checkRouter(files: DesignFile[]): DesignIssue[];
 
 /** Flag a missing or stale docs/design/tokens.md against the injected generator. */
 export function checkTokensDoc(files: DesignFile[], generateTokensMd: (css: string) => string): DesignIssue[];
+export function checkChromeThemeTokens(files: DesignFile[], generate: (css: string) => string): DesignIssue[];
 
 /** Drop allowlisted issues and turn unmatched entries into warnings. */
 export function applyAllowlist(issues: DesignIssue[], allowlist: DesignAllowlistEntry[]): AllowlistResult;
 
 /** Run every check, apply the allowlist and return issues sorted by file/line/code. */
-export function runChecks(files: DesignFile[], options?: { generateTokensMd?: (css: string) => string; allowlist?: DesignAllowlistEntry[] }): DesignIssue[];
+export function runChecks(files: DesignFile[], options?: { generateTokensMd?: (css: string) => string; generateChromeThemeTokens?: (css: string) => string; allowlist?: DesignAllowlistEntry[] }): DesignIssue[];
 
 /** Render one issue as `<severity> <code> <file>:<line> <message> [<value>]`. */
 export function formatIssue(issue: DesignIssue): string;

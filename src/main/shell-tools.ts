@@ -46,7 +46,7 @@ export function isCreatorTool(name: string): boolean {
  * a Creator thread keeps them even if shells are ever left out.
  */
 export function carriesThreadOwnTools(tools: readonly { name: string }[]): boolean {
-  return tools.some((t) => (SHELL_TOOL_NAMES as readonly string[]).includes(t.name) || isCreatorTool(t.name));
+  return tools.some((t) => (SHELL_TOOL_NAMES as readonly string[]).includes(t.name) || isCreatorTool(t.name) || t.name.startsWith("plugin_"));
 }
 
 function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { resolveInside } from "../artifacts";
 import { contentTypeOf } from "../design/serve";
 import { injectBridge } from "../design/serve";
-import { checkHostCsp, checkHostHtml } from "./check";
+import { appThemeSpecimenHtml, checkHostCsp, checkHostHtml } from "./check";
 
 export const APP_SCHEME = "cubiq-app";
 /** Keys are what `registry.ts` hands out: `g~name`, `p~<projectId>~name`, `d~<threadId>~name`. */
@@ -57,6 +57,7 @@ export function serveApp(url: string, deps: AppServeDeps): Response {
       });
     }
     const parsed = parseAppUrl(url);
+    if (/^cubiq-app:\/\/h\/theme\.html(?:[?#]|$)/i.test(url)) return new Response(injectBridge(appThemeSpecimenHtml(), deps.bridge), { headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
     if (!parsed) return notFound();
     const root = deps.appRoot(parsed.key);
     if (!root) return notFound();

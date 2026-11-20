@@ -285,20 +285,23 @@ export class McpScopes {
     return store;
   }
 
-  /** The servers the thread's project actually gets, ready to hand to an agent; null project = the global list. */
-  effective(projectId: string | null): McpServerEntry[] {
-    const ready = (list: McpServerEntry[], scope: string) =>
-      list.flatMap(({ locked: _l, ...s }) => {
-        if (!this.remote || !isRemote(s.spec)) return [{ ...s, spec: resolveSpec(s.spec) }];
-        const spec = this.remote(scope, s.name);
-        return spec ? [{ ...s, spec }] : [];
-      });
-    if (!projectId) return ready(this.global.enabled(), "global");
+  /** Main-only configured entries, with their actual owning scope (never a wire spec). */
+  configured(projectId: string | null): { scope: string; entry: McpServerEntry }[] {
+    if (!projectId) return this.global.enabled().map((entry) => ({ scope: "global", entry }));
     const project = this.project(projectId);
     const ownNames = new Set(project.list().map((s) => s.name));
     const off = new Set(project.offGlobal());
     const fromGlobal = this.global.enabled().filter((s) => !ownNames.has(s.name) && !off.has(s.name));
-    return [...ready(project.enabled(), `project:${projectId}`), ...ready(fromGlobal, "global")];
+    return [...project.enabled().map((entry) => ({ scope: `project:${projectId}`, entry })), ...fromGlobal.map((entry) => ({ scope: "global", entry }))];
+  }
+
+  /** The servers the thread's project actually gets, ready to hand to an agent; null project = the global list. */
+  effective(projectId: string | null): McpServerEntry[] {
+    return this.configured(projectId).flatMap(({ scope, entry: { locked: _l, ...s } }) => {
+      if (!this.remote || !isRemote(s.spec)) return [{ ...s, spec: resolveSpec(s.spec) }];
+      const spec = this.remote(scope, s.name);
+      return spec ? [{ ...s, spec }] : [];
+    });
   }
 }
 

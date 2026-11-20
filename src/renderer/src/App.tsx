@@ -38,6 +38,8 @@ import { ESCAPE_OWNERS, ESCAPE_OWNERS_OVER_DRAWER, escapeStopsTurn, type EscapeT
 import { lastAgentLine } from "./prompt-bar";
 import { inboxModel, nthVisibleThread, sidebarMode, threadKind, waitingThreads } from "./sections";
 import { useSelectedThread, useStore } from "./store";
+import { applyTheme } from "./store";
+import { AppThemePreviewBar, cancelThemePreview } from "./components/AppThemeControls";
 
 // Its own chunk: Chat never loads the design canvas.
 const DesignCanvas = lazy(() => import("./design/DesignCanvas"));
@@ -58,6 +60,19 @@ export function App() {
   useEffect(() => {
     void init();
   }, [init]);
+  useEffect(() => {
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    const change = () => applyTheme(useStore.getState().settings?.theme ?? "system");
+    const escape = (event: KeyboardEvent) => {
+      const preview = useStore.getState().appThemes?.preview;
+      if (event.key !== "Escape" || event.defaultPrevented || !preview || document.querySelector(ESCAPE_OWNERS)) return;
+      event.preventDefault();
+      void cancelThemePreview(preview.token, true).catch(() => {});
+    };
+    mq.addEventListener("change", change);
+    window.addEventListener("keydown", escape);
+    return () => { mq.removeEventListener("change", change); window.removeEventListener("keydown", escape); };
+  }, []);
 
   // ⌘K: search (> in it, or ⌘⇧P, for the command palette). ⌘\: sidebar. ⌘N / Ctrl+N: new thread. ⌘⇧D: changes. Esc: stop the running turn.
   useEffect(() => {
@@ -266,6 +281,7 @@ export function App() {
                 </>
               )}
             </header>
+            <AppThemePreviewBar />
 
             {appPage ? (
               <PluginPage />

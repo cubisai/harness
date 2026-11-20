@@ -15,6 +15,7 @@ import { binaryInfo, majorOf, resolvedInstallAsync } from "../binaries";
 import type { AgentDriver, SessionSeed, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
+import { deferManagedPermission, wireManagedTarget } from "../managed-permission";
 import { TOOL_SERVER_NAME, withBrowserOnDemandFlag, withCode, withProject, withShells, withThread } from "../../mcp-http";
 import { BROWSER_CALL } from "../../browser/on-demand";
 import { carriesThreadOwnTools } from "../../shell-tools";
@@ -237,7 +238,7 @@ const PERMISSION_KINDS: Record<string, ToolKind> = { read: "read", list: "read",
  * mode, Plan included: nothing else will answer it.
  */
 export async function decidePluginAsk(
-  input: Pick<TurnInput, "permissionMode" | "requestPermission"> & Partial<Pick<TurnInput, "cwd" | "design">>,
+  input: Pick<TurnInput, "permissionMode" | "requestPermission"> & Partial<Pick<TurnInput, "cwd" | "design" | "managedPermission" | "mcpServers">>,
   ask: PluginAsk,
   signal?: AbortSignal,
 ): Promise<PermissionDecision | null> {
@@ -249,6 +250,10 @@ export async function decidePluginAsk(
   if (picked === "deny") return "deny";
   // A design thread's own folder is its canvas: an edit there (the summary is its file) doesn't ask.
   if (ask.kind === "edit" && input.cwd && designWriteAllowed(input.permissionMode, input.cwd, input.design, ask.summary ? [ask.summary] : [])) return "allow-once";
+  if (own && input.managedPermission) {
+    const target = wireManagedTarget({ mcpServers: input.mcpServers ?? [] }, ask.tool) ?? (/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(ask.tool) ? { kind: "tool" as const, name: ask.tool } : null);
+    if (target && input.managedPermission(target)) return "allow-once";
+  }
   return input.requestPermission({ toolName: own ? ask.tool : kindLabel(kind), summary: ask.summary || ask.tool, canAlwaysAllow: false, ...(signal ? { signal } : {}) });
 }
 
@@ -939,12 +944,18 @@ export function createAcpDriver(
           if (picked === "allow") return "allow-once";
           // A design thread's own folder is its canvas: file edits there don't ask.
           if (p.toolCall.kind === "edit" && designWriteAllowed(t.input.permissionMode, t.input.cwd, t.input.design, acpEditTargets(p.toolCall))) return "allow-once";
-          // The harness's own safe tools (browser snapshot, click, ...) run without asking.
-          const title = `${p.toolCall.title ?? ""}`;
-          if (t.input.tools.some((tool) => tool.autoAllow && title.includes(tool.name))) return "allow-once";
+          // A title substring is not an identity: never auto-approve a native
+          // command just because its description mentions a browser tool.
+          const title = `${p.toolCall.title ?? ""}`.trim();
+          const managedKind = !p.toolCall.kind || p.toolCall.kind === "other";
+          const target = managedKind && typeof raw?.command !== "string" && typeof raw?.cmd !== "string"
+            ? wireManagedTarget(t.input, title) ?? (/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(title) ? { kind: "tool" as const, name: title } : null) : null;
+          if (target?.kind === "tool" && t.input.tools.some((tool) => tool.autoAllow && target.name === tool.name)) return "allow-once";
           // Asking the user is never an action to approve, in any mode (Plan included).
           if (title.includes(ASK_USER_TOOL)) return "allow-once";
           if (picked === "deny") return "deny";
+          const inputArgs = p.toolCall.rawInput && typeof p.toolCall.rawInput === "object" && !Array.isArray(p.toolCall.rawInput) ? p.toolCall.rawInput as Record<string, unknown> : undefined;
+          if (target && deferManagedPermission(t.input, target, inputArgs)) return "allow-once";
           return t.input.requestPermission({
             toolName: kindLabel(p.toolCall.kind),
             summary: p.toolCall.title ?? JSON.stringify(p.toolCall.rawInput ?? {}),
@@ -1109,11 +1120,22 @@ export function createAcpDriver(
       const canReopen = Boolean(caps?.sessionCapabilities?.resume && caps.sessionCapabilities.close);
       const notice = mcpChangeNotice(l.mcpByName, byName, canReopen, config.label);
       if (notice) input.onEvent({ kind: "notice", text: notice });
+      if (!canReopen) {
+        const direct = Object.entries(l.mcpByName).filter(([, spec]) => spec && typeof spec === "object" && "command" in spec).map(([name]) => name);
+        if (direct.length && (input.managedPermission || input.mcpServers.some((s) => s.mainMediated))) throw new Error(`This session still has direct stdio connectors (${direct.join(", ")}) and cannot reopen with main mediation. Start a new thread or fresh session before continuing.`);
+        l.mcpSignature = signature;
+        l.mcpByName = byName;
+        return;
+      }
+      const sessionId = l.sessionId;
+      // A failed close/resume must never mark the new configuration as active:
+      // otherwise the next retry would reuse the old direct stdio capability.
+      await l.conn.request("session/close", { sessionId });
+      l.sessionId = null;
+      const res = await l.conn.request<{ configOptions?: ConfigOption[]; modes?: SessionModeState | null }>("session/resume", { cwd: input.cwd, mcpServers, sessionId });
+      l.sessionId = sessionId;
       l.mcpSignature = signature;
       l.mcpByName = byName;
-      if (!canReopen) return;
-      await l.conn.request("session/close", { sessionId: l.sessionId }).catch(() => {});
-      const res = await l.conn.request<{ configOptions?: ConfigOption[]; modes?: SessionModeState | null }>("session/resume", { cwd: input.cwd, mcpServers, sessionId: l.sessionId });
       if (res?.configOptions) {
         l.configOptions = res.configOptions;
         rememberConfig(l.configOptions, l.threadKey);

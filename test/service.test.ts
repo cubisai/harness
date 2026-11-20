@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { LiveUpdate, PlanDecision, ThreadEvent } from "../src/shared/types";
+import type { LiveUpdate, PlanDecision, SkillEntry, ThreadEvent } from "../src/shared/types";
 import { teamMemberProtocol, type ExpertDef } from "../src/shared/experts";
 import type { AgentDriver, HarnessTool, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
@@ -12,6 +12,7 @@ import type { TurnDelta } from "../src/main/memory/extractor";
 import { Service, titleFrom } from "../src/main/service";
 import { normalizeUsage } from "../src/main/usage";
 import { catalog, closeAfter, tempDir } from "./helpers";
+import { mergeCatalog } from "../src/main/skills/catalog";
 
 function fakeDriver(script: (input: TurnInput) => Promise<void>): AgentDriver & { prompts: string[] } {
   const prompts: string[] = [];
@@ -31,18 +32,46 @@ function fakeDriver(script: (input: TurnInput) => Promise<void>): AgentDriver & 
   };
 }
 
-function setup(script: (input: TurnInput) => Promise<void>) {
+function setup(script: (input: TurnInput) => Promise<void>, pluginSkills: SkillEntry[] = []) {
   const store = new Store(join(tempDir(), "t.db"));
   closeAfter(() => store.close());
   const updates: LiveUpdate[] = [];
   const driver = fakeDriver(script);
-  const service = new Service(store, () => catalog(), [driver], (u) => updates.push(u));
+  const service = new Service(store, () => {
+    const base = catalog();
+    return pluginSkills.length ? mergeCatalog([base.skills, pluginSkills], new Set(), base.root) : base;
+  }, [driver], (u) => updates.push(u));
   const project = store.addProject(tempDir());
   const thread = service.createThread(project.id);
   return { store, service, driver, updates, thread };
 }
 
 describe("Service.settleFailedSend", () => {
+  it("plugin permissions are single-use, withdraw on cancellation and plugin cards persist", async () => {
+    let service!: Service;
+    let approve = true;
+    const controller = new AbortController();
+    const s = setup(async (input) => {
+      approve = await service.permissionFromTool(input.threadId, "Plugin · Notes", "Save item", controller.signal);
+      if (approve) service.emitFromTool(input.threadId, { kind: "plugin-card", key: "g~notes", card: "saved", data: { title: "Paper" } });
+    });
+    service = s.service;
+    const turn = service.send({ threadId: s.thread.id, text: "Save a title" });
+    await vi.waitFor(() => expect(s.updates.some((u) => u.type === "permission")).toBe(true));
+    const request = s.updates.find((u) => u.type === "permission");
+    if (request?.type !== "permission") throw new Error("No permission request");
+    expect(request.request.canAlwaysAllow).toBe(false);
+    service.respondPermission(request.request.requestId, "allow-once");
+    await turn;
+    expect(s.store.listEvents(s.thread.id).some((e) => e.event.kind === "plugin-card")).toBe(true);
+    expect(await service.permissionFromTool(s.thread.id, "Plugin", "outside turn")).toBe(false);
+    const next = service.send({ threadId: s.thread.id, text: "Save another" });
+    await vi.waitFor(() => expect(s.updates.filter((u) => u.type === "permission")).toHaveLength(2));
+    controller.abort();
+    await next;
+    expect(approve).toBe(false);
+    expect(s.updates.some((u) => u.type === "permission-withdrawn")).toBe(true);
+  });
   it("a refused duplicate send leaves a live turn running in the window; a failed send of an idle thread clears it", async () => {
     let release!: () => void;
     const { service, thread, updates } = setup(() => new Promise<void>((r) => (release = r)));
@@ -63,6 +92,79 @@ describe("Service.settleFailedSend", () => {
 });
 
 describe("Service.send", () => {
+  it("requires the picked plugin skill revision and rejects a stale retry without changing standalone skills", async () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, "SKILL.md"), "---\nname: review\ndescription: Review\n---\nFrozen skill body.\n");
+    const owner = { key: "g~reviewer", title: "Reviewer", enabled: true, revision: "r1" };
+    const skill: SkillEntry = { name: "p-reviewer-review", description: "Review", invocation: "model", origin: "plugin", dir, owner, calls: [], files: [], sha256: "fixture" };
+    const s = setup(async () => {}, [skill]);
+    s.service.setPluginDelivery({ command: () => { throw new Error("not a command"); }, assertSkill: (entry) => {
+      if (!entry.owner?.enabled) throw new Error("Plugin is Off.");
+    } });
+    const identity = { key: owner.key, name: skill.name, revision: "r1" };
+    await expect(s.service.send({ threadId: s.thread.id, text: "", skills: [skill.name] })).rejects.toThrow("changed");
+    await s.service.send({ threadId: s.thread.id, text: "file.ts", skills: [skill.name], pluginSkills: [identity] });
+    expect(s.driver.prompts[0]).toContain("Frozen skill body.");
+    expect(s.store.listEvents(s.thread.id).find((e) => e.event.kind === "user")?.event).toMatchObject({ pluginSkills: [identity] });
+    owner.revision = "r2";
+    await expect(s.service.send({ threadId: s.thread.id, text: "", skills: [skill.name], pluginSkills: [identity] })).rejects.toThrow("changed");
+    expect(s.driver.prompts).toHaveLength(1);
+  });
+  it("composes a reviewed command as an explicit invocation and persists its identity for retry", async () => {
+    const s = setup(async () => {});
+    const invocation = { key: "g~reviewer", name: "review", revision: "r1" };
+    let revision = "r1";
+    s.service.setPluginDelivery({ command: (picked) => {
+      if (picked.revision !== revision) throw new Error("Plugin command changed.");
+      return { skill: "reviewer.review", prompt: "Review carefully; never execute substitutions like $(touch nope)." };
+    }, assertSkill: () => {} });
+    await s.service.send({ threadId: s.thread.id, text: "src/main", pluginCommand: invocation });
+    expect(s.driver.prompts[0]).toContain('<skill name="reviewer.review">');
+    expect(s.driver.prompts[0]).toContain("$(touch nope)");
+    expect(s.driver.prompts[0]).toContain("Arguments: src/main");
+    expect(s.store.listEvents(s.thread.id).find((e) => e.event.kind === "user")?.event).toMatchObject({ text: "src/main", pluginCommand: invocation });
+    revision = "r2";
+    await expect(s.service.send({ threadId: s.thread.id, text: "src/main", pluginCommand: invocation })).rejects.toThrow("changed");
+    expect(s.driver.prompts).toHaveLength(1);
+  });
+  it("rejects unconfigured command delivery before starting a turn", async () => {
+    const s = setup(async () => {});
+    await expect(s.service.send({ threadId: s.thread.id, text: "", pluginCommand: { key: "g~reviewer", name: "review", revision: "r1" } })).rejects.toThrow("unavailable");
+    expect(s.driver.prompts).toEqual([]);
+    expect(s.store.listEvents(s.thread.id)).toEqual([]);
+  });
+  it("rechecks a background command only after the admission queue drains", async () => {
+    let release!: () => void;
+    const s = setup(() => new Promise<void>((r) => { release = r; }));
+    const queued = s.service.createThread(s.thread.projectId);
+    s.service.setRunLimit(() => 1);
+    let on = true;
+    s.service.setPluginDelivery({ command: () => {
+      if (!on) throw new Error("Plugin is Off.");
+      return { skill: "reviewer.review", prompt: "Review carefully." };
+    }, assertSkill: () => {} });
+    const first = s.service.send({ threadId: s.thread.id, text: "hold" });
+    await vi.waitFor(() => expect(s.driver.prompts).toHaveLength(1));
+    const second = s.service.send({ threadId: queued.id, text: "", background: true, pluginCommand: { key: "g~reviewer", name: "review", revision: "r1" } });
+    const refused = expect(second).rejects.toThrow("Off");
+    await vi.waitFor(() => expect(s.updates.some((u) => u.type === "queued" && u.threadId === queued.id && u.queued)).toBe(true));
+    on = false; release();
+    await first; await refused;
+    expect(s.driver.prompts).toHaveLength(1);
+    expect(s.store.listEvents(queued.id).some((e) => e.event.kind === "user")).toBe(false);
+  });
+  it("rechecks plugin command ownership after asynchronous turn preparation", async () => {
+    const s = setup(async () => {});
+    let calls = 0;
+    s.service.setPluginDelivery({ command: () => {
+      if (++calls === 2) throw new Error("Plugin changed during preparation.");
+      return { skill: "reviewer.review", prompt: "Review carefully." };
+    }, assertSkill: () => {} });
+    await expect(s.service.send({ threadId: s.thread.id, text: "", pluginCommand: { key: "g~reviewer", name: "review", revision: "r1" } })).rejects.toThrow("changed during preparation");
+    expect(calls).toBe(2);
+    expect(s.driver.prompts).toEqual([]);
+    expect(s.service.isRunning(s.thread.id)).toBe(false);
+  });
   it("stores the turn, names the thread, and remembers the session", async () => {
     const { store, service, thread, updates } = setup(async (input) => {
       input.onSession("session-1");
@@ -1612,4 +1714,3 @@ describe("issue offer after a turn", () => {
     expect(check).not.toHaveBeenCalled();
   });
 });
-

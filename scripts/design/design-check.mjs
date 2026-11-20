@@ -29,6 +29,7 @@ export const SEVERITY = Object.freeze({
   "design/type-offscale": "error",
   "design/token-missing": "error",
   "design/token-stale": "error",
+  "design/chrome-theme-stale": "error",
   "design/token-collision": "warning",
   "design/theme-drift": "warning",
   "design/doc-value": "warning",
@@ -502,6 +503,14 @@ export function checkTokensDoc(files, generateTokensMd) {
   return [];
 }
 
+export function checkChromeThemeTokens(files, generate) {
+  if (typeof generate !== "function") return [];
+  const path = "src/shared/chrome-theme-tokens.generated.ts";
+  const css = files.find((f) => f.path === "src/renderer/src/styles/app.css");
+  const cache = files.find((f) => f.path === path);
+  return cache?.text === generate(css?.text ?? "") ? [] : [issue("error", "design/chrome-theme-stale", path, 0, "Chrome token cache is stale; regenerate with bun run design:docs")];
+}
+
 /** Drop allowlisted issues and turn unmatched entries into warnings. */
 export function applyAllowlist(issues, allowlist) {
   const entries = Array.isArray(allowlist) ? allowlist : [];
@@ -538,17 +547,21 @@ function compareIssues(a, b) {
 
 /** Run every check, apply the allowlist and return issues sorted by file/line/code. */
 export function runChecks(files, options = {}) {
-  const { generateTokensMd, allowlist } = options;
+  const { generateTokensMd, generateChromeThemeTokens, allowlist } = options;
+  // This exact generated data cache is checked byte-for-byte against app.css
+  // below, not treated as handwritten component styles or allowlisted literals.
+  const source = files.filter((f) => f.path !== "src/shared/chrome-theme-tokens.generated.ts");
   const all = [
-    ...checkLiteralColors(files),
-    ...checkTypeScale(files),
-    ...checkTokenRefs(files),
-    ...checkTokenCollisions(files),
-    ...checkThemeDrift(files),
+    ...checkLiteralColors(source),
+    ...checkTypeScale(source),
+    ...checkTokenRefs(source),
+    ...checkTokenCollisions(source),
+    ...checkThemeDrift(source),
     ...checkDocValues(files),
     ...checkSkills(files),
     ...checkRouter(files),
     ...checkTokensDoc(files, generateTokensMd),
+    ...checkChromeThemeTokens(files, generateChromeThemeTokens),
   ];
   const { issues, unused } = applyAllowlist(all, allowlist);
   return [...issues, ...unused].sort(compareIssues);
@@ -586,6 +599,8 @@ function collectFiles(root) {
   const abs = [];
   walkDir(join(root, "src", "renderer", "src"), [".css", ".ts", ".tsx"], abs);
   walkDir(join(root, "src", "main", "browser"), [".ts"], abs);
+  const chromeCache = join(root, "src", "shared", "chrome-theme-tokens.generated.ts");
+  if (existsSync(chromeCache)) abs.push(chromeCache);
   const design = join(root, "DESIGN.md");
   if (existsSync(design)) abs.push(design);
   walkDir(join(root, "docs", "design"), [".md"], abs);
@@ -649,7 +664,7 @@ async function main() {
   const allowlist = readAllowlist(allowlistPath);
   const docs = await import("./design-docs.mjs").catch(() => null);
   const generateTokensMd = docs && typeof docs.generateTokensMd === "function" ? docs.generateTokensMd : null;
-  let issues = runChecks(files, { generateTokensMd, allowlist });
+  let issues = runChecks(files, { generateTokensMd, generateChromeThemeTokens: docs?.generateChromeThemeTokens, allowlist });
   if (!generateTokensMd) {
     issues = [...issues, issue("error", "design/token-stale", "scripts/design/design-docs.mjs", 0, "scripts/design/design-docs.mjs is missing")].sort(compareIssues);
   }

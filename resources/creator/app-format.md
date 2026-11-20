@@ -8,6 +8,8 @@ Your draft folder is `<thread folder>/.cubiq/app-drafts/<name>/`. `creator_app_p
 
 ## app.json
 
+Optional `contributes.appTheme` supplies a validated host chrome palette; read `app-theme-format`. It installs globally with the plugin but never applies automatically. Only user Preview/Apply/Revert changes live appearance; ordinary app previews/checks do not select it.
+
 ```json
 {
   "name": "sales-dashboard",
@@ -46,6 +48,9 @@ A floating widget adds:
 - `size` (floating only): `{ "width": 160-480, "height": 80-600 }` in px, the frame below the widget's title strip. Default 280×200.
 - `height` (dock or panel only): the frame's height in px. Dock 32-160 (default 48), panel 80-320 (default 160). The width is the host's: never assume a fixed one.
 - `style`: `"cubiq"` (default: CubiQ's base font and background are set for you) or `"own"` (nothing is set and the frame is transparent: style the page yourself; the `--cq-*` variables still arrive).
+- `tools`, `toolEntry`: agent-callable sandboxed handlers. Read `creator_inspect` topic `plugin-tools` first.
+- `cards`: declared local read-only transcript frames for tool results. Read topic `chat-card`.
+- `contributes`: optional owned commands, exact rules, skills, connectors and project-bound automations. Read topic `plugin-bundle`; Preview and Check never activate these parts.
 
 No other fields are allowed.
 
@@ -72,6 +77,10 @@ No other fields are allowed.
 
 `template: "dock"` seeds a one-row, own-style "Today's focus" strip with a button that uses `cubiq.ask`.
 
+`template: "tool"` seeds a reading-list modal, separate hidden tool handlers and a saved-item chat card.
+
+`template: "bundle"` seeds one review command and one local skill, with no connector or schedule. Its parts install together only after review.
+
 ## Managing installed apps
 
-Library → Plugins opens, turns off or uninstalls apps; the sidebar's Apps rows open them. Disabling keeps saved data; uninstalling removes it but keeps connectors. **Edit with Creator** copies the installed files into a new Creator thread's draft and opens its preview. Edit only that draft, preview and check it, then propose the same name: the user reviews an **Update** card before the installed files are replaced. Nothing installs or runs a model turn automatically when Edit is clicked.
+Library → Plugins opens, turns off or uninstalls apps; the sidebar's Apps rows open them. Disabling keeps saved data; uninstalling removes owned parts and their credentials but keeps external granted connectors. **Edit with Creator** copies the installed files into a new Creator thread's draft and opens its preview. Edit only that draft, preview and check it, then propose the same name: the user reviews an **Update** card before the installed files are replaced. Nothing installs or runs a model turn automatically when Edit is clicked.

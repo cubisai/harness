@@ -10,6 +10,8 @@ export interface SkillCatalogOptions {
   bundledDir: string;
   harnessDir: string;
   disabled: () => string[];
+  /** Reviewed plugin skills, including unavailable rows for Library. Lowest precedence. */
+  pluginSkills?: () => SkillEntry[];
 }
 
 function mtimeMs(dir: string): number {
@@ -73,7 +75,7 @@ export class SkillCatalogs {
   global(): Catalog {
     const disabled = new Set(this.opts.disabled());
     return mergeCatalog(
-      [this.discovered("harness", this.opts.harnessDir), this.discovered("bundled", this.opts.bundledDir), this.legacy()],
+      [this.discovered("harness", this.opts.harnessDir), this.discovered("bundled", this.opts.bundledDir), this.legacy(), this.opts.pluginSkills?.() ?? []],
       disabled,
       this.opts.legacyRoot,
     );
@@ -96,7 +98,7 @@ export class SkillCatalogs {
         this.discovered("projectClaude", join(cwd, ".claude", "skills")),
       );
     }
-    layers.push(this.discovered("harness", this.opts.harnessDir), this.discovered("bundled", this.opts.bundledDir), this.legacy());
+    layers.push(this.discovered("harness", this.opts.harnessDir), this.discovered("bundled", this.opts.bundledDir), this.legacy(), this.opts.pluginSkills?.() ?? []);
     return mergeCatalog(layers, disabled, this.opts.legacyRoot);
   }
 

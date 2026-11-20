@@ -7,6 +7,7 @@ Router for anyone (human or agent) about to touch `src/renderer/**`. It points a
 1. [`DESIGN.md`](../../DESIGN.md): the contract. Principles, type, space, motion, per-surface rules, do and don't, the pre-ship checklist.
 2. [`tokens.md`](tokens.md): every design token with its light and dark value. Generated from `src/renderer/src/styles/app.css`; never edit it by hand.
 3. [`quality-checklist.md`](quality-checklist.md): what `design:check` enforces, what stays judgment, and the review checklist.
+4. [`app-themes.md`](app-themes.md): validated user app palettes, baseline recovery colors and lifecycle checks.
 
 Read 1 and 2 before any styling change. Read 3 before calling a UI change done.
 

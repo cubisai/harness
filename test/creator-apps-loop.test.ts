@@ -453,6 +453,15 @@ describe("app check", () => {
     expect(win.destroy).toHaveBeenCalled();
   });
 
+  it("reports read-only write refusals as not-run, without asking or failing an otherwise valid render", async () => {
+    const { win, replies } = fakeWindow({ calls: [{ server: "shop", tool: "refund_order" }], text: "A valid read-only result card" });
+    const checker = new AppChecker({ createWindow: () => win, call: async () => ({ ok: false, error: "This read-only surface cannot change connector data.", blocked: "read-only" }), storeGet: () => null, storeSet: () => ({ ok: true, result: null }), ...clock() });
+    const report = await checker.check("g~notes", "cubiq-app://a/g~notes/card.html", { scheme: "light", screenshot: false, cardData: {} });
+    expect(report.ok).toBe(true);
+    expect(report.calls).toMatchObject([{ call: "shop.refund_order", status: "not-run" }]);
+    expect(replies[0]?.body).toEqual({ ok: false, error: "The check doesn't run calls that can change data." });
+  });
+
   it("renders and captures at the size the app shows at", async () => {
     const { win } = fakeWindow({ calls: [], text: "Focus 25:00 Start Reset" });
     const createWindow = vi.fn(() => win);

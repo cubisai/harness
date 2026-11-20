@@ -240,6 +240,16 @@
 }
 
 * { box-sizing: border-box; }
+.app-theme-controls { min-width: 0; flex: 1; color: var(--text); background: var(--bg); }
+.app-theme-actions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; margin-top: 6px; }
+.app-theme-appearance { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.app-theme-appearance > .select-button { flex: 0 1 144px; min-width: 0; }
+.app-theme-appearance .app-theme-actions { display: contents; }
+.app-theme-appearance > .note, .app-theme-appearance > .form-error { flex-basis: 100%; }
+.app-theme-status { align-self: center; color: var(--text-secondary); }
+.app-theme-controls .form-error { color: var(--text); }
+.app-theme-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 12px; min-width: 0; flex-shrink: 0; border-bottom: 1px solid var(--hairline); color: var(--text); background: var(--bg); }
+.app-theme-preview > span { min-width: 0; flex: 1 1 160px; overflow-wrap: anywhere; }
 html, body, #root { height: 100%; margin: 0; }
 body {
   font: 13px/1.5 var(--font);
@@ -1800,7 +1810,7 @@ details.tool > summary::-webkit-details-marker { display: none; }
 .permission-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 8px; }
 .permission-icon { display: inline-flex; flex: none; color: var(--warning); }
 .permission-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.permission-agent { margin-left: auto; flex: none; font-size: 11.5px; color: var(--text-tertiary); }
+.permission-agent { margin-left: auto; flex: none; font-size: 11.5px; color: var(--text-secondary); }
 .permission-ask .permission-body {
   margin: 0;
   padding: 8px 10px;
@@ -1814,11 +1824,11 @@ details.tool > summary::-webkit-details-marker { display: none; }
 .permission-ask .permission-body.command code::before { content: "$ "; color: var(--text-tertiary); user-select: none; }
 .permission-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; min-width: 0; }
 .permission-ask .actions { flex: none; gap: 6px; margin-left: auto; }
-.permission-ask .actions .button.ghost.danger { color: var(--danger); }
+.permission-ask .actions .button.ghost.danger { color: color-mix(in srgb, var(--danger) 80%, var(--text)); }
 .permission-ask .actions .button.ghost.danger:hover { background: var(--del-bg); }
 .permission-ask .actions .button:focus-visible { outline: 2px solid color-mix(in srgb, var(--focus) 40%, transparent); outline-offset: 1px; }
 .permission-guard { font-size: 11px; color: var(--text-secondary); margin-top: 8px; }
-.permission-ask .permission-guard { display: inline-flex; align-items: center; gap: 5px; flex: 1 1 220px; min-width: 0; margin: 0; color: var(--text-tertiary); }
+.permission-ask .permission-guard { display: inline-flex; align-items: center; gap: 5px; flex: 1 1 220px; min-width: 0; margin: 0; color: var(--text-secondary); }
 .permission-guard.warn, .permission-ask .permission-guard.warn { color: var(--warning); }
 
 /* The plan-approval card renders the plan as markdown inside the same frame. */
@@ -1906,7 +1916,7 @@ button.qc-option.other { cursor: pointer; }
   justify-self: start;
   border: 0;
   background: transparent;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font: 500 11.5px var(--font);
   padding: 2px 8px;
   border-radius: var(--radius-s);
@@ -2201,6 +2211,12 @@ button.qc-option.other { cursor: pointer; }
 .app-ask-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .app-frame { flex: 1; min-height: 0; min-width: 0; width: 100%; border: 0; background: var(--bg); }
 .app-frame.own { background: transparent; }
+.plugin-chat-card { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-l); background: var(--bg); }
+.plugin-chat-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; height: 36px; flex: none; padding: 4px 8px; border-bottom: 1px solid var(--hairline); color: var(--text-secondary); }
+.plugin-chat-card-head > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.plugin-chat-card-head > svg, .plugin-chat-card-head > button { flex: none; }
+.plugin-chat-card-state { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; padding: 12px; color: var(--text-secondary); }
+.plugin-chat-card-state > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 .sheet-backdrop.plugin-backdrop { place-items: center; padding: 24px; }
 .plugin-modal {

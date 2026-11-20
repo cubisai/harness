@@ -57,3 +57,24 @@ it("Ask automation runs never inherit a Full-access thread default", async () =>
     expect(store.getThread(tid).permissionMode).toBe("ask");
   } finally { app.dispose(); vi.useRealTimers(); }
 });
+
+it("owner-disabled editor/run endpoints refuse work, and independent removal cannot break bundle ownership", () => {
+  const store = new Store(join(tempDir(), "app.db"));
+  closeAfter(() => store.close());
+  const project = store.addProject(tempDir());
+  let ownerOn = false;
+  const service = { allDrivers: () => [{ id: "codex" }], pendingState: () => ({ running: [], permissions: [], questions: [], plans: [] }) };
+  const app = startAutomations({ store, service: service as never, broadcast: () => {}, owner: () => ({ key: "g~reviewer", title: "Reviewer", enabled: ownerOn }) });
+  try {
+    const input = { name: "Brief", template: "custom", prompt: "Read only", schedule: { kind: "interval" as const, everyMinutes: 30 }, missed: "skip" as const, enabled: false, agent: "codex", model: null, budgetUsd: null, permissions: "ask" as const };
+    const a = app.save(project.id, input);
+    expect(app.overview(project.id).automations[0]).toMatchObject({ owner: { enabled: false }, nextAt: null, unavailable: expect.stringContaining("Off") });
+    expect(() => app.save(project.id, { ...input, enabled: true }, a.id)).toThrow("Off");
+    expect(() => app.runNow(a.id)).toThrow("Off");
+    expect(() => app.remove(a.id)).toThrow("managed by its plugin");
+    ownerOn = true;
+    expect(app.save(project.id, input, a.id).owner?.enabled).toBe(true);
+    expect(() => app.save("another-project", input, a.id)).toThrow("does not belong");
+    expect(app.runs(a.id)).toEqual([]);
+  } finally { app.dispose(); }
+});

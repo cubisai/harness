@@ -53,6 +53,8 @@ cubiq.ask("Summarise these notes: …");  // a new chat with this text in the co
 
 ## Errors
 
+Agent tool handlers use `cubiq.onTool(name, fn)`; transcript frames use `cubiq.onCard(fn)`. Read the `plugin-tools` and `chat-card` references before using them. Only the hidden tool host invokes handlers; cards receive persisted JSON and cannot change data.
+
 Uncaught errors, rejected promises, `console.error` and `console.warn` are reported to the app's window (its error count) and to `creator_app_check`. Don't swallow errors silently: show them in the page and log them.
 
 ## Not available

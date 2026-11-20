@@ -12,6 +12,8 @@ The single source of truth for how CubiQ looks and behaves. Every agent (Claude 
 
 ## 2. Color tokens
 
+Explicitly applied user app palettes can override documented neutral/primary chrome roles. This authored-palette exception does not allow component literals, layout/font/effect changes or repurposing semantic signals. Recovery/security controls keep baseline colors. Defaults still come only from app.css; design:docs generates the runtime cache.
+
 Defined once in `src/renderer/src/styles/app.css` `:root`, redefined for dark mode under `@media (prefers-color-scheme: dark) :root:not([data-theme="light"])` and `:root[data-theme="dark"]`. Components use tokens only, never literals.
 
 | Token | Light | Dark | Use |

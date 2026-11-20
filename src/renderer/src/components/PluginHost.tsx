@@ -93,6 +93,12 @@ export function PluginModal() {
   return <PluginModalSheet key={app.key} app={app} />;
 }
 
+/** Library's Open removes its trigger before the modal mounts; return to the composer rather than the body. */
+export function restorePluginFocus(previous: HTMLElement | null, doc: Pick<Document, "body" | "querySelector"> = document): void {
+  if (previous?.isConnected && previous !== doc.body) previous.focus();
+  else doc.querySelector<HTMLElement>(".composer textarea")?.focus();
+}
+
 function PluginModalSheet({ app }: { app: AppInfo }) {
   const close = useStore((s) => s.closeApp);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -121,7 +127,7 @@ function PluginModalSheet({ app }: { app: AppInfo }) {
     window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener("keydown", onKey, true);
-      if (previous?.isConnected) previous.focus();
+      restorePluginFocus(previous);
     };
   }, []);
 

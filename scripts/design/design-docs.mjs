@@ -2,7 +2,7 @@
 // checks (--check) that the committed doc is not stale. Pure, deterministic,
 // EOL-normalised so it behaves the same on Windows and POSIX.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -132,6 +132,13 @@ export function generateTokensMd(css) {
   }
 
   return lines.join("\n") + "\n";
+}
+
+/** Checked runtime cache. app.css remains the only hand-edited default palette. */
+export function generateChromeThemeTokens(css) {
+  const tokens = parseTokens(css);
+  const values = Object.fromEntries(["light", "dark"].map((scheme) => [scheme, Object.fromEntries(tokens.map((t) => [t.name.slice(2), scheme === "light" ? t.light : t.dark ?? t.light]))]));
+  return `// GENERATED from app.css by bun run design:docs. Do not edit.\nexport const CHROME_THEME_BASE = ${JSON.stringify(values, null, 2)} as const;\n`;
 }
 
 /** Blank out CSS comments with spaces, preserving newlines so line numbers hold. */
@@ -316,8 +323,14 @@ function main() {
   const docPath = join(repoRoot, "docs", "design", "tokens.md");
   const rel = toPosix(relative(repoRoot, docPath));
   const css = readFileSync(cssPath, "utf8");
+  const cachePath = join(repoRoot, "src", "shared", "chrome-theme-tokens.generated.ts");
+  const cache = generateChromeThemeTokens(css);
 
   if (process.argv.includes("--check")) {
+    if (!existsSync(cachePath) || normalizeEol(readFileSync(cachePath, "utf8")) !== cache) {
+      console.error("Chrome token cache is stale; regenerate with bun run design:docs");
+      process.exit(1);
+    }
     let existing = null;
     try {
       existing = readFileSync(docPath, "utf8");
@@ -333,6 +346,7 @@ function main() {
   }
 
   const generated = generateTokensMd(css);
+  writeFileSync(cachePath, cache);
   mkdirSync(dirname(docPath), { recursive: true });
   writeFileSync(docPath, generated);
   console.log(`wrote ${rel} (${parseTokens(css).length} tokens)`);

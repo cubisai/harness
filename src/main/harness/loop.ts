@@ -17,6 +17,8 @@ export interface LoopTool {
   access: ToolAccess;
   /** May overlap other parallel calls in one step; absent: `access === "read"` (the legacy rule). */
   parallel?: boolean;
+  /** Main-owned routing only; run() must still satisfy its exact execution gate. */
+  deferPermission?(args: Record<string, unknown>): boolean;
   summarize(args: Record<string, unknown>): string;
   /** The tool-use payload the thread shows; the arguments when absent. */
   inputPayload?(args: Record<string, unknown>): unknown;

@@ -19,10 +19,11 @@ export type Invocation = "model" | "user";
  * "projectClaude" is .claude/skills, read natively only by Claude. All three are listed as Project.
  */
 /** `expert`: an imported expert's own skills, in that expert's threads only. */
-export type SkillOrigin = "projectCubiq" | "project" | "projectClaude" | "expert" | "harness" | "shared" | "bundled" | "legacy";
+export type SkillOrigin = "projectCubiq" | "project" | "projectClaude" | "expert" | "harness" | "shared" | "bundled" | "legacy" | "plugin";
 
 /** One skill: a folder with a SKILL.md. */
 export interface SkillEntry {
+  owner?: import("./plugin-parts").PluginOwner;
   name: string;
   description: string;
   invocation: Invocation;
@@ -320,6 +321,9 @@ export interface McpServerEntry {
   enabled: boolean;
   /** Some of its secret values are in the vault but can't be opened on this machine; enter them again. */
   locked?: boolean;
+  /** Main-created opaque route with its own execution permissions. Not persisted
+   * in mcp.json or sent to an agent's MCP configuration. */
+  mainMediated?: true;
 }
 
 /** An MCP server as the window sees it: env and header values never leave the main process. */
@@ -374,6 +378,8 @@ export interface McpOverview {
   /** The selected project's own servers and the global ones it switches off; null for the global scope. */
   project: { servers: McpServerView[]; offGlobal: string[]; file: string } | null;
   external: ExternalMcpServer[];
+  /** Global, owner-managed connector parts. Local status only until explicit Check/Sign in. */
+  bundled?: import("./plugin-parts").PluginConnectorView[];
   file: string;
 }
 
@@ -728,11 +734,13 @@ export interface EventIds {
  * never persisted.
  */
 export type ThreadEvent = (
-  | { kind: "user"; text: string; /** Older events: one skill. */ skill?: string; /** The skills the user picked, in order. */ skills?: string[]; /** Files the user attached, copied into the thread's folder. */ attachments?: Attachment[] }
+  | { kind: "user"; text: string; /** Older events: one skill. */ skill?: string; /** The skills the user picked, in order. */ skills?: string[]; pluginCommand?: import("./plugin-parts").PluginCommandInvocation; pluginSkills?: import("./plugin-parts").PluginSkillInvocation[]; /** Files the user attached, copied into the thread's folder. */ attachments?: Attachment[] }
   | { kind: "assistant-text"; text: string }
   | { kind: "thinking"; text: string; signature?: string; opaque?: boolean }
   | { kind: "tool-use"; toolUseId: string; name: string; summary: string; payload?: unknown }
   | { kind: "tool-result"; toolUseId: string; isError: boolean; summary: string; payload?: unknown; /** A subagent call's own usage, when the engine reports it. */ runUsage?: RunUsage }
+  /** A plugin tool's declared, local transcript surface. No model-provided HTML or URL. */
+  | { kind: "plugin-card"; key: string; card: string; data: unknown }
   | {
       kind: "turn-end";
       costUsd: number | null;
@@ -1265,6 +1273,9 @@ export interface SendRequest {
   text: string;
   /** User-invoked skills picked in the composer, in order. */
   skills?: string[];
+  /** Reviewed plugin identities, rechecked in main after any background wait. */
+  pluginCommand?: import("./plugin-parts").PluginCommandInvocation;
+  pluginSkills?: import("./plugin-parts").PluginSkillInvocation[];
   /** Project-relative files and folders the user @-mentioned. */
   mentions?: string[];
   /** Files attached to this message, already copied into the thread's folder (saveAttachments). */
@@ -1373,6 +1384,7 @@ export type LiveUpdate =
   | { type: "automation-delivered"; automationId: string; runId: number; threadId: string; title: string }
   /** Creator apps were installed, updated or removed: list them again. */
   | { type: "apps-changed" }
+  | { type: "app-themes-changed" }
   | { type: "automations-changed"; projectId: string }
   /** A Creator thread previews its draft app: open it (modal or floating) if that thread is on screen. */
   | { type: "app-open"; threadId: string; app: AppInfo }
@@ -1400,6 +1412,7 @@ export interface ExtensionConnectorSummary {
 }
 
 export interface ExtensionAppSummary {
+  parts?: import("./plugin-parts").PluginPartView[];
   kind: "app";
   name: string;
   title: string;
@@ -1409,6 +1422,8 @@ export interface ExtensionAppSummary {
   files: { path: string; bytes: number; change?: "added" | "changed" | "removed" }[];
   /** Each granted connector tool; `access` from the server's listing (`readOnlyHint`), "unknown" when not listed. */
   grants: { server: string; tool: string; access: "read" | "write" | "unknown" }[];
+  tools?: { name: string; description: string }[];
+  cards?: string[];
   /** Installing replaces an app of the same name installed at this scope. */
   update: boolean;
   /** The draft's frame key, so the card can preview it. */
@@ -1458,6 +1473,7 @@ export interface ExtensionProposalView {
 
 /** An installed Creator app, as the sidebar and Library list it. */
 export interface AppInfo {
+  parts?: import("./plugin-parts").PluginPartView[];
   /** The frame key (`g~name`, `p~<projectId>~name`, or a Creator thread's draft `d~<threadId>~name`). */
   key: string;
   name: string;
@@ -1484,12 +1500,14 @@ export interface AppInfo {
   height?: number;
   /** "own": the app brings its own look (no base sheet, transparent frame). */
   style?: "cubiq" | "own";
+  tools?: import("./plugin-tools").PluginTool[];
+  cards?: import("./plugin-tools").PluginCard[];
 }
 
 /** What a frame's bridge request gets back: a result, an error, or a question for the user first. */
 export type AppCallResult =
   | { ok: true; result: unknown }
-  | { ok: false; error: string }
+  | { ok: false; error: string; blocked?: "read-only" }
   | { ok: false; approval: { token: string; server: string; tool: string; args: string } };
 
 export interface ExtensionInstallView {
@@ -1683,6 +1701,12 @@ export interface UnskilledApi {
   mcpStatus(projectId: string | null, refresh?: boolean): Promise<McpServerStatus[]>;
   /** Sign in to a URL server in the browser (OAuth); resolves when the sign-in finishes or fails. */
   connectMcp(name: string, projectId?: string | null): Promise<{ ok: boolean; error?: string }>;
+  listPluginConnectors(): Promise<import("./plugin-parts").PluginConnectorView[]>;
+  savePluginConnector(handle: import("./plugin-parts").PluginConnectorHandle, values: Record<string, string>, clientSecret?: string): Promise<void>;
+  connectPluginConnector(handle: import("./plugin-parts").PluginConnectorHandle): Promise<{ ok: boolean; error?: string }>;
+  cancelPluginConnectorSignIn(handle: import("./plugin-parts").PluginConnectorHandle): Promise<void>;
+  disconnectPluginConnector(handle: import("./plugin-parts").PluginConnectorHandle): Promise<void>;
+  checkPluginConnector(handle: import("./plugin-parts").PluginConnectorHandle): Promise<void>;
   /** Sign out: revoke when the server allows, forget the tokens. */
   disconnectMcp(name: string, projectId?: string | null): Promise<McpOverview>;
   /** Store (or clear, with null) the secret of an OAuth client the user registered themselves. */
@@ -1700,8 +1724,17 @@ export interface UnskilledApi {
   listExtensionInstalls(projectId?: string | null): Promise<ExtensionInstallView[]>;
   /** Installed Creator apps for a project (its own, then global ones it doesn't shadow), or global only. */
   listApps(projectId: string | null): Promise<AppInfo[]>;
+  /** Enabled reviewed plugin commands only. Listing never sends a turn. */
+  listPluginCommands(): Promise<import("./plugin-parts").PluginCommandView[]>;
+  appThemeState(): Promise<import("./app-themes").AppThemeState>;
+  previewAppTheme(source: import("./app-themes").AppThemeSource): Promise<import("./app-themes").AppThemeState>;
+  applyAppTheme(handle: import("./app-themes").AppThemeHandle, previewToken?: string): Promise<import("./app-themes").AppThemeState>;
+  cancelAppThemePreview(token: string): Promise<import("./app-themes").AppThemeState>;
+  revertAppTheme(): Promise<import("./app-themes").AppThemeState>;
   /** One app by frame key (an installed app or a Creator thread's draft), or null when there is none. */
   appInfo(key: string): Promise<AppInfo | null>;
+  appCardInfo(key: string, card: string, threadId: string): Promise<AppInfo | null>;
+  callAppCard(key: string, threadId: string, server: string, tool: string, args: Record<string, unknown>): Promise<AppCallResult>;
   setAppEnabled(key: string, enabled: boolean): Promise<void>;
   /** Star or unstar an installed app. */
   setAppFavorite(key: string, on: boolean): Promise<void>;

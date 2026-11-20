@@ -6,6 +6,8 @@ import { Toggle } from "./Toggle";
 import { api } from "../api";
 import { useStore } from "../store";
 import { appIcon } from "./AppFrame";
+import { PluginParts } from "./PluginParts";
+import { AppThemeControls } from "./AppThemeControls";
 
 type AppAction = "enable" | "edit" | "uninstall";
 
@@ -198,13 +200,17 @@ export function AppsTabView(p: AppsTabViewProps) {
           {!p.managed && <p className="note">This folder has no CubiQ install record. Manage its files manually; it cannot be uninstalled here.</p>}
           <p className="note">Edit with Creator makes a draft. Review its Update card before replacing the installed app.</p>
           {p.confirm && <div className="apps-library-confirm editing" role="group" aria-label="Confirm uninstall" onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); p.onConfirm(false); } }}>
-            <p>Uninstall {app.title}? Its files and saved app data will be removed. Connectors are kept.</p>
+            <p>Uninstall {app.title}? Its files and saved app data will be removed. {app.parts?.length ? "Bundled owned parts are removed; external granted connectors are kept." : "Connectors are kept."}</p>
             <div className="apps-library-actions"><button type="button" className="button" autoFocus disabled={busy} onClick={() => p.onConfirm(false)}>Cancel</button><button type="button" className="button danger" disabled={busy} onClick={p.onUninstall}>{p.busy?.action === "uninstall" ? "Uninstalling…" : "Confirm uninstall"}</button></div>
           </div>}
           <section className="apps-library-grants"><h4>Connector tools</h4>
             {app.grants.length ? <ul>{app.grants.flatMap((g) => g.tools.map((tool) => <li key={`${g.server}.${tool}`}><code>{g.server}.{tool}</code></li>))}</ul> : <p className="note">This app has no connector grants.</p>}
             <p className="note">Read-only tools run directly. Tools that can change data ask for your approval.</p>
           </section>
+          {!!app.tools?.length && <section className="apps-library-grants"><h4>Agent tools</h4><ul>{app.tools.map((t) => <li key={t.name}><code>{t.name}</code> — {t.description}</li>)}</ul><p className="note">Available in new Chat and Creator threads on any engine. They ask before running, except in Full access. Turning this plugin off also disables its tools.</p></section>}
+          {!!app.cards?.length && <section className="apps-library-grants"><h4>Chat cards</h4><p className="note">{app.cards.map((c) => c.name).join(", ")} · Read-only result surfaces</p></section>}
+          <PluginParts parts={app.parts} installed />
+          {app.parts?.some((p) => p.kind === "app-theme") && <AppThemeControls key={app.key} pluginKey={app.key} />}
           <div className="apps-library-path"><span>App folder</span><code>{app.path}</code></div>
         </>}
       </div>
