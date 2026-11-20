@@ -5,16 +5,17 @@ import { IconCompose, IconFolder, IconGear, IconLibrary, IconRefresh, IconSideba
 import { api } from "../api";
 import { InboxBell } from "./MessageCenter";
 import { useStore } from "../store";
+import { sidebarMode } from "../sections";
 
+/** Creator is a toggle in the composer's mode menu, inside Chat, so the switch has two modes. */
 const WORKSPACE_MODES: { id: WorkspaceMode; label: string; desc: string }[] = [
   { id: "chat", label: "Chat", desc: "Code and conversation" },
   { id: "design", label: "Design", desc: "Pages and components on a canvas" },
-  { id: "creator", label: "Creator", desc: "Build apps, skills and connectors" },
 ];
 
-/** Workspace mode menu where the three-part switch doesn't fit (the rail, a narrow sidebar). */
+/** Workspace mode menu where the two-part switch doesn't fit (the rail, a narrow sidebar). */
 export function ModeToggle({ className = "" }: { className?: string }) {
-  const kind = useStore((s) => s.threadKind);
+  const kind = sidebarMode(useStore((s) => s.threadKind));
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const box = useRef<HTMLDivElement>(null);

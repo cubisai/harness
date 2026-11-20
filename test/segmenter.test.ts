@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createSegmenter, segmentEvents } from "../src/renderer/src/turns";
-import { makeHistory } from "../scripts/history-fixtures";
+import { makeHistory } from "../scripts/dev/history-fixtures";
 import type { StoredEvent, ThreadEvent } from "../src/shared/types";
 
 /** makeHistory yields bare ThreadEvents; the projection wants stored rows. */

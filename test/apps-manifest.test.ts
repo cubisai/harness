@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APP_MAX_FILE_BYTES, granted, validateApp } from "../src/main/apps/manifest";
+import { APP_MAX_FILE_BYTES, appSize, granted, isSmallPlacement, validateApp } from "../src/main/apps/manifest";
 
 const manifest = (extra: Record<string, unknown> = {}) =>
   JSON.stringify({ name: "sales", title: "Sales", description: "Revenue by day.", entry: "index.html", grants: [{ server: "posara", tools: ["list_orders", "get_revenue"] }], ...extra });
@@ -20,6 +20,31 @@ describe("validateApp", () => {
     expect(granted(r.manifest, "posara", "list_orders")).toBe(true);
     expect(granted(r.manifest, "posara", "delete_order")).toBe(false);
     expect(granted(r.manifest, "other", "list_orders")).toBe(false);
+  });
+
+  it("reads placement, a floating size and own style, leaving defaults out", () => {
+    const r = validateApp("sales", files(manifest({ placement: "floating", size: { width: 260, height: 150 }, style: "own" })));
+    expect(r.ok && r.manifest).toMatchObject({ placement: "floating", size: { width: 260, height: 150 }, style: "own" });
+    expect(r.ok && appSize(r.manifest)).toEqual({ width: 260, height: 150 });
+    const d = validateApp("sales", files(manifest({ placement: "floating" })));
+    expect(d.ok && d.manifest.size).toEqual({ width: 280, height: 200 });
+    const m = validateApp("sales", files(manifest({ placement: "modal", style: "cubiq" })));
+    expect(m.ok && Object.keys(m.manifest)).not.toContain("placement");
+    expect(m.ok && Object.keys(m.manifest)).not.toContain("style");
+    expect(m.ok && appSize(m.manifest)).toEqual({ width: 900, height: 700 });
+  });
+
+  it("refuses bad placement, size and style", () => {
+    const errs = (m: Record<string, unknown>) => {
+      const r = validateApp("sales", files(manifest(m)));
+      return r.ok ? "" : r.errors.join("\n");
+    };
+    expect(errs({ placement: "sidebar" })).toContain('"placement"');
+    expect(errs({ style: "neon" })).toContain('"style"');
+    expect(errs({ size: { width: 300, height: 200 } })).toContain('only applies to "placement": "floating"');
+    expect(errs({ placement: "floating", size: { width: 2000, height: 200 } })).toContain('"size"');
+    expect(errs({ placement: "floating", size: { width: 300, height: 200, depth: 1 } })).toContain('"size"');
+    expect(errs({ placement: "floating", size: { width: 300.5, height: 200 } })).toContain('"size"');
   });
 
   it("defaults entry to index.html and allows no grants", () => {
@@ -54,6 +79,35 @@ describe("validateApp", () => {
   });
 });
 
+describe("placements", () => {
+  it("reads page, dock and panel, with heights only where they apply", () => {
+    const page = validateApp("sales", files(manifest({ placement: "page" })));
+    expect(page.ok && page.manifest).toMatchObject({ placement: "page" });
+    expect(page.ok && "height" in page.manifest).toBe(false);
+    expect(page.ok && appSize(page.manifest)).toEqual({ width: 900, height: 700 });
+    const dock = validateApp("sales", files(manifest({ placement: "dock" })));
+    expect(dock.ok && dock.manifest).toMatchObject({ placement: "dock", height: 48 });
+    expect(dock.ok && appSize(dock.manifest)).toEqual({ width: 680, height: 48 });
+    const panel = validateApp("sales", files(manifest({ placement: "panel", height: 200 })));
+    expect(panel.ok && appSize(panel.manifest)).toEqual({ width: 232, height: 200 });
+    expect(isSmallPlacement("dock") && isSmallPlacement("panel") && isSmallPlacement("floating") && !isSmallPlacement("page") && !isSmallPlacement(undefined)).toBe(true);
+  });
+
+  it("refuses unknown placements and out-of-range or misplaced heights", () => {
+    const errs = (extra: Record<string, unknown>) => {
+      const r = validateApp("sales", files(manifest(extra)));
+      return r.ok ? "" : r.errors.join(" ");
+    };
+    expect(errs({ placement: "sidebar" })).toContain('"placement" must be one of');
+    expect(errs({ placement: "dock", height: 20 })).toContain("32 to 160");
+    expect(errs({ placement: "panel", height: 400 })).toContain("80 to 320");
+    expect(errs({ placement: "dock", height: 40.5 })).toContain("whole number");
+    expect(errs({ placement: "floating", height: 100 })).toContain('"height" only applies');
+    expect(errs({ height: 100 })).toContain('"height" only applies');
+    expect(errs({ placement: "dock", size: { width: 300, height: 100 } })).toContain('"size" only applies');
+  });
+});
+
 describe("the dashboard template", () => {
   it("is a valid app as shipped", async () => {
     const { readdirSync, readFileSync } = await import("node:fs");
@@ -61,5 +115,20 @@ describe("the dashboard template", () => {
     const tpl = readdirSync(dir).map((path) => ({ path, content: readFileSync(`${dir}/${path}`, "utf-8") }));
     const r = validateApp("sales-dashboard", tpl);
     expect(r.ok ? r.manifest.grants : r.errors).toEqual([{ server: "shop", tools: ["sales_summary"] }]);
+  });
+});
+
+describe("the other templates", () => {
+  it.each([
+    ["widget", "floating"],
+    ["page", "page"],
+    ["dock", "dock"],
+  ])("%s is a valid %s app as shipped", async (name, placement) => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const dir = `resources/creator/templates/${name}`;
+    const tpl = readdirSync(dir).map((path) => ({ path, content: readFileSync(`${dir}/${path}`, "utf-8") }));
+    const appName = JSON.parse(readFileSync(`${dir}/app.json`, "utf-8")).name as string;
+    const r = validateApp(appName, tpl);
+    expect(r.ok ? r.manifest.placement : r.errors).toBe(placement);
   });
 });

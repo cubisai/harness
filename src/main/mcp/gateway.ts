@@ -90,6 +90,9 @@ export interface McpGatewayDeps {
   /** The server said its tool list changed, so cached listings are stale. */
   onToolsChanged?(key: string): void;
   fetchFn?: FetchLike;
+  /** Production legacy routes have no trustworthy originating thread. They may
+   * list, but execution belongs to the opaque main-mediated connector routes. */
+  listingOnly?: boolean;
 }
 
 interface BridgeSession {
@@ -163,7 +166,8 @@ export class McpGateway {
    * replayable, which a string or buffer is); a 403 asking for more scopes is
    * noted for the next sign-in. Redirects are followed within the same origin only.
    */
-  private authedFetch(key: string, spec: RemoteSpec): FetchLike {
+  /** Also used by main-owned bundled clients; never handed to an agent. */
+  authedFetch(key: string, spec: RemoteSpec): FetchLike {
     const base = this.deps.fetchFn ?? fetch;
     return async (input, init) => {
       const send = async (token: string | null) => {
@@ -228,6 +232,19 @@ export class McpGateway {
     if (body === null) {
       res.writeHead(413).end();
       return;
+    }
+    if (body && this.deps.listingOnly) {
+      let json: unknown;
+      try { json = JSON.parse(body.toString("utf8")); }
+      catch { res.writeHead(400).end(); return; }
+      const requests = Array.isArray(json) ? json : [json];
+      if (requests.some((r) => r && typeof r === "object" && (r as { method?: unknown }).method === "tools/call")) {
+        // Refuse the entire batch rather than forwarding the other messages with
+        // an execution hidden among them. No upstream request has started yet.
+        const replies = requests.filter((r) => r && typeof r === "object" && "id" in r).map((r) => ({ jsonrpc: "2.0", id: (r as { id: unknown }).id, error: { code: -32600, message: "Legacy connector routes cannot execute tools. Start a new mediated session." } }));
+        res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(Array.isArray(json) ? replies : replies[0] ?? { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Legacy connector routes cannot execute tools." } }));
+        return;
+      }
     }
     const headers: Record<string, string> = {};
     for (const h of FORWARD_REQUEST) {
@@ -341,7 +358,9 @@ export class McpGateway {
         (await this.sseClient(key, spec)).request({ method: name, params: r.params as Record<string, unknown> }, schema, { signal: extra.signal, timeout: BRIDGE_CALL_MS });
     if (capabilities.tools) {
       server.setRequestHandler(ListToolsRequestSchema, forward("tools/list", ListToolsResultSchema));
-      server.setRequestHandler(CallToolRequestSchema, forward("tools/call", CallToolResultSchema));
+      server.setRequestHandler(CallToolRequestSchema, this.deps.listingOnly
+        ? async () => ({ content: [{ type: "text" as const, text: "Legacy connector routes cannot execute tools. Start a new mediated session." }], isError: true })
+        : forward("tools/call", CallToolResultSchema));
     }
     if (capabilities.prompts) {
       server.setRequestHandler(ListPromptsRequestSchema, forward("prompts/list", ListPromptsResultSchema));

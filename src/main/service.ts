@@ -63,6 +63,7 @@ import { DESIGN_DIRECTION_TOOL } from "./design/tools";
 import { AUTO_LINT_WAIT_MS, autoFixPrompt, autoLintNote, changedPages, type PageLint } from "./design/autolint";
 import { parseTokens, setToken } from "./design/tokens";
 import { skillsOf } from "../shared/skill-list";
+import { pluginCommandArguments } from "../shared/plugin-parts";
 import type { AgentDriver, HarnessTool, ModelSwitch, SessionSeed } from "./agents/types";
 import {
   annotateUsage,
@@ -96,6 +97,7 @@ import {
 import type { Catalog } from "./skills/catalog";
 import { composePrompt } from "./skills/compose";
 import { mentionNote } from "./mentions";
+import { attachmentNote, checkedAttachments, inlineImages } from "./attachments";
 import { providerOfModel } from "../shared/provider-rules";
 import { memoryScopeCheck } from "./inject/memory-scope";
 import { redactDeep, redactSecrets } from "./inject/redact";
@@ -193,6 +195,14 @@ export class Service {
   private lastPlans = new Map<string, StoredEvent>();
 
   private drivers: Map<string, AgentDriver>;
+  private pluginDelivery: {
+    command(invocation: NonNullable<SendRequest["pluginCommand"]>): { prompt: string; skill: string };
+    assertSkill(entry: import("../shared/types").SkillEntry): void;
+  } | null = null;
+  private managedPermission: ((thread: Thread, target: import("../shared/plugin-parts").PluginRuleTarget, args: Record<string, unknown> | undefined, signal: AbortSignal, requirement?: "ask") => boolean) | null = null;
+  private managedTools: ((thread: Thread, tools: HarnessTool[]) => HarnessTool[]) | null = null;
+  private managedRun: ((thread: Thread, tool: HarnessTool, args: Record<string, unknown>, signal: AbortSignal) => Promise<import("./agents/types").ToolOutput>) | null = null;
+  private managedRunCode: ((thread: Thread, args: Record<string, unknown>, execute: (args: Record<string, unknown>, signal: AbortSignal) => Promise<import("./agents/types").ToolOutput>, signal: AbortSignal) => Promise<import("./agents/types").ToolOutput>) | null = null;
 
   constructor(
     private store: Store,
@@ -205,7 +215,7 @@ export class Service {
     /** Defaults for new threads, from the user's settings. */
     private defaults: () => { agent: string | null; permissionMode: PermissionMode } = () => ({ agent: null, permissionMode: "ask" }),
     /** The MCP servers the thread's project gets, for every agent. */
-    private mcpServers: (projectId: string | null) => McpServerEntry[] = () => [],
+    private mcpServers: (projectId: string | null, threadId?: string) => McpServerEntry[] = () => [],
     /** Every provider key the app holds, so no event (error, notice, tool output) can carry one. */
     private secrets: () => string[] = () => [],
     /** Where threads' own worktrees go (the app's data folder); null turns worktree threads off. */
@@ -427,6 +437,18 @@ export class Service {
     this.creatorModeNote = null;
   }
 
+  /** Main-owned reviewed plugin resolution, never supplied by a driver or model. */
+  setPluginDelivery(delivery: NonNullable<Service["pluginDelivery"]>): void {
+    this.pluginDelivery = delivery;
+  }
+
+  setManagedPermission(route: NonNullable<Service["managedPermission"]>): void {
+    this.managedPermission = route;
+  }
+  setManagedRunCode(run: NonNullable<Service["managedRunCode"]>): void { this.managedRunCode = run; }
+  setManagedTools(wrap: NonNullable<Service["managedTools"]>): void { this.managedTools = wrap; }
+  setManagedRun(run: NonNullable<Service["managedRun"]>): void { this.managedRun = run; }
+
   /** A note on a team thread's channel (team_post), shown in the thread as it happens. */
   teamNote(threadId: string, note: { from: string; to: string; text: string }): void {
     this.emit(threadId, { kind: "notice", text: `Team note · ${note.from} → ${note.to}: ${note.text}` });
@@ -609,7 +631,7 @@ export class Service {
         model: thread.model,
         permissionMode: turnMode(thread),
         tools: this.harnessTools(thread),
-        mcpServers: this.mcpServers(thread.projectId),
+        mcpServers: this.mcpServers(thread.projectId, thread.id),
         items,
         onSession,
         inject: (sessionId, send) =>
@@ -640,7 +662,7 @@ export class Service {
           permissionMode: turnMode(thread),
           signal: controller.signal,
           tools: this.harnessTools(thread),
-          mcpServers: this.mcpServers(thread.projectId),
+          mcpServers: this.mcpServers(thread.projectId, thread.id),
           provenance,
           onEvent: (event) => {
             if (event.kind === "assistant-text") {
@@ -916,16 +938,34 @@ export class Service {
     const maxRounds = project.checkFixRounds ?? 1;
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
     const skills = skillsOf(req);
+    const catalog = this.catalogFor(cwd, thread.id);
+    if (compact && (req.pluginCommand || req.pluginSkills?.length)) throw new Error("Plugin commands and skills cannot compact a session.");
+    const command = req.pluginCommand ? this.pluginDelivery?.command(req.pluginCommand) : undefined;
+    if (req.pluginCommand && !command) throw new Error("Plugin command delivery is unavailable.");
+    const pluginSkills = req.pluginSkills ?? [];
+    if (new Set(pluginSkills.map((s) => s.name)).size !== pluginSkills.length) throw new Error("Duplicate plugin skill invocation.");
+    for (const name of skills) {
+      const entry = catalog.byName.get(name);
+      const invocation = pluginSkills.find((s) => s.name === name);
+      if (entry?.origin === "plugin" || invocation) {
+        if (!entry || entry.origin !== "plugin" || !invocation || invocation.key !== entry.owner?.key || invocation.revision !== entry.owner.revision || !this.pluginDelivery) throw new Error("This plugin skill is Off, removed or changed. Pick its current skill again.");
+        this.pluginDelivery.assertSkill(entry);
+      }
+    }
+    if (pluginSkills.some((s) => !skills.includes(s.name))) throw new Error("A plugin skill identity needs a selected skill.");
+    // Only files this thread really holds; a compact carries none.
+    const attachments = compact ? [] : checkedAttachments(cwd, req.attachments);
+    const images = inlineImages(cwd, attachments);
     // A design thread's system is copied into its folder before each turn; a switch is said once, in this prompt.
     const systemNote = compact ? "" : this.prepareDesignSystem(thread) + this.prepareDesignTier(thread);
     const prompt = compact
       ? `/compact${compact.focus ? ` ${compact.focus}` : ""}`
-      : composePrompt(this.catalogFor(cwd, thread.id), req.text, skills, driver.skillsDelivery) + mentionNote(cwd, req.mentions) + systemNote;
+      : composePrompt(catalog, command ? pluginCommandArguments(req.text, command.skill) : req.text, skills, driver.skillsDelivery, command && { name: command.skill, prompt: command.prompt }) + mentionNote(cwd, req.mentions) + attachmentNote(attachments) + systemNote;
 
-    const userEvent = this.emit(thread.id, { kind: "user", text: req.text, ...(skills.length ? { skills } : {}) });
+    const userEvent = this.emit(thread.id, { kind: "user", text: req.text, ...(skills.length ? { skills } : {}), ...(req.pluginCommand ? { pluginCommand: req.pluginCommand } : {}), ...(pluginSkills.length ? { pluginSkills } : {}), ...(attachments.length ? { attachments } : {}) });
     // An automatic fix round never names the thread; the user's message does.
     if (thread.title === "New thread" && !req.checkRound && !req.designFixRound && !compact) {
-      const title = titleFrom(req.text, skills);
+      const title = titleFrom(req.text || (attachments[0]?.name ?? ""), skills);
       this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { title }) });
     }
 
@@ -971,7 +1011,7 @@ export class Service {
       // prefix changed under a session); a servers-only change is the
       // drivers' expected session rebuild. The fingerprint only moves when a
       // queued change drains, at this turn's boundary.
-      const set = toolSetOf(this.harnessTools(thread), this.mcpServers(thread.projectId));
+      const set = toolSetOf(this.harnessTools(thread), this.mcpServers(thread.projectId, thread.id));
       const previousSet = pinnedSet(thread.id);
       const toolsChanged = previousSet !== null && stableStringify(previousSet.tools) !== stableStringify(set.tools);
       if (pinnedFingerprint(thread.id) === null) {
@@ -1041,6 +1081,9 @@ export class Service {
           this.systemGuard.begin(guardDir);
         }
       }
+      // Preparation above can await I/O. Recheck revocable plugin selections at actual dispatch.
+      if (req.pluginCommand) this.pluginDelivery!.command(req.pluginCommand);
+      for (const selected of pluginSkills) this.pluginDelivery!.assertSkill(catalog.byName.get(selected.name)!);
       await driver.runTurn({
         threadId: thread.id,
         cwd,
@@ -1050,6 +1093,7 @@ export class Service {
         ...this.expertInput(thread),
         ...this.presetInput(thread),
         prompt: turnPrompt,
+        ...(images.length ? { images } : {}),
         ...(compact ? { compact } : {}),
         sessionId: current.sessionId,
         ...(current.sessionId !== null ? { priorSessionCostUsd: this.store.lastSessionCost(thread.id, current.sessionId) } : {}),
@@ -1058,8 +1102,39 @@ export class Service {
         contextWindow: thread.contextWindow ?? null,
         permissionMode: turnMode(thread),
         signal: controller.signal,
+        ...(this.managedTools ? { managedTools: (tools: HarnessTool[]) => {
+          const current = () => {
+            if (controller.signal.aborted || this.running.get(thread.id) !== controller) return false;
+            try {
+              const latest = this.store.getThread(thread.id);
+              return latest.projectId === thread.projectId && latest.permissionMode === thread.permissionMode && latest.kind === thread.kind && latest.agent === thread.agent;
+            } catch { return false; }
+          };
+          return this.managedTools!(thread, tools).map((tool) => ({ ...tool,
+            ...(tool.deferPermission ? { deferPermission: (args: Record<string, unknown> | undefined, ctx: import("./agents/types").ToolContext) => current() && tool.deferPermission!(args, ctx) } : {}),
+            run: (args, ctx) => current() ? tool.run(args, ctx) : Promise.resolve({ text: "The originating managed descriptor is stale.", isError: true }),
+          }));
+        } } : {}),
+        ...(this.managedRun ? { managedRun: (tool: HarnessTool, args: Record<string, unknown>, signal: AbortSignal) => {
+          if (controller.signal.aborted || signal.aborted || this.running.get(thread.id) !== controller) return Promise.resolve({ text: "The originating managed turn stopped.", isError: true });
+          const latest = this.store.getThread(thread.id);
+          if (latest.projectId !== thread.projectId || latest.permissionMode !== thread.permissionMode || latest.kind !== thread.kind || latest.agent !== thread.agent) return Promise.resolve({ text: "The originating managed context changed.", isError: true });
+          return this.managedRun!(thread, tool, args, signal);
+        } } : {}),
+        ...(this.managedPermission ? { managedPermission: (target: import("../shared/plugin-parts").PluginRuleTarget, args?: Record<string, unknown>, requirement?: "ask") => {
+          if (controller.signal.aborted || this.running.get(thread.id) !== controller) return false;
+          const latest = this.store.getThread(thread.id);
+          if (latest.projectId !== thread.projectId || latest.permissionMode !== thread.permissionMode || latest.kind !== thread.kind || latest.agent !== thread.agent) return false;
+          return this.managedPermission!(thread, target, args, controller.signal, requirement);
+        } } : {}),
+        ...(this.managedRunCode ? { managedRunCode: (args: Record<string, unknown>, execute: (args: Record<string, unknown>, signal: AbortSignal) => Promise<import("./agents/types").ToolOutput>, signal: AbortSignal) => {
+          if (controller.signal.aborted || signal.aborted || this.running.get(thread.id) !== controller) return Promise.resolve({ text: "The originating code-mode turn stopped.", isError: true });
+          const latest = this.store.getThread(thread.id);
+          if (latest.projectId !== thread.projectId || latest.permissionMode !== thread.permissionMode || latest.kind !== thread.kind || latest.agent !== thread.agent) return Promise.resolve({ text: "The originating code-mode context changed.", isError: true });
+          return this.managedRunCode!(thread, args, execute, signal);
+        } } : {}),
         tools: this.harnessTools(thread),
-        mcpServers: this.mcpServers(thread.projectId),
+        mcpServers: this.mcpServers(thread.projectId, thread.id),
         provenance,
         ...(learner ? { nudges: true } : {}),
         onSessionRebuilt: () => {
@@ -1207,7 +1282,16 @@ export class Service {
             const request = { requestId, threadId: thread.id, plan: p.plan };
             this.planRequests.set(requestId, request);
             this.broadcast({ type: "plan-approval", request });
-          })),
+          })).then((decision) => {
+            // A main-owned, explicit plan choice is an authorized mode transition,
+            // not an unrelated settings change. Later managed calls in this same
+            // turn must use that choice; old in-flight calls still pin their mode.
+            if ((decision === "auto" || decision === "manual") && !controller.signal.aborted && this.running.get(thread.id) === controller) {
+              const latest = this.store.getThread(thread.id), mode = decision === "auto" ? "auto-edit" : "ask";
+              if (latest.projectId === thread.projectId && latest.kind === thread.kind && latest.agent === thread.agent && latest.permissionMode === mode) thread.permissionMode = mode;
+            }
+            return decision;
+          }),
         // An async question doesn't hold the turn, so Stop doesn't take its card away.
         requestUserInput: (questions, opts) => dog.waitOn(this.ask(thread.id, questions, opts?.async ? [] : [controller.signal], opts?.async === true)),
       });
@@ -1446,6 +1530,37 @@ export class Service {
   /** The running turn's signal for a thread, or undefined when none runs. */
   turnSignal(threadId: string): AbortSignal | undefined {
     return this.running.get(threadId)?.signal;
+  }
+
+  /** Single-use permission for plugin tools and their connector writes, including MCP callers. */
+  permissionFromTool(threadId: string, toolName: string, summary: string, signal?: AbortSignal, normal?: { name: string; summary: string }): Promise<boolean> {
+    const turn = this.running.get(threadId);
+    if (!turn || turn.signal.aborted || signal?.aborted) return Promise.resolve(false);
+    const origin = normal ? this.store.getThread(threadId) : null;
+    const approvals = origin ? this.approvalsFor(origin.projectId) : null;
+    if (normal && origin && approvals?.get(origin.agent, normal.name, normal.summary)) return Promise.resolve(true);
+    const combined = signal ? AbortSignal.any([turn.signal, signal]) : turn.signal;
+    const asked = new Promise<boolean>((resolve) => {
+      const requestId = randomUUID();
+      const done = (decision: PermissionDecision) => {
+        if (!this.pendingPermissions.has(requestId)) return;
+        this.pendingPermissions.delete(requestId);
+        this.permissionRequests.delete(requestId);
+        combined.removeEventListener("abort", withdraw);
+        if (normal && origin && decision === "allow-always" && !combined.aborted && this.running.get(threadId) === turn) approvals?.remember(origin.agent, normal.name, normal.summary);
+        resolve(decision !== "deny");
+      };
+      const withdraw = () => {
+        this.broadcast({ type: "permission-withdrawn", requestId });
+        done("deny");
+      };
+      this.pendingPermissions.set(requestId, done);
+      const request = { requestId, threadId, toolName, summary, canAlwaysAllow: Boolean(normal) };
+      this.permissionRequests.set(requestId, request);
+      combined.addEventListener("abort", withdraw, { once: true });
+      this.broadcast({ type: "permission", request });
+    });
+    return this.turnWatchdogs.get(threadId)?.waitOn(asked) ?? asked;
   }
 
   /** A harness tool (ACP's ask_user) asks on behalf of a thread's running turn; null when no turn is running there. */

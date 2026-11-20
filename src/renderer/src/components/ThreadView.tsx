@@ -1,11 +1,14 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { ChevronRight, Copy, Pencil, RotateCcw, X } from "lucide-react";
+import { FileIcon } from "./FileIcon";
+import { shortName, sizeLabel } from "../attachments";
 import { artifactKind, isPreviewable, PLAN_ARTIFACT, TEAM_ARTIFACT_PREFIX, withoutExportSources } from "../../../shared/artifact-kind";
 import { skillsOf } from "../../../shared/skill-list";
-import type { ArtifactKind, StoredEvent, ThreadEvent } from "../../../shared/types";
+import type { ArtifactKind, Attachment, StoredEvent, ThreadEvent } from "../../../shared/types";
 import type { TurnScore } from "../../../shared/learn";
 import { WidgetView } from "../genui/WidgetView";
+import { PluginChatCard } from "./PluginChatCard";
 import { prettyTool, toolLabel, type RunResult } from "../../../shared/tools";
 import { anchorDelta, anchorFor, collapseTarget, stillPinned, trimmedReserve, type ScrollAnchor } from "../disclosure";
 import { displayOrder } from "../event-order";
@@ -775,7 +778,7 @@ function TurnFooter({ seg, threadId, running, last }: { seg: Extract<Segment, { 
           className="foot-button"
           title="Send the same message again"
           disabled={running}
-          onClick={() => void useStore.getState().send(seg.prompt!.text, seg.prompt!.skills, threadId)}
+          onClick={() => void useStore.getState().send(seg.prompt!.text, seg.prompt!.skills, threadId, undefined, { attachments: seg.prompt!.attachments, pluginCommand: seg.prompt!.pluginCommand, pluginSkills: seg.prompt!.pluginSkills })}
         >
           <RotateCcw size={13} />
         </button>
@@ -800,21 +803,56 @@ export function HealthDot({ score }: { score: TurnScore }) {
 }
 
 /** Your message: a compact bubble, with Copy, Edit (back into the message box) and the time on hover. */
-function UserMessage({ stored }: { stored: StoredEvent }) {
+/** A thread-folder file as the app serves it to the transcript (images and pdfs only). */
+const threadFileUrl = (threadId: string, rel: string): string => `cubiq-file://f/${encodeURIComponent(threadId)}/${rel.split("/").map(encodeURIComponent).join("/")}`;
+
+/** A sent message's attachments as chips: a thumbnail (images) or the file type's icon, the name cut in the middle, the size; each opens in the panel. */
+function MessageAttachments({ attachments, threadId }: { attachments: Attachment[]; threadId?: string }) {
+  return (
+    <div className="msg-attachments">
+      {attachments.map((a) => {
+        const image = Boolean(threadId) && /^image\/(png|jpeg|gif|webp)$/.test(a.mediaType);
+        return (
+          <button
+            key={a.path}
+            type="button"
+            className="msg-attachment"
+            title={`${a.name} · ${sizeLabel(a.size)}`}
+            aria-label={`Open ${a.name}`}
+            onClick={() => useStore.getState().openArtifact(a.path, threadId)}
+          >
+            {image && threadId ? (
+              <img className="attach-thumb" src={threadFileUrl(threadId, a.path)} alt="" loading="lazy" />
+            ) : (
+              <FileIcon name={a.name} mediaType={a.mediaType} className="attach-icon" />
+            )}
+            <span className="name">{shortName(a.name)}</span>
+            <span className="attach-size">{sizeLabel(a.size)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function UserMessage({ stored, threadId }: { stored: StoredEvent; threadId?: string }) {
   const e = stored.event as Extract<ThreadEvent, { kind: "user" }>;
   const time = new Date(stored.createdAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   return (
     <div className="msg-user">
-      <div className="bubble">
-        <SkillChips names={skillsOf(e)} />
-        {e.text}
-      </div>
+      {e.attachments?.length ? <MessageAttachments attachments={e.attachments} threadId={threadId} /> : null}
+      {(e.text || skillsOf(e).length > 0) && (
+        <div className="bubble">
+          <SkillChips names={skillsOf(e)} />
+          {e.text}
+        </div>
+      )}
       <div className="msg-actions">
         <span className="msg-time">{time}</span>
         <button className="foot-button" title="Copy" onClick={() => void navigator.clipboard?.writeText(e.text)}>
           <Copy size={13} />
         </button>
-        <button className="foot-button" title="Edit: put it back in the message box" onClick={() => useStore.getState().setComposerDraft(e.text)}>
+        <button className="foot-button" title="Edit: put it back in the message box" onClick={() => useStore.getState().setComposerDraft(e.text, { pluginCommand: e.pluginCommand, pluginSkills: e.pluginSkills })}>
           <Pencil size={13} />
         </button>
       </div>
@@ -826,7 +864,7 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
   const e = stored.event;
   switch (e.kind) {
     case "user":
-      return <UserMessage stored={stored} />;
+      return <UserMessage stored={stored} threadId={threadId} />;
     case "assistant-text":
       return (
         <div className="msg-assistant">
@@ -852,6 +890,8 @@ export function EventRow({ stored, results, children, running, threadId }: { sto
       );
     case "tool-result":
       return null; // shown on its tool row
+    case "plugin-card":
+      return threadId ? <PluginChatCard pluginKey={e.key} name={e.card} data={e.data} threadId={threadId} /> : null;
     case "widget":
       return (
         <div className="msg-assistant">

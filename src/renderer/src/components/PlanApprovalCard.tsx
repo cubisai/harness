@@ -3,6 +3,7 @@ import { PLAN_ARTIFACT } from "../../../shared/artifact-kind";
 import type { PlanDecision, PlanRequest } from "../../../shared/types";
 import { Markdown } from "../markdown";
 import { useStore } from "../store";
+import { chromeSafetyStyle } from "../app-themes";
 
 /**
  * The plan-approval card: the agent presented a plan in "plan" mode and waits
@@ -52,7 +53,7 @@ export function PlanApprovalCardBody({
   onDesign?(): void;
 }) {
   return (
-    <div className="permission-card plan-card" role="alertdialog" aria-label="Approve the plan?">
+    <div className="permission-card plan-card" style={chromeSafetyStyle()} role="alertdialog" aria-label="Approve the plan?">
       <div className="head plan-card-head">
         <span>Ready to build?</span>
         {onOpen ? (

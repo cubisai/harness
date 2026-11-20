@@ -5,7 +5,7 @@ How a UI change is judged. Rules marked **[checked]** are enforced by `bun run d
 ## Rules
 
 ### Tokens and literals
-- **[checked]** `design/literal-color`: no hex, rgb or hsl colour outside `app.css` `:root` token declarations. Existing offenders are listed in `scripts/design-allowlist.json`, which may only shrink.
+- **[checked]** `design/literal-color`: no hex, rgb or hsl colour outside `app.css` `:root` token declarations. Existing offenders are listed in `scripts/design/design-allowlist.json`, which may only shrink.
 - **[checked]** `design/token-missing`: every `var(--x)` without a fallback resolves to a declared token or a JS-written variable.
 - **[checked]** `design/token-stale`: `docs/design/tokens.md` matches `app.css` byte for byte (after line-ending normalisation).
 - **[checked]** `design/token-collision` (warning): no token declared twice in one block, no two token names that differ only by case or dashes.

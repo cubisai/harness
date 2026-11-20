@@ -1,0 +1,8 @@
+{
+  "name": "reading-list",
+  "title": "Reading list",
+  "description": "A full-page list of things to read: add a title and an optional link or note, tick them off, remove them.",
+  "icon": "notebook",
+  "entry": "index.html",
+  "placement": "page"
+}

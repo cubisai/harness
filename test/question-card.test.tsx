@@ -39,6 +39,23 @@ function buttons(element: unknown): { text: string; disabled?: boolean; onClick?
 }
 
 describe("QuestionCard", () => {
+  it.each([false, true])("names the %s multi-select listbox with the current question", (multiSelect) => {
+    const named = { ...request, questions: [{ ...request.questions[0]!, question: 'Choose a "format" & continue?', multiSelect }] };
+    const html = renderToStaticMarkup(QuestionCardBody({ request: named, state: initialCardState, waiting: 0, dispatch: vi.fn(), onRespond: vi.fn() }));
+    expect(html).toContain('role="listbox" aria-label="Choose a &quot;format&quot; &amp; continue?"');
+    expect(html.includes('aria-multiselectable="true"')).toBe(multiSelect);
+    expect(html).toContain('role="option" aria-selected="false"');
+  });
+
+  it("updates the listbox name when the current step changes to a free-text question", () => {
+    const first = renderToStaticMarkup(body().el);
+    const next = renderToStaticMarkup(body({ ...initialCardState, step: 1 }).el);
+    expect(first).toContain('role="listbox" aria-label="Which format?"');
+    expect(next).toContain('role="listbox" aria-label="What name?"');
+    expect(next).not.toContain('aria-label="Which format?"');
+    expect(next).toContain('placeholder="Type your answer"');
+  });
+
   it("shows the question, its options, Other, the step and the queue", () => {
     const html = renderToStaticMarkup(body().el);
     expect(html).toContain("Which format?");

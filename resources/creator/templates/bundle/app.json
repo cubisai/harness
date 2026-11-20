@@ -1,0 +1,10 @@
+{
+  "name": "bundle",
+  "title": "Review helper",
+  "description": "A reusable review command and skill",
+  "entry": "index.html",
+  "contributes": {
+    "commands": [{ "name": "review", "description": "Review without editing", "prompt": "Review the user's requested work, report concrete findings and do not modify files." }],
+    "skills": [{ "name": "review", "description": "Review without editing", "path": "skills/review" }]
+  }
+}

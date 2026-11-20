@@ -7,6 +7,7 @@ import { Markdown } from "../markdown";
 import { useStore, type LibraryTab } from "../store";
 import { AutomationsTab } from "./AutomationsTab";
 import { AppsTab } from "./AppsTab";
+import { PluginOwnerNote } from "./PluginParts";
 import { CantDoList, CapabilityChips, BinaryLine } from "./Capabilities";
 import { ExpertCenter } from "./experts/ExpertCenter";
 import { LearnedTab } from "./LearnedTab";
@@ -19,7 +20,7 @@ const TABS: { id: Exclude<LibraryTab, "agents" | "mcp">; label: string; icon: Lu
   { id: "experts", label: "Experts", icon: BriefcaseBusiness },
   { id: "skills", label: "Skills", icon: Puzzle },
   { id: "connectors", label: "Connectors", icon: Plug },
-  { id: "apps", label: "Apps", icon: LayoutGrid },
+  { id: "apps", label: "Plugins", icon: LayoutGrid },
   { id: "memory", label: "Memory", icon: Brain },
   { id: "automations", label: "Automations", icon: CalendarClock },
   { id: "learned", label: "Learned", icon: GraduationCap },
@@ -218,6 +219,8 @@ export function originLabel(origin?: SkillOrigin): string {
       return "Shared (~/.agents)";
     case "bundled":
       return "Built-in";
+    case "plugin":
+      return "Plugin";
     default:
       return "Library";
   }
@@ -228,10 +231,11 @@ function skillKey(s: SkillEntry): string {
   return `${s.origin ?? "legacy"}:${s.name}`;
 }
 
-const SKILL_ORIGINS: SkillOrigin[] = ["project", "harness", "bundled", "legacy"];
+const SKILL_ORIGINS: SkillOrigin[] = ["project", "harness", "bundled", "legacy", "plugin"];
 
 function SkillsTab() {
   const projectId = useStore((s) => s.selectedProjectId);
+  const plugins = useStore((s) => s.apps);
   const [all, setAll] = useState<SkillEntry[]>([]);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(useStore.getState().librarySkill);
@@ -242,7 +246,7 @@ function SkillsTab() {
   const [creating, setCreating] = useState(false);
 
   const reload = () => void api().listAllSkills(projectId ?? undefined).then(setAll);
-  useEffect(reload, [projectId]);
+  useEffect(reload, [projectId, plugins]);
 
   // A bare name (from the store) resolves to the first matching origin's key.
   useEffect(() => {
@@ -267,7 +271,7 @@ function SkillsTab() {
     return () => {
       live = false;
     };
-  }, [picked?.name, projectId]);
+  }, [picked?.name, picked?.owner?.revision, picked?.enabled, projectId]);
 
   const q = query.trim().toLowerCase();
   const shown = all.filter((s) => !q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q));
@@ -416,12 +420,14 @@ function SkillsTab() {
                     <span className="library-item-text">
                       <span className="n">{s.invocation === "user" ? `$${s.name}` : s.name}</span>
                       <span className="d">{s.description}</span>
+                      {s.owner && <span className="shadow-note">{s.owner.title}{s.owner.enabled ? "" : " · Off or unavailable"}</span>}
                       {shadowed && <span className="shadow-note">Overridden by {originLabel(s.shadowedBy)}</span>}
                     </span>
                     <input
                       type="checkbox"
                       className="skill-switch"
                       checked={s.enabled !== false}
+                      disabled={Boolean(s.owner)}
                       onChange={() => void api().setSkillEnabled(s.origin ?? "legacy", s.name, s.enabled === false).then(() => reload())}
                       onClick={(e) => e.stopPropagation()}
                       aria-label={`Use ${s.name}`}
@@ -457,7 +463,7 @@ function SkillView({ detail, onOpen }: { detail: SkillDetail; onOpen: (name: str
         <span className="tag">{originLabel(skill.origin)}</span>
         <span className="grow" />
         {hasProject && (
-          <button className="button primary" onClick={use}>
+          <button className="button primary" disabled={skill.enabled === false || skill.userInvocable === false} onClick={use}>
             Use in Thread
           </button>
         )}
@@ -468,6 +474,7 @@ function SkillView({ detail, onOpen }: { detail: SkillDetail; onOpen: (name: str
         )}
       </div>
       <p className="skill-desc">{skill.description}</p>
+      <PluginOwnerNote owner={skill.owner} onManage={() => useStore.setState({ libraryTab: "apps" })} />
       <dl className="facts">
         {skill.argumentHint && <FactRow label="Arguments" value={skill.argumentHint} mono />}
         <FactRow label="Invocation" value={skill.invocation === "user" ? "User: typed in prompt box with $" : "Model: loaded by agent as needed"} />

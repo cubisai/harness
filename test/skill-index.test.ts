@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { SkillEntry } from "../src/shared/types";
 import { SKILL_INDEX_THRESHOLD, skillTool } from "../src/main/skills/tool";
-import { makeSkills } from "../scripts/mock-extensions-lib.mjs";
+import { makeSkills } from "../scripts/dev/mock-extensions-lib.mjs";
 import { tempDir } from "./helpers";
 
 function entry(name: string, description: string, dir?: string): SkillEntry {

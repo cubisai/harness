@@ -19,10 +19,11 @@ export type Invocation = "model" | "user";
  * "projectClaude" is .claude/skills, read natively only by Claude. All three are listed as Project.
  */
 /** `expert`: an imported expert's own skills, in that expert's threads only. */
-export type SkillOrigin = "projectCubiq" | "project" | "projectClaude" | "expert" | "harness" | "shared" | "bundled" | "legacy";
+export type SkillOrigin = "projectCubiq" | "project" | "projectClaude" | "expert" | "harness" | "shared" | "bundled" | "legacy" | "plugin";
 
 /** One skill: a folder with a SKILL.md. */
 export interface SkillEntry {
+  owner?: import("./plugin-parts").PluginOwner;
   name: string;
   description: string;
   invocation: Invocation;
@@ -37,8 +38,8 @@ export interface SkillEntry {
   dir?: string;
   /** False when the frontmatter says `user-invocable: false`. */
   userInvocable?: boolean;
-  /** "design" = delivered to design threads only (frontmatter `mode: design`). */
-  mode?: "design";
+  /** "design" / "creator" = delivered to design / Creator threads only (frontmatter `mode: design` / `mode: creator`). */
+  mode?: "design" | "creator";
   /** False when the user turned it off in Settings. */
   enabled?: boolean;
   /** The origin of the higher-precedence same-name skill that won. */
@@ -320,6 +321,9 @@ export interface McpServerEntry {
   enabled: boolean;
   /** Some of its secret values are in the vault but can't be opened on this machine; enter them again. */
   locked?: boolean;
+  /** Main-created opaque route with its own execution permissions. Not persisted
+   * in mcp.json or sent to an agent's MCP configuration. */
+  mainMediated?: true;
 }
 
 /** An MCP server as the window sees it: env and header values never leave the main process. */
@@ -374,6 +378,8 @@ export interface McpOverview {
   /** The selected project's own servers and the global ones it switches off; null for the global scope. */
   project: { servers: McpServerView[]; offGlobal: string[]; file: string } | null;
   external: ExternalMcpServer[];
+  /** Global, owner-managed connector parts. Local status only until explicit Check/Sign in. */
+  bundled?: import("./plugin-parts").PluginConnectorView[];
   file: string;
 }
 
@@ -703,6 +709,18 @@ export interface RunUsage {
  */
 export type CodeMode = "off" | "on";
 
+/** A file the user attached to a message, copied into the thread's folder. */
+export interface Attachment {
+  /** Relative to the thread's folder, posix: `.cubiq/attachments/<id>-<name>`. */
+  path: string;
+  name: string;
+  size: number;
+  mediaType: string;
+}
+
+/** A file to attach, before it is copied: a path on disk (dropped or picked) or pasted bytes. */
+export type AttachmentSource = { name: string; path: string } | { name: string; bytes: Uint8Array };
+
 export interface EventIds {
   messageId?: string;
   turnId?: string;
@@ -716,11 +734,13 @@ export interface EventIds {
  * never persisted.
  */
 export type ThreadEvent = (
-  | { kind: "user"; text: string; /** Older events: one skill. */ skill?: string; /** The skills the user picked, in order. */ skills?: string[] }
+  | { kind: "user"; text: string; /** Older events: one skill. */ skill?: string; /** The skills the user picked, in order. */ skills?: string[]; pluginCommand?: import("./plugin-parts").PluginCommandInvocation; pluginSkills?: import("./plugin-parts").PluginSkillInvocation[]; /** Files the user attached, copied into the thread's folder. */ attachments?: Attachment[] }
   | { kind: "assistant-text"; text: string }
   | { kind: "thinking"; text: string; signature?: string; opaque?: boolean }
   | { kind: "tool-use"; toolUseId: string; name: string; summary: string; payload?: unknown }
   | { kind: "tool-result"; toolUseId: string; isError: boolean; summary: string; payload?: unknown; /** A subagent call's own usage, when the engine reports it. */ runUsage?: RunUsage }
+  /** A plugin tool's declared, local transcript surface. No model-provided HTML or URL. */
+  | { kind: "plugin-card"; key: string; card: string; data: unknown }
   | {
       kind: "turn-end";
       costUsd: number | null;
@@ -1253,8 +1273,13 @@ export interface SendRequest {
   text: string;
   /** User-invoked skills picked in the composer, in order. */
   skills?: string[];
+  /** Reviewed plugin identities, rechecked in main after any background wait. */
+  pluginCommand?: import("./plugin-parts").PluginCommandInvocation;
+  pluginSkills?: import("./plugin-parts").PluginSkillInvocation[];
   /** Project-relative files and folders the user @-mentioned. */
   mentions?: string[];
+  /** Files attached to this message, already copied into the thread's folder (saveAttachments). */
+  attachments?: Attachment[];
   /** Internal: which automatic fix round this send is (0 or absent = the user's). */
   checkRound?: number;
   /** Internal: this send is the one automatic design-lint fix round after a design turn. */
@@ -1359,11 +1384,12 @@ export type LiveUpdate =
   | { type: "automation-delivered"; automationId: string; runId: number; threadId: string; title: string }
   /** Creator apps were installed, updated or removed: list them again. */
   | { type: "apps-changed" }
+  | { type: "app-themes-changed" }
   | { type: "automations-changed"; projectId: string }
-  /** A Creator thread previews its draft app: open it in the App tab if that thread is on screen. */
+  /** A Creator thread previews its draft app: open it (modal or floating) if that thread is on screen. */
   | { type: "app-open"; threadId: string; app: AppInfo }
-  /** A previewed draft's files changed: reload its frame. */
-  | { type: "app-reload"; key: string };
+  /** A previewed draft's files changed: reload its frame (with its app.json re-read, when it is a valid draft). */
+  | { type: "app-reload"; key: string; app?: AppInfo };
 
 export type ProposalScope = { kind: "project"; projectId: string } | { kind: "global" };
 export type ProposalStatus = "staged" | "installed" | "rejected" | "failed";
@@ -1386,6 +1412,7 @@ export interface ExtensionConnectorSummary {
 }
 
 export interface ExtensionAppSummary {
+  parts?: import("./plugin-parts").PluginPartView[];
   kind: "app";
   name: string;
   title: string;
@@ -1395,6 +1422,8 @@ export interface ExtensionAppSummary {
   files: { path: string; bytes: number; change?: "added" | "changed" | "removed" }[];
   /** Each granted connector tool; `access` from the server's listing (`readOnlyHint`), "unknown" when not listed. */
   grants: { server: string; tool: string; access: "read" | "write" | "unknown" }[];
+  tools?: { name: string; description: string }[];
+  cards?: string[];
   /** Installing replaces an app of the same name installed at this scope. */
   update: boolean;
   /** The draft's frame key, so the card can preview it. */
@@ -1444,6 +1473,7 @@ export interface ExtensionProposalView {
 
 /** An installed Creator app, as the sidebar and Library list it. */
 export interface AppInfo {
+  parts?: import("./plugin-parts").PluginPartView[];
   /** The frame key (`g~name`, `p~<projectId>~name`, or a Creator thread's draft `d~<threadId>~name`). */
   key: string;
   name: string;
@@ -1455,17 +1485,29 @@ export interface AppInfo {
   grants: { server: string; tools: string[] }[];
   /** Disabled apps stay in Library but cannot open or call connectors. Omitted means enabled. */
   enabled?: boolean;
+  /** When the user starred it (the sidebar lists favourites first); omitted means not a favourite. */
+  favorite?: number;
   path: string;
   /** The entry page's `cubiq-app://` URL. */
   url: string;
   /** Why it can't open (bad or missing app.json). */
   error?: string;
+  /** Where it shows (a modal, floating widget, main-area page, composer dock or sidebar panel); omitted means a modal. */
+  placement?: "modal" | "floating" | "page" | "dock" | "panel";
+  /** A floating widget's size. */
+  size?: { width: number; height: number };
+  /** A dock's or sidebar panel's frame height. */
+  height?: number;
+  /** "own": the app brings its own look (no base sheet, transparent frame). */
+  style?: "cubiq" | "own";
+  tools?: import("./plugin-tools").PluginTool[];
+  cards?: import("./plugin-tools").PluginCard[];
 }
 
 /** What a frame's bridge request gets back: a result, an error, or a question for the user first. */
 export type AppCallResult =
   | { ok: true; result: unknown }
-  | { ok: false; error: string }
+  | { ok: false; error: string; blocked?: "read-only" }
   | { ok: false; approval: { token: string; server: string; tool: string; args: string } };
 
 export interface ExtensionInstallView {
@@ -1529,6 +1571,12 @@ export interface UnskilledApi {
   listSkills(projectId?: string): Promise<SkillEntry[]>;
   listAgents(): Promise<AgentInfo[]>;
   send(request: SendRequest): Promise<void>;
+  /** Copy files into a thread's `.cubiq/attachments/` (at most 10, 20 MB each) for the next send. */
+  saveAttachments(threadId: string, sources: AttachmentSource[]): Promise<Attachment[]>;
+  /** The native file picker for attachments; [] when cancelled. */
+  pickAttachments(): Promise<{ name: string; path: string; size: number }[]>;
+  /** The path on disk of a dropped file ("" for one that has none, e.g. pasted). */
+  pathForFile(file: File): string;
   interrupt(threadId: string): Promise<void>;
   respondPermission(requestId: string, decision: PermissionDecision): Promise<void>;
   respondPlan(requestId: string, decision: PlanDecision): Promise<void>;
@@ -1653,6 +1701,12 @@ export interface UnskilledApi {
   mcpStatus(projectId: string | null, refresh?: boolean): Promise<McpServerStatus[]>;
   /** Sign in to a URL server in the browser (OAuth); resolves when the sign-in finishes or fails. */
   connectMcp(name: string, projectId?: string | null): Promise<{ ok: boolean; error?: string }>;
+  listPluginConnectors(): Promise<import("./plugin-parts").PluginConnectorView[]>;
+  savePluginConnector(handle: import("./plugin-parts").PluginConnectorHandle, values: Record<string, string>, clientSecret?: string): Promise<void>;
+  connectPluginConnector(handle: import("./plugin-parts").PluginConnectorHandle): Promise<{ ok: boolean; error?: string }>;
+  cancelPluginConnectorSignIn(handle: import("./plugin-parts").PluginConnectorHandle): Promise<void>;
+  disconnectPluginConnector(handle: import("./plugin-parts").PluginConnectorHandle): Promise<void>;
+  checkPluginConnector(handle: import("./plugin-parts").PluginConnectorHandle): Promise<void>;
   /** Sign out: revoke when the server allows, forget the tokens. */
   disconnectMcp(name: string, projectId?: string | null): Promise<McpOverview>;
   /** Store (or clear, with null) the secret of an OAuth client the user registered themselves. */
@@ -1670,9 +1724,20 @@ export interface UnskilledApi {
   listExtensionInstalls(projectId?: string | null): Promise<ExtensionInstallView[]>;
   /** Installed Creator apps for a project (its own, then global ones it doesn't shadow), or global only. */
   listApps(projectId: string | null): Promise<AppInfo[]>;
+  /** Enabled reviewed plugin commands only. Listing never sends a turn. */
+  listPluginCommands(): Promise<import("./plugin-parts").PluginCommandView[]>;
+  appThemeState(): Promise<import("./app-themes").AppThemeState>;
+  previewAppTheme(source: import("./app-themes").AppThemeSource): Promise<import("./app-themes").AppThemeState>;
+  applyAppTheme(handle: import("./app-themes").AppThemeHandle, previewToken?: string): Promise<import("./app-themes").AppThemeState>;
+  cancelAppThemePreview(token: string): Promise<import("./app-themes").AppThemeState>;
+  revertAppTheme(): Promise<import("./app-themes").AppThemeState>;
   /** One app by frame key (an installed app or a Creator thread's draft), or null when there is none. */
   appInfo(key: string): Promise<AppInfo | null>;
+  appCardInfo(key: string, card: string, threadId: string): Promise<AppInfo | null>;
+  callAppCard(key: string, threadId: string, server: string, tool: string, args: Record<string, unknown>): Promise<AppCallResult>;
   setAppEnabled(key: string, enabled: boolean): Promise<void>;
+  /** Star or unstar an installed app. */
+  setAppFavorite(key: string, on: boolean): Promise<void>;
   prepareAppEdit(key: string, threadId: string): Promise<{ app: AppInfo; prompt: string }>;
   /** A bridge call from an app's frame; `approval` resends a call the user said yes to. */
   callApp(key: string, projectId: string | null, server: string, tool: string, args: Record<string, unknown>, approval?: { token: string; remember?: boolean }): Promise<AppCallResult>;

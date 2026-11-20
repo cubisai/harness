@@ -57,6 +57,12 @@ export function browserPair(deferred: HarnessTool[]): [HarnessTool, HarnessTool]
     // Most of them change the page: run alone, in order.
     effect: "mutate",
     summarize: (args) => summarizeToolInput(BROWSER_CALL, args),
+    approvalTarget: (args: Record<string, unknown>) => {
+      const inner = typeof args.tool === "string" ? byName.get(args.tool) : undefined;
+      if (!inner) return undefined;
+      const parsed = z.object(inner.input).safeParse(args.arguments ?? {});
+      return parsed.success ? { tool: inner, args: parsed.data } : undefined;
+    },
     run: async ({ tool, arguments: args }, ctx) => {
       const inner = byName.get(tool);
       if (!inner) return { text: `No browser tool "${tool}" here. Tools: ${names.join(", ")}.`, isError: true };

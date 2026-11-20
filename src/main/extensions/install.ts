@@ -14,11 +14,18 @@ import type { ThemeFile } from "../creator/themes";
 import type { AutomationInput, AutomationView } from "../../shared/automations";
 import { automationDigest } from "../creator/automations";
 import { describeSchedule } from "../automations/schedule";
+import type { PluginBundles } from "../apps/bundles";
+import { contributionViews } from "../apps/parts";
 
 const CHANGED_AFTER_REVIEW = "Proposal changed after review; create a new proposal.";
 const STAGING_DIR_RE = /^\..+\.staging-[0-9a-f]+$/;
 
 export interface ExtensionInstallDeps {
+  bundles?: Pick<PluginBundles, "install" | "uninstall" | "owns">;
+  /** Read-only ownership gate even while the bundle installer is intentionally disconnected. */
+  bundleOwned?: (key: string) => boolean;
+  /** Reviewed metadata for Update diffs; does not activate the installer. */
+  bundleParts?: (key: string) => import("../../shared/plugin-parts").PluginPartView[];
   extensions: ExtensionStore;
   projectOf: (projectId: string) => Project | null;
   allProjects: () => Project[];
@@ -229,6 +236,17 @@ export class ExtensionService {
       return { path: f.path, bytes, ...(old ? (old.sha256 === sha256(f.content) ? {} : { change: "changed" as const }) : { change: "added" as const }) };
     });
     if (previous) for (const o of previous.files) if (!draft.files.some((f) => f.path === o.path)) files.push({ path: o.path, bytes: 0, change: "removed" });
+    const parts = contributionViews(draft.name, manifest?.contributes, draft.bundleProjectId).map((part) => ({ ...part, ...(part.projectId ? { projectName: this.deps.projectOf(part.projectId)?.name } : {}) }));
+    const oldParts = previous ? this.deps.bundleParts?.(`g~${draft.name}`) ?? [] : [];
+    const partKey = (p: import("../../shared/plugin-parts").PluginPartView) => `${p.kind}\0${p.name}`;
+    const partConfig = ({ projectName: _label, change: _change, ...part }: import("../../shared/plugin-parts").PluginPartView) => JSON.stringify(part);
+    const reviewedParts = parts.map((part) => {
+      if (!previous) return part;
+      const old = oldParts.find((p) => partKey(p) === partKey(part));
+      const skillFilesChanged = part.kind === "skill" && files.some((f) => f.change && f.path.startsWith(`${part.detail}/`));
+      return { ...part, ...(!old ? { change: "added" as const } : partConfig(old) !== partConfig(part) || skillFilesChanged ? { change: "changed" as const } : {}) };
+    });
+    for (const old of oldParts) if (!parts.some((p) => partKey(p) === partKey(old))) reviewedParts.push({ ...old, change: "removed" });
     return {
       kind: "app",
       name: draft.name,
@@ -237,6 +255,9 @@ export class ExtensionService {
       ...(manifest?.icon ? { icon: manifest.icon } : {}),
       files: files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
       grants,
+      ...(manifest?.tools?.length ? { tools: manifest.tools.map(({ name, description }) => ({ name, description })) } : {}),
+      ...(manifest?.cards?.length ? { cards: manifest.cards.map((c) => c.name) } : {}),
+      ...(reviewedParts.length ? { parts: reviewedParts } : {}),
       update: Boolean(previous),
       draftKey: `d~${proposal.threadId}~${draft.name}`,
     };
@@ -453,6 +474,15 @@ export class ExtensionService {
    * hand-edited app is never overwritten), then swapped in and the old copy removed.
    */
   private installApp(current: StoredProposal, draft: AppDraft, digest: string, project: Project | null, scopeLabel: string): ExtensionProposalView {
+    const manifest = parseAppManifest(draft.files.find((f) => f.path === "app.json")!.content, new Set(draft.files.map((f) => f.path)), draft.name).manifest;
+    if (manifest?.contributes || this.deps.bundles?.owns(`g~${draft.name}`) || this.deps.bundleOwned?.(`g~${draft.name}`)) {
+      try {
+        if (!this.deps.bundles) throw new Error("Plugin bundles are not supported in this build.");
+        this.deps.bundles.install(current, draft, digest);
+        try { this.deps.emitNotice(current.threadId, `Installed plugin bundle "${draft.name}". Scheduled prompts remain Off/Ask; no run was started.`); } catch { /* Committed state. */ }
+        return this.getProposalView(current.id)!;
+      } catch (e) { return this.toView(this.deps.extensions.setStatus(current.id, "failed", (e as Error).message) ?? current); }
+    }
     if (!this.deps.appsDir) {
       const updated = this.deps.extensions.setStatus(current.id, "failed", "Apps can't be installed in this build.");
       return this.toView(updated ?? current);
@@ -667,6 +697,10 @@ export class ExtensionService {
       }
 
       if (current.kind === "app") {
+        if (current.scope.kind === "global" && (this.deps.bundles?.owns(`g~${current.name}`) || this.deps.bundleOwned?.(`g~${current.name}`))) {
+          if (!this.deps.bundles) throw new Error("Plugin bundles are not supported in this build; their owned parts were kept.");
+          this.deps.bundles.uninstall(current); return;
+        }
         let baseDir: string | null = null;
         if (current.scope.kind === "global") baseDir = this.deps.appsDir?.(null) ?? null;
         else {
@@ -797,7 +831,7 @@ export class ExtensionService {
  * Every recorded file of an installed folder that still exists, after checking each is a regular file inside the
  * folder with its recorded hash. Throws before anything is changed when one was edited or replaced.
  */
-function verifyInstalledFiles(destDir: string, files: InstalledFile[], name: string, complete = false): { abs: string; rel: string }[] {
+export function verifyInstalledFiles(destDir: string, files: InstalledFile[], name: string, complete = false): { abs: string; rel: string }[] {
   if (lstatSync(destDir).isSymbolicLink()) throw new Error(`Refusing to change "${name}": its folder is a symlink.`);
   if (complete) {
     const recorded = new Set(files.map((f) => f.path));

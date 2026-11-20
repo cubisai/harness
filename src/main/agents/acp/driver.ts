@@ -2,7 +2,7 @@ import type { AgentCapabilities, CodeMode, McpServerEntry, ModelOption, Permissi
 import { CODE_HINT, OWN_CODE_MODE_HINT } from "../../code-hint";
 import type { TeamAgent } from "../../../shared/experts";
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { clipAgentSummary, clipSummary } from "../../../shared/tools";
@@ -15,9 +15,10 @@ import { binaryInfo, majorOf, resolvedInstallAsync } from "../binaries";
 import type { AgentDriver, SessionSeed, TurnInput } from "../types";
 import { acpCapabilities, withCapabilities } from "../capabilities";
 import { forAcpWithReport, mcpChangeNotice } from "../../mcp/servers";
+import { deferManagedPermission, wireManagedTarget } from "../managed-permission";
 import { TOOL_SERVER_NAME, withBrowserOnDemandFlag, withCode, withProject, withShells, withThread } from "../../mcp-http";
 import { BROWSER_CALL } from "../../browser/on-demand";
-import { SHELL_TOOL_NAMES } from "../../shell-tools";
+import { carriesThreadOwnTools } from "../../shell-tools";
 import { ASK_USER_TOOL } from "../../questions";
 import { checkCommand } from "../../guard";
 import { RpcError, StdioRpc } from "../rpc";
@@ -133,10 +134,27 @@ interface InitializeResult {
   agentCapabilities?: {
     loadSession?: boolean;
     mcpCapabilities?: { http?: boolean };
+    /** Content the agent takes in session/prompt besides text. */
+    promptCapabilities?: { image?: boolean; embeddedContext?: boolean };
     sessionCapabilities?: { resume?: object | null; close?: object | null };
   };
   authMethods?: { id: string; name: string }[];
   agentInfo?: { name?: string; version?: string };
+}
+
+/**
+ * Attached images as ACP image blocks, only for an agent that says it takes them
+ * (promptCapabilities.image); otherwise none, and the prompt's path list stands in.
+ */
+export function acpImageBlocks(init: Pick<InitializeResult, "agentCapabilities">, images?: { path: string; mediaType: string }[]): { type: "image"; mimeType: string; data: string }[] {
+  if (!images?.length || init.agentCapabilities?.promptCapabilities?.image !== true) return [];
+  return images.flatMap((img) => {
+    try {
+      return [{ type: "image" as const, mimeType: img.mediaType, data: readFileSync(img.path).toString("base64") }];
+    } catch {
+      return [];
+    }
+  });
 }
 
 /** OpenCode 2 and later bring their own Code Mode (`execute`), so CubiQ's run_code isn't attached there. */
@@ -220,7 +238,7 @@ const PERMISSION_KINDS: Record<string, ToolKind> = { read: "read", list: "read",
  * mode, Plan included: nothing else will answer it.
  */
 export async function decidePluginAsk(
-  input: Pick<TurnInput, "permissionMode" | "requestPermission"> & Partial<Pick<TurnInput, "cwd" | "design">>,
+  input: Pick<TurnInput, "permissionMode" | "requestPermission"> & Partial<Pick<TurnInput, "cwd" | "design" | "managedPermission" | "mcpServers">>,
   ask: PluginAsk,
   signal?: AbortSignal,
 ): Promise<PermissionDecision | null> {
@@ -232,6 +250,10 @@ export async function decidePluginAsk(
   if (picked === "deny") return "deny";
   // A design thread's own folder is its canvas: an edit there (the summary is its file) doesn't ask.
   if (ask.kind === "edit" && input.cwd && designWriteAllowed(input.permissionMode, input.cwd, input.design, ask.summary ? [ask.summary] : [])) return "allow-once";
+  if (own && input.managedPermission) {
+    const target = wireManagedTarget({ mcpServers: input.mcpServers ?? [] }, ask.tool) ?? (/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(ask.tool) ? { kind: "tool" as const, name: ask.tool } : null);
+    if (target && input.managedPermission(target)) return "allow-once";
+  }
   return input.requestPermission({ toolName: own ? ask.tool : kindLabel(kind), summary: ask.summary || ask.tool, canAlwaysAllow: false, ...(signal ? { signal } : {}) });
 }
 
@@ -285,6 +307,8 @@ interface Live {
   droppedNotified: Set<string>;
   /** A freshly created session still owes its first prompt the harness guide. */
   guidePending: boolean;
+  /** A resumed, reloaded or compacted session owes its next prompt the thread's preset note (Creator) again. */
+  presetPending: boolean;
   /** The code-mode hint already went out in this session (with the guide, or on its own for a session that started without it). */
   codeHintSent: boolean;
   /** A freshly created session still owes its first prompt the seed's history prefix. */
@@ -920,12 +944,18 @@ export function createAcpDriver(
           if (picked === "allow") return "allow-once";
           // A design thread's own folder is its canvas: file edits there don't ask.
           if (p.toolCall.kind === "edit" && designWriteAllowed(t.input.permissionMode, t.input.cwd, t.input.design, acpEditTargets(p.toolCall))) return "allow-once";
-          // The harness's own safe tools (browser snapshot, click, ...) run without asking.
-          const title = `${p.toolCall.title ?? ""}`;
-          if (t.input.tools.some((tool) => tool.autoAllow && title.includes(tool.name))) return "allow-once";
+          // A title substring is not an identity: never auto-approve a native
+          // command just because its description mentions a browser tool.
+          const title = `${p.toolCall.title ?? ""}`.trim();
+          const managedKind = !p.toolCall.kind || p.toolCall.kind === "other";
+          const target = managedKind && typeof raw?.command !== "string" && typeof raw?.cmd !== "string"
+            ? wireManagedTarget(t.input, title) ?? (/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(title) ? { kind: "tool" as const, name: title } : null) : null;
+          if (target?.kind === "tool" && t.input.tools.some((tool) => tool.autoAllow && target.name === tool.name)) return "allow-once";
           // Asking the user is never an action to approve, in any mode (Plan included).
           if (title.includes(ASK_USER_TOOL)) return "allow-once";
           if (picked === "deny") return "deny";
+          const inputArgs = p.toolCall.rawInput && typeof p.toolCall.rawInput === "object" && !Array.isArray(p.toolCall.rawInput) ? p.toolCall.rawInput as Record<string, unknown> : undefined;
+          if (target && deferManagedPermission(t.input, target, inputArgs)) return "allow-once";
           return t.input.requestPermission({
             toolName: kindLabel(p.toolCall.kind),
             summary: p.toolCall.title ?? JSON.stringify(p.toolCall.rawInput ?? {}),
@@ -975,7 +1005,7 @@ export function createAcpDriver(
       clientInfo: { name: "cubiq", version: deps.clientVersion },
     });
     applyInitialize(init, input);
-    l = { conn, init, threadKey, command, env, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, codeHintSent: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null, approvedCalls: new Set() };
+    l = { conn, init, threadKey, command, env, sessionId: null, configOptions: [], mcpSignature: "[]", mcpByName: {}, variantKey: wantedKey, droppedNotified: new Set(), guidePending: false, presetPending: false, codeHintSent: false, historyPending: null, turn: null, modes: null, planModeId: null, defaultModeId: null, authUrl: null, approvedCalls: new Set() };
     // No proactive authenticate: the server infers the method from its own
     // settings and refreshes the token itself, so calling it here only ever
     // launched a browser (including during the startup model probe). A signed-out
@@ -1004,7 +1034,7 @@ export function createAcpDriver(
         const skillsTarget = capabilities.skillsDelivery.mode === "tool" ? (skillsUrl ?? url) : url;
         const target = routed ? (routedUrl ?? skillsUrl ?? url) : skillsTarget;
         const code = (deps.codeMode?.(input.threadId) ?? "off") !== "off";
-        const shells = input.tools.some((t) => (SHELL_TOOL_NAMES as readonly string[]).includes(t.name)) ? input.threadId : undefined;
+        const shells = carriesThreadOwnTools(input.tools) ? input.threadId : undefined;
         const toolUrl = withBrowserOnDemandFlag(withShells(withCode(withThread(withProject(target, input.projectId), input.threadId), code ? input.threadId : undefined), shells), input.tools.some((t) => t.name === BROWSER_CALL));
         servers.push({ type: "http", name: TOOL_SERVER_NAME, url: toolUrl, headers: [{ name: "Authorization", value: `Bearer ${token}` }] } as { name: string });
         l.askUser = true;
@@ -1090,16 +1120,28 @@ export function createAcpDriver(
       const canReopen = Boolean(caps?.sessionCapabilities?.resume && caps.sessionCapabilities.close);
       const notice = mcpChangeNotice(l.mcpByName, byName, canReopen, config.label);
       if (notice) input.onEvent({ kind: "notice", text: notice });
+      if (!canReopen) {
+        const direct = Object.entries(l.mcpByName).filter(([, spec]) => spec && typeof spec === "object" && "command" in spec).map(([name]) => name);
+        if (direct.length && (input.managedPermission || input.mcpServers.some((s) => s.mainMediated))) throw new Error(`This session still has direct stdio connectors (${direct.join(", ")}) and cannot reopen with main mediation. Start a new thread or fresh session before continuing.`);
+        l.mcpSignature = signature;
+        l.mcpByName = byName;
+        return;
+      }
+      const sessionId = l.sessionId;
+      // A failed close/resume must never mark the new configuration as active:
+      // otherwise the next retry would reuse the old direct stdio capability.
+      await l.conn.request("session/close", { sessionId });
+      l.sessionId = null;
+      const res = await l.conn.request<{ configOptions?: ConfigOption[]; modes?: SessionModeState | null }>("session/resume", { cwd: input.cwd, mcpServers, sessionId });
+      l.sessionId = sessionId;
       l.mcpSignature = signature;
       l.mcpByName = byName;
-      if (!canReopen) return;
-      await l.conn.request("session/close", { sessionId: l.sessionId }).catch(() => {});
-      const res = await l.conn.request<{ configOptions?: ConfigOption[]; modes?: SessionModeState | null }>("session/resume", { cwd: input.cwd, mcpServers, sessionId: l.sessionId });
       if (res?.configOptions) {
         l.configOptions = res.configOptions;
         rememberConfig(l.configOptions, l.threadKey);
       }
       rememberModes(l, res?.modes);
+      l.presetPending = true;
       input.onSessionRebuilt?.();
       return;
     }
@@ -1114,6 +1156,7 @@ export function createAcpDriver(
         l.configOptions = res?.configOptions ?? [];
         rememberConfig(l.configOptions, l.threadKey);
         rememberModes(l, res?.modes);
+        l.presetPending = true;
         return;
       } catch (err) {
         // fall through to a new session
@@ -1126,6 +1169,7 @@ export function createAcpDriver(
         l.configOptions = res?.configOptions ?? [];
         rememberConfig(l.configOptions, l.threadKey);
         rememberModes(l, res?.modes);
+        l.presetPending = true;
         return;
       } catch (err) {
         // fall through
@@ -1358,7 +1402,8 @@ export function createAcpDriver(
       // earlier session was lost, the seed's history prefix; only then are they dropped.
       const g = l.guidePending ? deps.guide?.(input.cwd, input.design) ?? "" : "";
       const e = l.guidePending ? input.expert ?? "" : "";
-      const p = l.guidePending ? input.preset ?? "" : "";
+      // The preset note (Creator) also goes out again after a resume, reload or compaction, which may have dropped it.
+      const p = l.guidePending || l.presetPending ? input.preset ?? "" : "";
       const m = l.guidePending && input.projectId ? deps.memory?.(input.projectId, input.threadId, null) ?? "" : "";
       const fresh = l.guidePending;
       // Code mode (run_code attached): one fixed line inside the guide; OpenCode v2's points at run_code in its own Code Mode catalog.
@@ -1371,6 +1416,7 @@ export function createAcpDriver(
       // Warm the extensions estimate (MCP tool listings) so the breakdown at the end of this turn has it.
       if (fresh) deps.extensions?.(input.cwd, input.projectId ?? null);
       if (g || e || p || m) l.guidePending = false;
+      l.presetPending = false;
       const h = l.historyPending;
       l.historyPending = null;
       const lead = [
@@ -1416,7 +1462,10 @@ export function createAcpDriver(
           turn.text = "";
           turn.thought = "";
           if (res.stopReason === "cancelled") input.onEvent({ kind: "notice", text: "Stopped." });
-          else input.onEvent({ kind: "compaction", trigger: "manual", preTokens: null, postTokens: null });
+          else {
+            l.presetPending = true;
+            input.onEvent({ kind: "compaction", trigger: "manual", preTokens: null, postTokens: null });
+          }
           input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 0, outputTokens: 0, durationMs: Date.now() - started });
           return;
         }
@@ -1446,7 +1495,7 @@ export function createAcpDriver(
             usage?: { inputTokens?: number; outputTokens?: number; cachedReadTokens?: number; cachedWriteTokens?: number } | null;
           }>("session/prompt", {
             sessionId: l.sessionId,
-            prompt: [...(round === 0 ? lead : []), { type: "text", text: prefix + prompt }],
+            prompt: [...(round === 0 ? lead : []), { type: "text", text: prefix + prompt }, ...(round === 0 ? acpImageBlocks(l.init, input.images) : [])],
           });
           // Whether the turn produced anything visible; flushText clears the
           // buffers this reads, so decide before flushing.

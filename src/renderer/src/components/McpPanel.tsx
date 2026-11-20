@@ -5,6 +5,7 @@ import type { ExternalMcpServer, McpDraft, McpOverview, McpProbeResult, McpServe
 import { api } from "../api";
 import { joinCommandLine, splitCommandLine } from "../cmdline";
 import { useStore } from "../store";
+import { PluginConnectorsSection } from "./PluginConnectorsSection";
 import "../styles/mcp.css";
 
 /** The loopback port the sign-in callback uses unless a server sets its own (main's DEFAULT_CALLBACK_PORT). */
@@ -163,6 +164,7 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
   const inProject = scope === "project" && selectedProjectId !== null;
   const projectId: string | null = inProject ? selectedProjectId : null;
   const [data, setData] = useState<McpOverview | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [status, setStatus] = useState<Record<string, McpServerStatus>>({});
   const [input, setInput] = useState(prefill ?? "");
   const [inputError, setInputError] = useState<string | null>(null);
@@ -189,7 +191,10 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
   }, []);
 
   const load = useCallback(() => {
-    void api().getMcp(scopeRef.current).then(setData);
+    const pid = scopeRef.current;
+    void api().getMcp(pid).then((next) => {
+      if (scopeRef.current === pid) { setData(next); setLoadError(null); }
+    }).catch((err) => { if (scopeRef.current === pid) setLoadError(errorText(err)); });
     loadStatus();
   }, [loadStatus]);
 
@@ -199,15 +204,15 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const off = api().onUpdate((u) => {
-      if (u.type !== "mcp-status") return;
+      if (u.type !== "mcp-status" && u.type !== "apps-changed") return;
       clearTimeout(timer);
-      timer = setTimeout(() => loadStatus(), 250);
+      timer = setTimeout(() => load(), 250);
     });
     return () => {
       clearTimeout(timer);
       off();
     };
-  }, [loadStatus]);
+  }, [load]);
 
   // Knock on a URL (debounced) so the review can say whether it wants a sign-in or a key.
   const probeUrl = review && review.type !== "stdio" ? review.url.trim() : "";
@@ -339,7 +344,7 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
   const importExternal = (s: ExternalMcpServer) =>
     rowAction(`ext:${s.agent}:${s.source}:${s.name}`, "Importing…", () => api().importMcp(s.agent, s.source, s.name, projectId));
 
-  if (!data) return <div className="mcp-panel" />;
+  if (!data) return <div className="mcp-panel">{loadError ? <><p className="mcp-error" role="alert">{loadError}</p><button type="button" className="button ghost" onClick={load}>Retry</button></> : <p className="mcp-note" role="status">Loading connectors…</p>}</div>;
 
   const servers = inProject && data.project ? data.project.servers : data.servers;
   const added = new Set(servers.map((s) => s.target.replace(/\/$/, "")));
@@ -347,6 +352,7 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
 
   return (
     <div className={`mcp-panel${compact ? " compact" : ""}`}>
+      {loadError && <p className="mcp-error" role="alert">{loadError} <button type="button" className="button ghost" onClick={load}>Retry</button></p>}
       <div className="mcp-bar">
         <div className="segmented compact" role="group" aria-label="Scope">
           <button type="button" className={scope === "all" ? "on" : ""} aria-pressed={scope === "all"} onClick={() => setScope("all")}>
@@ -421,6 +427,8 @@ export function McpPanel({ prefill, compact }: { prefill?: string; compact?: boo
           ))
         )}
       </section>
+
+      <PluginConnectorsSection connectors={data.bundled ?? []} onReload={load} />
 
       {inProject && data.project && data.servers.length > 0 && (
         <section className="mcp-section">
@@ -824,7 +832,7 @@ function ReviewForm({
       {needsConsent && words.length > 0 && (
         <div className="mcp-consent" role="group" aria-label="Run this command?">
           <p className="mcp-consent-title">This runs a program on your computer</p>
-          <p className="mcp-note">Each agent starts it with your user&apos;s rights, every time it&apos;s used. Only add commands you trust.</p>
+          <p className="mcp-note">CubiQ starts it in main with your user&apos;s rights when it is used. Agents receive a mediated route, not its command or credentials. Only add commands you trust.</p>
           <code className="mcp-command">
             {joinCommandLine(words)}
             {r.pairs.filter((p) => p.key.trim()).length > 0 && `\n${r.pairs.filter((p) => p.key.trim()).map((p) => `${p.key.trim()}=•••`).join(" ")}`}

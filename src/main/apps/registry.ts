@@ -34,10 +34,15 @@ export interface AppRegistryDeps {
   globalDir: string;
   /** Enable state lives outside app files so it doesn't change their install hashes. */
   stateFile?: string;
+  /** Favourites (key → when starred), its own file so the enable-state file keeps the format older versions read. */
+  favoritesFile?: string;
   /** A real project's folder (not the Chats root), or null. */
   projectPath(projectId: string): string | null;
   /** A Creator thread's drafts folder (`<thread folder>/.cubiq/app-drafts`), or null when it isn't a Creator thread. */
   draftsDir?(threadId: string): string | null;
+  /** Reviewed bundle recovery/integrity gate. Drafts and ordinary apps keep their existing behaviour. */
+  installedError?(key: string): string | null;
+  installedParts?(key: string): import("../../shared/plugin-parts").PluginPartView[];
 }
 
 export const projectAppsDir = (projectPath: string): string => join(projectPath, ".cubiq", "apps");
@@ -48,8 +53,22 @@ export const appEditDraftsDir = (threadFolder: string, threadId: string): string
 export class AppRegistry {
   private cache = new Map<string, { mtime: number; manifest: AppManifest | null; error: string | null }>();
   private disabled = new Set<string>();
+  private favorites = new Map<string, number>();
 
   constructor(private deps: AppRegistryDeps) {
+    if (deps.favoritesFile) {
+      try {
+        const raw: unknown = JSON.parse(readFileSync(deps.favoritesFile, "utf-8"));
+        if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+          for (const [key, at] of Object.entries(raw)) {
+            const k = decodeAppKey(key);
+            if (k && k.scope !== "draft" && typeof at === "number" && Number.isFinite(at)) this.favorites.set(key, at);
+          }
+        }
+      } catch {
+        // No favourites yet.
+      }
+    }
     if (deps.stateFile) {
       try {
         const keys: unknown = JSON.parse(readFileSync(deps.stateFile, "utf-8"));
@@ -74,6 +93,25 @@ export class AppRegistry {
 
   resetEnabled(key: string): void {
     if (this.disabled.has(key)) this.writeEnabled(key, true);
+    if (this.favorites.has(key)) this.setFavorite(key, false);
+  }
+
+  /** Star or unstar an installed app; the sidebar lists starred apps first, oldest star first. */
+  setFavorite(key: string, on: boolean, now = Date.now()): void {
+    const k = decodeAppKey(key);
+    if (!k || k.scope === "draft") throw new Error("Only installed apps can be favourites.");
+    const next = new Map(this.favorites);
+    if (on) {
+      if (next.has(key)) return;
+      next.set(key, now);
+    } else if (!next.delete(key)) return;
+    if (this.deps.favoritesFile) {
+      mkdirSync(dirname(this.deps.favoritesFile), { recursive: true });
+      const tmp = `${this.deps.favoritesFile}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify(Object.fromEntries([...next].sort((a, b) => a[1] - b[1]))), { mode: 0o600 });
+      renameSync(tmp, this.deps.favoritesFile);
+    }
+    this.favorites = next;
   }
 
   private writeEnabled(key: string, enabled: boolean): void {
@@ -115,6 +153,7 @@ export class AppRegistry {
   root(key: string): string | null {
     if (!this.isEnabled(key)) return null;
     const k = decodeAppKey(key);
+    if (k && k.scope !== "draft" && this.deps.installedError?.(key)) return null;
     const dir = k ? this.dirOf(k) : null;
     return dir && this.read(dir, k!.scope !== "draft").manifest ? dir : null;
   }
@@ -122,6 +161,7 @@ export class AppRegistry {
   manifest(key: string): AppManifest | null {
     if (!this.isEnabled(key)) return null;
     const k = decodeAppKey(key);
+    if (k && k.scope !== "draft" && this.deps.installedError?.(key)) return null;
     const dir = k ? this.dirOf(k) : null;
     return dir ? this.read(dir, k!.scope !== "draft").manifest : null;
   }
@@ -153,6 +193,8 @@ export class AppRegistry {
 
   private entry(k: AppKey, dir: string): AppInfo {
     const { manifest, error } = this.read(dir, k.scope !== "draft");
+    const key = encodeAppKey(k), runtimeError = k.scope !== "draft" ? this.deps.installedError?.(key) : null;
+    const parts = k.scope !== "draft" ? this.deps.installedParts?.(key) : undefined;
     return {
       key: encodeAppKey(k),
       name: k.name,
@@ -163,9 +205,17 @@ export class AppRegistry {
       ...(manifest?.icon ? { icon: manifest.icon } : {}),
       grants: manifest?.grants ?? [],
       ...(this.isEnabled(encodeAppKey(k)) ? {} : { enabled: false }),
+      ...(this.favorites.has(encodeAppKey(k)) ? { favorite: this.favorites.get(encodeAppKey(k))! } : {}),
       path: dir,
       url: appUrl(encodeAppKey(k), manifest?.entry ?? "index.html"),
-      ...(error ? { error } : {}),
+      ...(runtimeError || error ? { error: runtimeError || error! } : {}),
+      ...(parts?.length ? { parts } : {}),
+      ...(manifest?.placement === "floating" ? { placement: "floating" as const, ...(manifest.size ? { size: manifest.size } : {}) } : {}),
+      ...(manifest?.placement === "page" ? { placement: "page" as const } : {}),
+      ...(manifest?.placement === "dock" || manifest?.placement === "panel" ? { placement: manifest.placement, ...(manifest.height ? { height: manifest.height } : {}) } : {}),
+      ...(manifest?.style === "own" ? { style: "own" as const } : {}),
+      ...(manifest?.tools?.length ? { tools: manifest.tools } : {}),
+      ...(manifest?.cards?.length ? { cards: manifest.cards } : {}),
     };
   }
 

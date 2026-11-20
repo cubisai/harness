@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { generate } from "../scripts/mock-extensions-lib.mjs";
+import { generate } from "../scripts/dev/mock-extensions-lib.mjs";
 import type { Provider, ThreadEvent } from "../src/shared/types";
 import type { TurnInput } from "../src/main/agents/types";
 import { BUILT_IN_GUARD } from "../src/main/guard";

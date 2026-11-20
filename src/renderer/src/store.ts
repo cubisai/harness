@@ -1,7 +1,7 @@
 import type { ExpertDef } from "../../shared/experts";
 import type { AutomationNotice } from "../../shared/automations";
 import { create } from "zustand";
-import type { AppInfo } from "../../shared/types";
+import type { AppInfo, Attachment, AttachmentSource } from "../../shared/types";
 import type {
   BackgroundShell,
   ArtifactFile,
@@ -35,8 +35,13 @@ import type {
 } from "../../shared/types";
 import type { DocumentStatus } from "../../shared/design-mutation";
 import { api } from "./api";
+import { pluginSkillSelections, type PluginSelections } from "./commands";
+import type { PluginCommandView } from "../../shared/plugin-parts";
+import type { AppThemeState } from "../../shared/app-themes";
+import { applyChromePalette } from "./app-themes";
 import { appendDelta, applyLiveEvent, emptyLive, flushPending, type LiveThread } from "./live";
-import { clampLayout, DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
+import { DEFAULT_LAYOUT, sanitizeLayout } from "./layout";
+import { readAppRecents, writeAppRecents } from "./plugins";
 import { IDLE, takeOverReducer, type TakeOverState } from "./takeover";
 import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { waitingThreads, workspaceModeOf } from "./sections";
@@ -47,6 +52,8 @@ import type { SelectedElement } from "../../shared/selection";
 import type { PrototypeTier } from "../../shared/tiers";
 import type { TurnScore } from "../../shared/learn";
 import type { DesignChip, SystemWhere } from "./design/intent";
+
+let pluginCommandRequest = 0;
 
 /** A design thread's canvas selection: the page it is on and its elements. */
 /** What the next message is about, chosen from the Composer rather than typed. */
@@ -59,8 +66,8 @@ export interface DesignSelection {
   names?: string[];
 }
 
-/** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact; App runs a Creator app. */
-export type InspectorTab = "changes" | "browser" | "files" | "artifact" | "app";
+/** The right panel's tabs. Changes and Files need a project; Browser works without one; File shows an artifact. Creator apps never open here. */
+export type InspectorTab = "changes" | "browser" | "files" | "artifact";
 
 export type LibraryTab = "experts" | "skills" | "connectors" | "apps" | "mcp" | "agents" | "memory" | "automations" | "learned";
 
@@ -83,6 +90,8 @@ interface State {
   skills: SkillEntry[];
   agents: AgentInfo[];
   settings: SettingsView | null;
+  appThemes: AppThemeState | null;
+  loadAppThemes(): Promise<void>;
   settingsOpen: boolean;
   setSettingsOpen(open: boolean): void;
   /** The About sheet is open (macOS app menu, or Settings → Updates). */
@@ -154,6 +163,8 @@ interface State {
   threadKind: WorkspaceMode;
   /** Switch workspace mode; a selected thread of another mode gives way to the project's latest of this mode, if any. */
   setThreadKind(kind: WorkspaceMode): Promise<void>;
+  /** The composer's Creator toggle: a new thread follows it; an open thread of the other kind gives way to a fresh draft (a session's tools are fixed). */
+  toggleCreator(): Promise<void>;
   events: Record<string, StoredEvent[]>; // by thread id
   /** Each thread's loaded history window: where it starts, whether older events exist, and its whole-thread totals. */
   history: Record<string, { firstSeq: number; hasMore: boolean; loadingOlder: boolean; totals: ThreadTotals | null }>;
@@ -251,8 +262,8 @@ interface State {
   /** Take (and clear) a thread's pending reference images. */
   takeDesignRefs(threadId: string): { path: string; thumb: string }[];
   /** Text to put back in the message box (Edit on a sent message); consumed by the composer. */
-  composerDraft: { text: string; nonce: number } | null;
-  setComposerDraft(text: string): void;
+  composerDraft: { text: string; nonce: number } & PluginSelections | null;
+  setComposerDraft(text: string, selections?: PluginSelections): void;
   startPick(): Promise<void>;
   /** A skill to pre-fill in the composer, set by the empty-state shortcuts. */
   /** Skills picked from ⌘K or the Library, waiting for the composer to add them as chips. */
@@ -301,11 +312,11 @@ interface State {
   /** Change a design thread's prototype tier. */
   setPrototypeTier(threadId: string, tier: PrototypeTier): Promise<void>;
   /** Start `text` as a new thread in the open project without leaving the current one; it reports through the Message Center. */
-  sendInBackground(text: string, skills?: string[], opts?: { worktree?: boolean }, mentions?: string[]): Promise<void>;
+  sendInBackground(text: string, skills?: string[], opts?: { worktree?: boolean } & PluginSelections, mentions?: string[], files?: AttachmentSource[]): Promise<void>;
   /** Start a chat thread (same project and agent, in the background) that builds a design thread's design into the codebase. */
   buildDesignInCode(designThreadId: string): Promise<void>;
   /** From the project's start screen: open a new thread and send `text` in it. */
-  startThread(text: string, skills?: string[], mentions?: string[]): Promise<void>;
+  startThread(text: string, skills?: string[], mentions?: string[], files?: AttachmentSource[], selections?: PluginSelections): Promise<void>;
   /** Add skills for the composer to pick up (deduped, in order). */
   addPendingSkills(names: string[]): void;
   takePendingSkills(): string[];
@@ -316,13 +327,16 @@ interface State {
   updateThread(patch: Partial<Pick<Thread, "title" | "model" | "effort" | "contextWindow" | "permissionMode" | "agent">>): Promise<void>;
   /** Step the open thread's reasoning effort down (-1) or up (+1), wrapping through Default. */
   cycleEffort(dir: 1 | -1): void;
-  /** Start a turn on the open thread (or `threadId`); resolves false when it couldn't start (no thread, already running, or the send failed). */
-  send(text: string, skills?: string[], threadId?: string, mentions?: string[], opts?: { background?: boolean }): Promise<boolean>;
+  /**
+   * Start a turn on the open thread (or `threadId`); resolves false when it couldn't start (no thread, already running, or the send failed).
+   * `files` are copied into the thread first; `attachments` are ones it already holds (Retry).
+   */
+  send(text: string, skills?: string[], threadId?: string, mentions?: string[], opts?: { background?: boolean; files?: AttachmentSource[]; attachments?: Attachment[] } & PluginSelections): Promise<boolean>;
   /** Compact a thread's session now (/compact), with an optional focus for the summary. */
   compact(threadId: string, focus: string | null): Promise<void>;
   /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
-  outbox: Record<string, { text: string; skills?: string[]; mentions?: string[] }[]>;
-  enqueue(threadId: string, text: string, skills?: string[], mentions?: string[]): void;
+  outbox: Record<string, ({ text: string; skills?: string[]; mentions?: string[]; files?: AttachmentSource[] } & PluginSelections)[]>;
+  enqueue(threadId: string, text: string, skills?: string[], mentions?: string[], files?: AttachmentSource[], selections?: PluginSelections): void;
   /** Remove the queued message at `index`; drops the thread's key once its queue is empty. */
   dequeue(threadId: string, index: number): void;
   interrupt(): Promise<void>;
@@ -346,12 +360,34 @@ interface State {
   closeArtifact(): void;
   /** Installed Creator apps for the selected project (and global ones), as last listed. */
   apps: AppInfo[];
+  pluginCommands: PluginCommandView[];
+  pluginCommandsError: string | null;
+  pluginCommandsLoading: boolean;
+  loadPluginCommands(): Promise<void>;
   loadApps(): Promise<void>;
-  /** The Creator app shown in the panel's App tab; it stays open across threads. */
+  /** The Creator app open in the plugin modal. */
   appOpen: AppInfo | null;
-  /** Per frame key, how many times main said a previewed draft's files changed (the App tab reloads on each). */
+  /** Per frame key, how many times main said a previewed draft's files changed (an open frame reloads on each). */
   appReloads: Record<string, number>;
+  /** The installed plugin shown as a page over the main area (closed when the thread or project changes). */
+  appPage: AppInfo | null;
+  /** Installed widgets, docks and panels the user closed (by key); they show again when opened from the sidebar. Kept in localStorage. */
+  surfaceHidden: string[];
+  /** Widget, dock and panel draft previews from Creator threads, shown until closed. */
+  surfaceDrafts: AppInfo[];
+  /** Asks a widget, dock or panel to expand and come forward (bumped on every open). */
+  surfaceFocus: { key: string; n: number } | null;
+  /** When each installed app was last opened (orders the sidebar's Apps after favourites). Kept in localStorage. */
+  appRecents: Record<string, number>;
+  /** Open an app where its manifest says: the modal, a page, or its widget, dock or panel. */
   openApp(app: AppInfo): void;
+  /** Close a widget, dock or panel: a draft preview goes away, an installed one hides until opened again. */
+  closeSurface(key: string): void;
+  closePage(): void;
+  /** A plugin's bridge: a toast headed with its title, another plugin opened by name, a new chat with its text. */
+  pluginNotify(app: AppInfo, text: string): void;
+  pluginOpen(from: AppInfo, name: string): void;
+  pluginAsk(app: AppInfo, prompt: string): Promise<void>;
   editApp(app: AppInfo): Promise<string | null>;
   closeApp(): void;
   toggleTerminal(): void;
@@ -488,10 +524,17 @@ function drainQueue(s: State): Record<string, LiveThread> {
 }
 
 /** "system" follows the OS; "light"/"dark" pin the CSS tokens (styles/app.css). */
+export function acceptAppThemeState(state: AppThemeState): void {
+  if (state.version <= (useStore.getState().appThemes?.version ?? -1)) return;
+  useStore.setState({ appThemes: state });
+  if (typeof document !== "undefined") applyChromePalette(state.preview?.theme ?? state.active, isDark() ? "dark" : "light");
+}
+
 export function applyTheme(theme: SettingsView["theme"]): void {
   if (theme === "system") delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
-  window.dispatchEvent(new Event("unskilled-theme"));
+  const state = useStore.getState().appThemes;
+  applyChromePalette(state?.preview?.theme ?? state?.active ?? null, isDark() ? "dark" : "light");
 }
 
 /** The motion preference on <html data-motion>; app.css plays entrances only for subtle/full. */
@@ -511,7 +554,7 @@ export function applyDensity(density: SettingsView["density"]): void {
 
 export function isDark(): boolean {
   const forced = document.documentElement.dataset.theme;
-  return forced ? forced === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  return forced ? forced === "dark" : typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
 export const useStore = create<State>((set, get) => ({
@@ -520,6 +563,11 @@ export const useStore = create<State>((set, get) => ({
   skills: [],
   agents: [],
   settings: null,
+  appThemes: null,
+  async loadAppThemes() {
+    try { if (api().appThemeState) acceptAppThemeState(await api().appThemeState()); }
+    catch (err) { get().showNotice(ipcErrorText(err)); }
+  },
   settingsOpen: false,
   setSettingsOpen(open) {
     set({ settingsOpen: open });
@@ -674,6 +722,14 @@ export const useStore = create<State>((set, get) => ({
       .sort((a, b) => b.updatedAt - a.updatedAt)[0];
     await get().selectThread(latest?.id ?? null);
   },
+  async toggleCreator() {
+    const s = get();
+    if (s.threadKind === "design") return;
+    const next: WorkspaceMode = s.threadKind === "creator" ? "chat" : "creator";
+    set({ threadKind: next });
+    const current = s.selectedThreadId ? findThread(s.threads, s.selectedThreadId) : undefined;
+    if (current && workspaceModeOf(current) !== next) await get().selectThread(null);
+  },
   events: {},
   history: {},
   live: {},
@@ -753,8 +809,16 @@ export const useStore = create<State>((set, get) => ({
   inspectorTab: "changes",
   artifact: null,
   apps: [],
+  pluginCommands: [],
+  pluginCommandsError: null,
+  pluginCommandsLoading: false,
   appOpen: null,
   appReloads: {},
+  appPage: null,
+  surfaceHidden: readSurfaceHidden(),
+  surfaceDrafts: [],
+  surfaceFocus: null,
+  appRecents: readAppRecents(),
   artifactFiles: {},
   turnScores: {},
   browserMounted: false,
@@ -846,8 +910,8 @@ export const useStore = create<State>((set, get) => ({
     if (refs.length) set((s) => ({ pendingRefs: Object.fromEntries(Object.entries(s.pendingRefs).filter(([id]) => id !== threadId)) }));
     return refs;
   },
-  setComposerDraft(text) {
-    set((s) => ({ composerDraft: { text, nonce: (s.composerDraft?.nonce ?? 0) + 1 } }));
+  setComposerDraft(text, selections) {
+    set((s) => ({ composerDraft: { text, ...selections, nonce: (s.composerDraft?.nonce ?? 0) + 1 } }));
   },
 
   async loadBrowserState() {
@@ -991,6 +1055,7 @@ export const useStore = create<State>((set, get) => ({
         .listEditors()
         .then((editors) => set({ editors }));
       applyTheme(settings.theme);
+      await get().loadAppThemes();
       applyMotion(settings.motion);
       applyDensity(settings.density);
       applyZoom(settings.zoom);
@@ -1126,7 +1191,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async selectProject(id) {
-    set({ selectedProjectId: id });
+    set({ selectedProjectId: id, ...(get().selectedProjectId !== id ? { appPage: null } : {}) });
     void get().loadBranch(id);
     if (!get().threads[id]) {
       const list = await api().listThreads(id);
@@ -1139,6 +1204,8 @@ export const useStore = create<State>((set, get) => ({
     const picked = id ? Object.values(get().threads).flat().find((t) => t.id === id) : undefined;
     set((s) => ({
       selectedThreadId: id,
+      // A page belongs to the main area until the user goes to a thread.
+      appPage: null,
       // Keep the selection order so the per-thread caches can be bounded below.
       selectedOrder: id ? [...s.selectedOrder.filter((x) => x !== id), id] : s.selectedOrder,
       // Jumping to a thread (⌘K, the Message Center) lands in its mode.
@@ -1279,12 +1346,14 @@ export const useStore = create<State>((set, get) => ({
     if (ok) get().showNotice("Building it in a new chat thread. The Message Center says when it's done.");
   },
 
-  async sendInBackground(text, skills, opts, mentions) {
+  async sendInBackground(text, skills, opts, mentions, files) {
     const projectId = get().selectedProjectId;
     if (!projectId) return;
     let thread: Thread;
     const draft = get().draft;
+    let selections: PluginSelections;
     try {
+      selections = { ...pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))), ...opts };
       thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, createOpts(get().threadKind, draft, opts ?? (get().settings?.background?.worktree ? { worktree: true } : undefined)));
       const patch = draftPatch(draft, thread);
       if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
@@ -1304,14 +1373,14 @@ export const useStore = create<State>((set, get) => ({
       draft: {},
       lastAgent: thread.agent,
     }));
-    await get().send(text, skills, thread.id, mentions, { background: true });
-    get().showNotice("Started in the background. The Message Center says when it's done.");
+    if (await get().send(text, skills, thread.id, mentions, { ...selections, background: true, ...(files?.length ? { files } : {}) })) get().showNotice("Started in the background. The Message Center says when it's done.");
   },
 
-  async startThread(text, skills, mentions) {
+  async startThread(text, skills, mentions, files, selections) {
+    const pinned = { ...pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))), ...selections };
     // Send only to the thread newThread made: the selection can change while it awaits.
     const id = await get().newThread();
-    if (id) await get().send(text, skills, id, mentions);
+    if (id) await get().send(text, skills, id, mentions, { ...pinned, ...(files?.length ? { files } : {}) });
   },
 
   addPendingSkills(names) {
@@ -1389,11 +1458,12 @@ export const useStore = create<State>((set, get) => ({
   },
 
   outbox: {},
-  enqueue(threadId, text, skills, mentions) {
+  enqueue(threadId, text, skills, mentions, files, selections) {
+    const pinned = { ...pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))), ...selections };
     set((s) => ({
       outbox: {
         ...s.outbox,
-        [threadId]: [...(s.outbox[threadId] ?? []), { text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}) }],
+        [threadId]: [...(s.outbox[threadId] ?? []), { text, ...pinned, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}), ...(files?.length ? { files } : {}) }],
       },
     }));
   },
@@ -1415,7 +1485,20 @@ export const useStore = create<State>((set, get) => ({
     if (!id || get().running[id]) return false;
     set((s) => ({ running: { ...s.running, [id]: true } }));
     try {
-      await api().send({ threadId: id, text, ...(skills?.length ? { skills } : {}), ...(mentions?.length ? { mentions } : {}), ...(opts?.background ? { background: true } : {}) });
+      const selected = opts?.pluginSkills ?? pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))).pluginSkills;
+      // New files are copied into the thread before the turn starts, so the message can point at them.
+      const saved = opts?.files?.length ? await api().saveAttachments(id, opts.files) : [];
+      const attachments = [...(opts?.attachments ?? []), ...saved];
+      await api().send({
+        threadId: id,
+        text,
+        ...(skills?.length ? { skills } : {}),
+        ...(mentions?.length ? { mentions } : {}),
+        ...(attachments.length ? { attachments } : {}),
+        ...(opts?.background ? { background: true } : {}),
+        ...(opts?.pluginCommand ? { pluginCommand: opts.pluginCommand } : {}),
+        ...(selected?.length ? { pluginSkills: selected } : {}),
+      });
       return true;
     } catch (err) {
       set((s) => ({ running: { ...s.running, [id]: false } }));
@@ -1545,7 +1628,18 @@ export const useStore = create<State>((set, get) => ({
       .catch(() => {});
   },
 
+  async loadPluginCommands() {
+    const request = ++pluginCommandRequest;
+    set({ pluginCommandsLoading: true });
+    try {
+      const commands = await api().listPluginCommands();
+      if (request === pluginCommandRequest) set({ pluginCommands: commands, pluginCommandsError: null });
+    } catch (e) { if (request === pluginCommandRequest) set({ pluginCommands: [], pluginCommandsError: ipcErrorText(e) }); }
+    finally { if (request === pluginCommandRequest) set({ pluginCommandsLoading: false }); }
+  },
+
   async loadApps() {
+    void get().loadPluginCommands();
     const projectId = get().selectedProjectId;
     try {
       const apps = await api().listApps(projectId);
@@ -1553,8 +1647,11 @@ export const useStore = create<State>((set, get) => ({
       if (get().selectedProjectId === projectId) {
         const open = get().appOpen;
         const fresh = open && open.scope !== "draft" ? apps.find((a) => a.key === open.key) : null;
-        set({ apps, ...(fresh && fresh.enabled !== false && !fresh.error ? { appOpen: fresh } : {}) });
-        if (open && open.scope !== "draft" && (!fresh || fresh.enabled === false || fresh.error)) get().closeApp();
+        const usable = fresh && fresh.enabled !== false && !fresh.error && hostOf(fresh) === "modal";
+        const page = get().appPage;
+        const freshPage = page ? apps.find((a) => a.key === page.key && a.enabled !== false && !a.error && a.placement === "page") : undefined;
+        set({ apps, ...(usable ? { appOpen: fresh } : {}), ...(page ? { appPage: freshPage ?? null } : {}) });
+        if (open && open.scope !== "draft" && !usable) get().closeApp();
       }
     } catch {
       // The list stays as it was.
@@ -1564,14 +1661,46 @@ export const useStore = create<State>((set, get) => ({
   openApp(app) {
     const s = get();
     if (app.enabled === false || app.error) {
-      s.showNotice(app.error ?? "This app is disabled. Enable it in Library → Apps.");
+      s.showNotice(app.error ?? "This app is off. Turn it on in Library → Plugins.");
       return;
     }
-    const opens = !s.inspectorOpen;
-    set({ appOpen: app, inspectorOpen: true, inspectorTab: "app" });
-    const narrow = typeof window !== "undefined" && Number.isFinite(window.innerWidth) && clampLayout(window.innerWidth, { ...s.paneLayout, inspectorCollapsed: false }, true).inspectorAutoCollapsed;
-    // An explicit Open/Preview must show something, even where the normal chat floor auto-hides the panel.
-    if (narrow || (opens && s.paneLayout.inspectorCollapsed)) s.setPaneLayout({ inspectorCollapsed: false, ...(narrow ? { sidebarCollapsed: true } : {}) }, true);
+    if (app.scope !== "draft") {
+      const appRecents = { ...s.appRecents, [app.key]: Date.now() };
+      writeAppRecents(appRecents);
+      set({ appRecents });
+    }
+    const host = hostOf(app);
+    if (host === "surface") {
+      const n = (s.surfaceFocus?.n ?? 0) + 1;
+      if (app.scope === "draft") set((x) => ({ surfaceDrafts: [...x.surfaceDrafts.filter((d) => d.key !== app.key), app], surfaceFocus: { key: app.key, n } }));
+      else {
+        const hidden = s.surfaceHidden.filter((k) => k !== app.key);
+        if (hidden.length !== s.surfaceHidden.length) writeSurfaceHidden(hidden);
+        set({ surfaceHidden: hidden, surfaceFocus: { key: app.key, n } });
+      }
+      // A panel lives in the sidebar: a folded sidebar opens so it can be seen.
+      if (app.placement === "panel" && s.paneLayout.sidebarCollapsed && s.studioFold === null) s.setPaneLayout({ sidebarCollapsed: false }, true);
+      // The same app in another host (its placement just changed) gives way.
+      set((x) => ({ ...(x.appOpen?.key === app.key ? { appOpen: null } : {}), ...(x.appPage?.key === app.key ? { appPage: null } : {}) }));
+      return;
+    }
+    if (host === "page") {
+      set((x) => ({ appPage: app, appOpen: null, surfaceDrafts: x.surfaceDrafts.filter((d) => d.key !== app.key) }));
+      return;
+    }
+    set((x) => ({ appOpen: app, surfaceDrafts: x.surfaceDrafts.filter((d) => d.key !== app.key), ...(x.appPage?.key === app.key ? { appPage: null } : {}) }));
+  },
+
+  closeSurface(key) {
+    const s = get();
+    if (s.surfaceDrafts.some((d) => d.key === key)) {
+      set({ surfaceDrafts: s.surfaceDrafts.filter((d) => d.key !== key) });
+      return;
+    }
+    if (s.surfaceHidden.includes(key)) return;
+    const hidden = [...s.surfaceHidden, key];
+    writeSurfaceHidden(hidden);
+    set({ surfaceHidden: hidden });
   },
 
   async editApp(app) {
@@ -1609,7 +1738,35 @@ export const useStore = create<State>((set, get) => ({
   },
 
   closeApp() {
-    set((s) => ({ appOpen: null, ...(s.inspectorTab === "app" ? { inspectorTab: "changes" as const, inspectorOpen: false } : {}) }));
+    set({ appOpen: null });
+  },
+
+  closePage() {
+    set({ appPage: null });
+  },
+
+  pluginNotify(app, text) {
+    const t = text.replace(/\s+/g, " ").trim().slice(0, 200);
+    if (t) get().showNotice(`${app.title}: ${t}`);
+  },
+
+  pluginOpen(from, name) {
+    const target = get().apps.find((a) => a.name === name && a.scope !== "draft");
+    if (!target) {
+      get().showNotice(`${from.title} tried to open "${name.slice(0, 64)}", which isn't installed.`);
+      return;
+    }
+    get().openApp(target);
+  },
+
+  async pluginAsk(app, prompt) {
+    const text = prompt.trim().slice(0, 4000);
+    if (!text) return;
+    // A fresh chat (newChat reports its own failure); the text only fills the composer, the user sends it.
+    await get().newChat();
+    set({ appPage: null, appOpen: null });
+    get().setComposerDraft(text);
+    get().showNotice(`${app.title} started a chat. Read it, then send it.`);
   },
 
   closeArtifact() {
@@ -1735,7 +1892,7 @@ export const useStore = create<State>((set, get) => ({
           const next = get().outbox[update.threadId]?.[0];
           if (next) {
             set((s) => ({ outbox: { ...s.outbox, [update.threadId]: s.outbox[update.threadId]!.slice(1) } }));
-            void get().send(next.text, next.skills, update.threadId, next.mentions);
+            void get().send(next.text, next.skills, update.threadId, next.mentions, { ...(next.files?.length ? { files: next.files } : {}), ...(next.pluginCommand ? { pluginCommand: next.pluginCommand } : {}), ...(next.pluginSkills ? { pluginSkills: next.pluginSkills } : {}) });
           }
         }
         if (!update.running && get().takeOver.mode !== "idle") {
@@ -1820,6 +1977,9 @@ export const useStore = create<State>((set, get) => ({
       case "apps-changed":
         void get().loadApps();
         return;
+      case "app-themes-changed":
+        void get().loadAppThemes();
+        return;
       case "automations-changed":
         if (typeof update.projectId !== "string" || !update.projectId || update.projectId.length > 160) return;
         set((s) => ({ automationsRevision: { ...s.automationsRevision, [update.projectId]: (s.automationsRevision[update.projectId] ?? 0) + 1 } }));
@@ -1827,11 +1987,24 @@ export const useStore = create<State>((set, get) => ({
       case "app-open":
         // Only the window showing that Creator thread opens it; elsewhere it would take over the panel.
         if (get().selectedThreadId === update.threadId) get().openApp(update.app);
-        else if (get().appOpen?.key === update.app.key) set({ appOpen: update.app });
+        else if (get().appOpen?.key === update.app.key && hostOf(update.app) === "modal") set({ appOpen: update.app });
+        else if (get().surfaceDrafts.some((d) => d.key === update.app.key)) get().openApp(update.app);
         return;
-      case "app-reload":
+      case "app-reload": {
         set((s) => ({ appReloads: { ...s.appReloads, [update.key]: (s.appReloads[update.key] ?? 0) + 1 } }));
+        // A shown draft takes its fresh title, size and placement (and moves between modal and widget if that changed).
+        const fresh = update.app;
+        if (!fresh || fresh.key !== update.key) return;
+        const s = get();
+        const inModal = s.appOpen?.key === fresh.key;
+        const inSurface = s.surfaceDrafts.some((d) => d.key === fresh.key);
+        const host = hostOf(fresh);
+        // Placement changed: it moves to the other host. Otherwise update it in place, without stealing focus.
+        if ((inModal && host !== "modal") || (inSurface && host !== "surface")) s.openApp(fresh);
+        else if (inModal) set({ appOpen: fresh });
+        else if (inSurface) set({ surfaceDrafts: s.surfaceDrafts.map((d) => (d.key === fresh.key ? fresh : d)) });
         return;
+      }
       case "open-about":
         set({ aboutOpen: true });
         break;
@@ -1911,4 +2084,34 @@ export function relativeToThread(s: Pick<State, "threads" | "projects">, threadI
   const win = /^[a-z]:\//i.test(r);
   const under = win ? p.toLowerCase().startsWith(`${r.toLowerCase()}/`) : p.startsWith(`${r}/`);
   return under ? p.slice(r.length + 1) : p.replace(/^\.\//, "");
+}
+
+const FLOATING_HIDDEN_KEY = "cubiq.floating.hidden";
+
+/** Closed floating widgets, from localStorage; unreadable storage means none are hidden. */
+/**
+ * Which host shows an app: widgets, docks and panels stay mounted ("surface"); an installed page fills the main area;
+ * everything else, and a Creator draft of a page (the chat beside it must stay visible), opens in the modal.
+ */
+export function hostOf(app: Pick<AppInfo, "placement" | "scope">): "modal" | "page" | "surface" {
+  if (app.placement === "floating" || app.placement === "dock" || app.placement === "panel") return "surface";
+  if (app.placement === "page" && app.scope !== "draft") return "page";
+  return "modal";
+}
+
+function readSurfaceHidden(): string[] {
+  try {
+    const v = JSON.parse(globalThis.localStorage?.getItem(FLOATING_HIDDEN_KEY) ?? "[]") as unknown;
+    return Array.isArray(v) ? v.filter((k): k is string => typeof k === "string" && k.length <= 200).slice(0, 200) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSurfaceHidden(keys: string[]): void {
+  try {
+    globalThis.localStorage?.setItem(FLOATING_HIDDEN_KEY, JSON.stringify(keys));
+  } catch {
+    // Not remembered: the widget shows again next start.
+  }
 }

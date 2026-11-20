@@ -3,7 +3,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { makeTools } from "../../scripts/mock-extensions-lib.mjs";
+import { makeTools } from "../../scripts/dev/mock-extensions-lib.mjs";
 
 const args = process.argv.slice(2);
 const value = (name) => {

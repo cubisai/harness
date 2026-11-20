@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { resolveInside } from "../artifacts";
 import { contentTypeOf } from "../design/serve";
 import { injectBridge } from "../design/serve";
-import { checkHostCsp, checkHostHtml } from "./check";
+import { appThemeSpecimenHtml, checkHostCsp, checkHostHtml } from "./check";
 
 export const APP_SCHEME = "cubiq-app";
 /** Keys are what `registry.ts` hands out: `g~name`, `p~<projectId>~name`, `d~<threadId>~name`. */
@@ -43,6 +43,8 @@ export interface AppServeDeps {
   /** The app's folder for a key, or null when the key names no app (or a disabled one). */
   appRoot(key: string): string | null;
   bridge: string;
+  /** The bridge for this app, when it differs by app (an own-style app gets no base sheet). */
+  bridgeFor?(key: string): string;
 }
 
 export function serveApp(url: string, deps: AppServeDeps): Response {
@@ -55,6 +57,7 @@ export function serveApp(url: string, deps: AppServeDeps): Response {
       });
     }
     const parsed = parseAppUrl(url);
+    if (/^cubiq-app:\/\/h\/theme\.html(?:[?#]|$)/i.test(url)) return new Response(injectBridge(appThemeSpecimenHtml(), deps.bridge), { headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
     if (!parsed) return notFound();
     const root = deps.appRoot(parsed.key);
     if (!root) return notFound();
@@ -64,7 +67,7 @@ export function serveApp(url: string, deps: AppServeDeps): Response {
     if (!statSync(abs).isFile()) return notFound();
     const body = readFileSync(abs);
     const type = contentTypeOf(parsed.rel);
-    const payload: string | Uint8Array<ArrayBuffer> = type.startsWith("text/html") ? injectBridge(body.toString("utf-8"), deps.bridge) : copy(body);
+    const payload: string | Uint8Array<ArrayBuffer> = type.startsWith("text/html") ? injectBridge(body.toString("utf-8"), deps.bridgeFor?.(parsed.key) ?? deps.bridge) : copy(body);
     return new Response(payload, {
       status: 200,
       headers: { "Content-Type": type, "Content-Security-Policy": appCsp(parsed.key), "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },

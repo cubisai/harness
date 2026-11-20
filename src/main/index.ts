@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { z } from "zod";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeImage, nativeTheme, net, powerMonitor, protocol, safeStorage, shell, utilityProcess } from "electron";
 import type { AboutInfo, AgentLimits, AppUpdateStatus, ContextPreview, CatalogProvider, DesignDevice, DesignExportFormat, DesignIntent, DesignKitEdit, DesignKitSampleRequest, DesignSystemEdit, DesignSystemOption, DevicePreset, IssueSummary, LinkMeta, LiveUpdate, McpOverview, ModelDiscovery, McpServerEntry, McpServerSpec, McpServerStatus, MemoryScope, MemoryType, OpenResult, PermissionDecision, Project, PlanDecision, ProviderInput, Question, ScreenshotInfo, SearchQuery, SendRequest, Settings, SkillOrigin, SkillsDelivery, SwitchMode, Thread, ThreadKind } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
@@ -38,6 +39,8 @@ import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
 import { prepareTheme, readThemeFiles } from "./creator/themes";
 import { ThemePreviews } from "./creator/theme-previews";
+import { AppThemes } from "./apps/app-themes";
+import { appThemeCaption } from "./apps/app-theme-captions";
 import { stylePreviewUrl } from "../shared/style-preview";
 import { prepareAutomation, checkAutomationAgent } from "./creator/automations";
 import { parseTokens } from "./design/tokens";
@@ -62,11 +65,13 @@ import { withBrowserOnDemand } from "./browser/on-demand";
 import { DevServers } from "./devserver/registry";
 import { devServerTools } from "./devserver/tools";
 import { Store } from "./db";
+import { stableStringify } from "./cache-policy";
 import { creatorTools } from "./creator/tools";
 import { assertContained, ExtensionService } from "./extensions/install";
 import { ExtensionStore } from "./extensions/store";
 import { artifactKind, resolveInside } from "./artifacts";
 import { createLinkPreviews, localImage } from "./link-preview";
+import { saveAttachments } from "./attachments";
 import { headContent } from "./git";
 import { PreviewHost, utilityFork } from "./preview/host";
 import { migrateLegacyData } from "./migrate-data";
@@ -113,6 +118,7 @@ import { smokeCanonicalEvents, smokeHandoff, smokeMigration, smokeProviders } fr
 import { Editors, realHost } from "./editors";
 import { readExternalMcp, readExternalSpec } from "./mcp/external";
 import { gatewayPath, McpGateway } from "./mcp/gateway";
+import { ManagedConnectors } from "./mcp/managed-connectors";
 import { McpAuth } from "./mcp/oauth";
 import { probeMcpUrl } from "./mcp/probe";
 import { BUILT_IN_SERVER, isRemote, McpScopes, McpServerStore, McpToolsCache, migrateMcpSecrets, resolveSpec, testServer, viewOf } from "./mcp/servers";
@@ -122,9 +128,17 @@ import { McpVault } from "./mcp/vault";
 import { callServerTool, MCP_ROUTER_MIN_TOOLS, McpClientPool, routerTools } from "./mcp/router";
 import { appBridgeScript } from "./apps/bridge";
 import { AppCalls } from "./apps/calls";
+import { PluginTools } from "./apps/tools";
+import { PluginBundles } from "./apps/bundles";
+import { ManagedToolRules, managedCallPermission } from "./apps/tool-rules";
+import { isMainMediatedServer } from "./agents/managed-permission";
+import { PluginConnectors } from "./apps/connectors";
+import { connectorCredentialKey, PluginConnectorCredentials } from "./apps/connector-credentials";
+import { PluginConnectorAccounts } from "./apps/connector-accounts";
+import { clientTransport } from "./mcp/transport";
 import { AppRegistry, decodeAppKey } from "./apps/registry";
-import { APP_SCHEME, serveApp } from "./apps/serve";
-import { AppChecker, CHECK_HEIGHT, CHECK_WIDTH } from "./apps/check";
+import { APP_SCHEME, appUrl, serveApp } from "./apps/serve";
+import { AppChecker } from "./apps/check";
 import { electronCheckWindow } from "./apps/check-window";
 import { appDraftsDir, appEditDraftsDir, projectAppsDir } from "./apps/registry";
 import { DraftWatcher } from "./apps/watch";
@@ -137,8 +151,8 @@ import { checkFolder, privacyMessage, type PrivacyBlock } from "./mac-privacy";
 import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
 import { codexCoveredSkills, withoutCodexCovered } from "./skills/codex-plugins";
 import { discoverSkills } from "./skills/discover";
-import { ensureModelSkillsDir, ensurePlugin } from "./skills/plugin";
-import { SkillCatalogs, forAgent } from "./skills/sources";
+import { ensureModelSkillsDir, ensurePlugin, prunePluginSkillCopies } from "./skills/plugin";
+import { SkillCatalogs, forAgent, inScope } from "./skills/sources";
 import { skillTool } from "./skills/tool";
 import { shellTools } from "./shell-tools";
 import { ShellManager } from "./shells";
@@ -307,6 +321,11 @@ function createWindow(): BrowserWindow {
     void shell.openExternal(url);
     return { action: "deny" };
   });
+  // A file dropped outside a drop zone would load it in place of the app: the window only ever shows the app.
+  const appIndex = pathToFileURL(join(here, "../renderer/index.html")).toString();
+  win.webContents.on("will-navigate", (event, url) => {
+    if (url.startsWith("file:") && url.split(/[?#]/)[0] !== appIndex) event.preventDefault();
+  });
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
@@ -384,6 +403,7 @@ async function main(): Promise<void> {
   const settings = new SettingsStore(join(userData, "settings.json"), secretBox);
   // MCP header and env secrets, encrypted the same way, one entry per server.
   const mcpVault = new McpVault(join(userData, "mcp-secrets.json"), secretBox);
+  const bundleCredentials = new PluginConnectorCredentials(mcpVault);
   // The Library's memory tab: notes, the enable switches, and a re-run of the import.
   const memoryApi = createMemoryApi({
     memory,
@@ -405,6 +425,58 @@ async function main(): Promise<void> {
     ...mcpVault.values(),
   ];
   nativeTheme.themeSource = settings.get().theme;
+  const realProjectPath = (projectId: string): string | null => {
+    try {
+      const p = store.getProject(projectId);
+      return isChatsRoot(p.path, chats) ? null : p.path;
+    } catch { return null; }
+  };
+  const projectNameOf = (id: string): string => { try { return store.getProject(id).name; } catch { return "Unavailable project"; } };
+  let pluginDeliveryReady = false;
+  const appRegistry: AppRegistry = new AppRegistry({
+    globalDir: join(userData, "apps"), stateFile: join(userData, "app-state.json"), favoritesFile: join(userData, "app-favorites.json"),
+    projectPath: realProjectPath, draftsDir: (tid) => creatorDraftsDir(tid),
+    installedError: (key) => bundles.runtimeError(key), installedParts: (key) => bundles.parts(key).map((part) => ({ ...part, ...(part.projectId ? { projectName: projectNameOf(part.projectId) } : {}) })),
+  });
+  const bundles: PluginBundles = new PluginBundles({
+    db: store.sql, extensions, registry: appRegistry, dir: join(userData, "apps"),
+    projectExists: (id) => { const path = realProjectPath(id); return Boolean(path && existsSync(path)); },
+    authoringProject: (tid) => threadRealProject(tid),
+    checkAgent: (input) => checkAutomationAgent(input, service.allDrivers().map((d) => ({ id: d.id, models: d.models().map((m) => m.id) }))),
+    changed: (key, removed) => appsChanged(key, removed),
+    interrupt: (tid) => service.interrupt(tid),
+    // Startup admission opens only after every factory, transport and review
+    // endpoint below is connected. Recovery alone never activates partial wiring.
+    deliveryReady: () => pluginDeliveryReady,
+    cleanupConnectorCredentials: (key, keep) => bundleCredentials.cleanup(key, keep),
+  });
+  // Recover synchronously before any catalog, tool transport or scheduler can admit bundle work.
+  bundles.recover();
+  let appThemes: AppThemes | null = null;
+  const managedRules: ManagedToolRules = new ManagedToolRules({
+    policy: bundles,
+    thread: (id) => {
+      const thread = threadOf(id);
+      return thread ? { projectId: thread.projectId, permissionMode: thread.permissionMode, kind: thread.kind ?? "chat", agent: thread.agent, signal: service.turnSignal(id) } : null;
+    },
+    approve: (id, name, summary, signal) => service.permissionFromTool(id, `Tool · ${name}`, redactSecrets(summary, knownSecrets()), signal),
+  });
+  const skillCopyRoots = { plugin: join(userData, "harness-plugin"), model: join(userData, "harness-skills"), projects: join(userData, "harness-skills-projects") };
+  let skillCopyError: string | null = null;
+  const pruneSkillCopies = () => {
+    try { prunePluginSkillCopies(skillCopyRoots, bundles.skills()); skillCopyError = null; }
+    catch (e) { skillCopyError = `Owned skill delivery needs recovery; its files were kept. ${(e as Error).message}`; }
+  };
+  const skillCopyOptions = { assertSkill: (entry: import("../shared/types").SkillEntry) => bundles.assertSkill(entry), pluginSkills: () => bundles.skills() };
+  const claudeSkillCopies = (entries: import("../shared/types").SkillEntry[], target: string) => {
+    if (skillCopyError) throw new Error(skillCopyError);
+    return ensurePlugin(entries, target, skillCopyOptions);
+  };
+  const modelSkillCopies = (entries: import("../shared/types").SkillEntry[], target: string) => {
+    if (skillCopyError) throw new Error(skillCopyError);
+    return ensureModelSkillsDir(entries, target, skillCopyOptions);
+  };
+  let bundleRulesRevision = bundles.rulesRevision();
   const root = findSkillsRoot(
     defaultSkillsCandidates({ resourcesPath: app.isPackaged ? process.resourcesPath : undefined, appPath: app.getAppPath() }),
   );
@@ -415,6 +487,7 @@ async function main(): Promise<void> {
     bundledDir: app.isPackaged ? join(process.resourcesPath, "skills") : join(app.getAppPath(), "resources", "skills"),
     harnessDir,
     disabled: () => settings.get().skills?.disabled ?? [],
+    pluginSkills: () => bundles.skills(true),
   });
   const creatorDir = app.isPackaged ? join(process.resourcesPath, "creator") : join(app.getAppPath(), "resources", "creator");
   /**
@@ -423,15 +496,15 @@ async function main(): Promise<void> {
    * skills. "tool" mode's list is built once, so the tool and the names it
    * lists can't disagree.
    */
-  const skillsInputFor = (delivery: SkillsDelivery | undefined, cwd: string | null, design = false) => {
+  const skillsInputFor = (delivery: SkillsDelivery | undefined, cwd: string | null, design = false, creator = false) => {
     if (!delivery) return null;
     const catalog = skillsFor(cwd);
-    const toolSkills = forAgent(catalog, { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design });
+    const toolSkills = forAgent(catalog, { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design, creator });
     return {
       mode: delivery.mode,
-      entries: catalog.modelSkills.filter((s) => design || s.mode !== "design")
+      entries: catalog.modelSkills.filter((s) => inScope(s, { design, creator }))
         .map(({ name, description }) => ({ name, description })),
-      tool: delivery.mode === "tool" ? skillTool(() => toolSkills) : undefined,
+      tool: delivery.mode === "tool" ? managedRules.tool(skillTool(() => toolSkills, skillCopyOptions.assertSkill)) : undefined,
       toolNames: toolSkills.map((s) => s.name),
     };
   };
@@ -442,6 +515,22 @@ async function main(): Promise<void> {
     if (update.type === "running") designDocuments?.setBusy(update.threadId, update.running);
     for (const w of windows) if (!w.isDestroyed()) w.webContents.send("unskilled:update", update);
   };
+  const refreshThemeCaptions = () => {
+    if (process.platform === "darwin") return;
+    const scheme = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+    for (const w of windows) if (!w.isDestroyed()) {
+      const state = appThemes?.state(w.id);
+      const caption = appThemeCaption(process.platform, scheme, state?.preview?.theme ?? state?.active ?? null);
+      try { if (caption) w.setTitleBarOverlay(caption); }
+      catch (error) { console.warn("app theme caption update unavailable", error); }
+    }
+  };
+  appThemes = new AppThemes({ file: join(userData, "app-theme-state.json"), themes: () => bundles.themes(), proposal: (id) => extensions.get(id), changed: () => { refreshThemeCaptions(); broadcast({ type: "app-themes-changed" }); } });
+  nativeTheme.on("updated", refreshThemeCaptions);
+  app.on("browser-window-created", (_event, w) => {
+    w.webContents.on("did-start-navigation", (_e, _url, inPlace, isMainFrame) => { if (isMainFrame && !inPlace) appThemes?.closeWindow(w.id); });
+    w.on("closed", () => appThemes?.closeWindow(w.id));
+  });
   // The app owns zoom (Settings › Text size): Chromium's own zoom would drift from the setting and from the
   // traffic lights, which macOS draws unzoomed, so they move to stay centred on the zoomed header.
   const applyZoom = (w: BrowserWindow) => {
@@ -539,29 +628,31 @@ async function main(): Promise<void> {
   function skillsFor(cwd: string | null) {
     return skills.forProject(cwd);
   }
-  /** A generated skills folder's key: cwd and design. */
-  const skillsKey = (cwd: string, design: boolean | undefined) =>
+  /** A generated skills folder's key: cwd, design and Creator. */
+  const skillsKey = (cwd: string, design: boolean | undefined, creator = false) =>
     createHash("sha256")
-      .update([cwd, ...(design ? ["design"] : [])].join("\0"))
+      .update([cwd, ...(design ? ["design"] : []), ...(creator ? ["creator"] : [])].join("\0"))
       .digest("hex")
       .slice(0, 12);
   const driver = createClaudeDriver({
     // Lazy: both are made further down, with the tool server.
     codeMode: (threadId) => codeModeOf(threadId),
-    codeTool: (threadId) => codeServer.tool(threadId),
+    codeTool: (threadId) => managedRules.tool(codeServer.tool(threadId), threadId),
     guide: (cwd, design) => guide.forCwd(cwd, design),
-    pluginDir: (cwd, design) =>
-      ensurePlugin(
+    pluginDir: (cwd, design, threadId) => {
+      const creator = isCreatorThread(threadId);
+      return claudeSkillCopies(
         forAgent(
           skillsFor(cwd),
           CLAUDE_CAPABILITIES.skillsDelivery,
           // Claude Code loads these itself; the plugin would list them twice.
           skills.namesIn([join(homedir(), ".claude", "skills"), join(cwd, ".claude", "skills")]),
-          { design },
+          { design, creator },
         ),
-        // Design threads get their own plugin (with the design-only skills), so a chat thread's never changes.
-        join(userData, "harness-plugin", skillsKey(cwd, design)),
-      ),
+        // Design and Creator threads get their own plugin (with their mode-only skills), so a chat thread's never changes.
+        join(userData, "harness-plugin", skillsKey(cwd, design, creator)),
+      );
+    },
     skillDirs: () => [skills.dirs(null).bundled, skills.dirs(null).harness],
     ownSkillDirs: (cwd) => [join(homedir(), ".claude", "skills"), join(cwd, ".claude", "skills")],
     guardScript,
@@ -747,10 +838,10 @@ async function main(): Promise<void> {
   // A team thread also gets its team channel.
   const harnessTools = (thread?: Thread): HarnessTool[] => {
     const team = teamToolsOf(thread?.id);
-    if (thread?.kind !== "design") return team.length ? [...allTools, ...team] : allTools;
+    if (thread?.kind !== "design") return managedRules.tools(team.length ? [...allTools, ...team] : allTools, thread?.id);
     let list = designThreadTools.get(thread.id);
     if (!list) designThreadTools.set(thread.id, (list = [...allTools, ...designToolsOf(thread.id)]));
-    return team.length ? [...list, ...team] : list;
+    return managedRules.tools(team.length ? [...list, ...team] : list, thread.id);
   };
   // Background shells (Track G): one manager for the app, killed on quit. Every agent gets
   // shell_start/output/stop/list, bound to its thread (Claude's own background Bash is turned away).
@@ -853,7 +944,7 @@ async function main(): Promise<void> {
         check: (key, src, opts) => appChecker.check(key, src, opts),
         takeImage,
         connectorTools: async (tid, server) => {
-          const target = mcpScopes.effective(threadRealProject(tid)).find((s) => s.name === server && s.enabled === true);
+          const target = effectiveMcp(threadRealProject(tid), tid).find((s) => s.name === server && s.enabled === true);
           if (!target) return { ok: false, error: `No enabled connector named "${server}" for this thread. creator_inspect topic "installed" lists them.` };
           await mcpTools.refresh([target], 20_000);
           const listing = mcpTools.peek(target.spec);
@@ -861,14 +952,14 @@ async function main(): Promise<void> {
           return { ok: true, tools: listing.tools };
         },
         callReadOnly: (tid, server, tool, args) =>
-          callServerTool(
-            { servers: (pid) => mcpScopes.effective(pid ?? null), listings: mcpTools, pool: mcpPool },
+          callConnector(
             threadRealProject(tid) ?? undefined,
             server,
             tool,
             args,
-            undefined,
-            async (found) => (found.readOnly ? null : `"${server}.${tool}" isn't marked read-only; the test only runs read-only tools.`),
+            service.turnSignal(tid),
+            async (found) => !found.readOnly ? `"${server}.${tool}" isn't marked read-only; the test only runs read-only tools.` : bundles.rules({ kind: "connector", server, tool }, true) === "ask" ? "This connector requires an explicit user approval; the read-only check did not run it." : null,
+            tid,
           ),
       },
       threadId,
@@ -893,6 +984,7 @@ async function main(): Promise<void> {
         emitProposal: (id, proposalId) => service.emitFromTool(id, { kind: "extension-proposal", proposalId }),
         draftsDir: creatorDraftsDir,
         apps: (pid) => appRegistry.list(pid),
+        appThemes: () => appThemes!.state(0),
         prepareTheme: (name, config, pid) => prepareTheme(name, config, (base) => creatorThemeBase(pid, base)),
         themes: (pid) => service.kits.groups(pid).flatMap((g) => g.themes.map((t) => ({ id: t.id, name: t.name }))),
         themeTokens: (pid, id) => {
@@ -915,14 +1007,14 @@ async function main(): Promise<void> {
   };
   const threadOwnTools = (threadId: string): HarnessTool[] => {
     let list = threadToolLists.get(threadId);
-    if (!list) threadToolLists.set(threadId, (list = [...shellToolsOf(threadId), ...documentToolsOf(threadId), ...issueToolsOf(threadId), ...creatorToolsOf(threadId)]));
+    if (!list) threadToolLists.set(threadId, (list = managedRules.tools([...shellToolsOf(threadId), ...documentToolsOf(threadId), ...issueToolsOf(threadId), ...creatorToolsOf(threadId), ...pluginTools.tools(threadId, threadRealProject(threadId))], threadId)));
     return list;
   };
   // A turn's tools: the app's, plus the thread's shell and document tools (not in a design thread, whose tools are its own).
   const turnTools = (thread?: Thread): HarnessTool[] => {
     if (!thread || thread.kind === "design") return harnessTools(thread);
     const list = [...harnessTools(thread), ...threadOwnTools(thread.id)];
-    return browserOnDemand(thread) ? withBrowserOnDemand(list) : list;
+    return managedRules.tools(browserOnDemand(thread) ? withBrowserOnDemand(list) : list, thread.id);
   };
   // Code mode, fixed per thread for this app run (a session's tool list never changes).
   const codeModeOf = codeModes(() => settings.get().codeMode);
@@ -943,7 +1035,7 @@ async function main(): Promise<void> {
     appTools: (id) => {
       const thread = threadOf(id);
       const pid = thread?.projectId ?? undefined;
-      return [...harnessTools(thread ?? undefined), ...(mcpScopes.effective(pid ?? null).length ? routedTools(pid) : [])];
+      return [...harnessTools(thread ?? undefined), ...(effectiveMcp(pid ?? null, id).length ? routedTools(pid, id) : [])];
     },
     parentOf: (id, code) => service.scriptParent(id, code),
     emit: (id, event) => service.emitFromTool(id, event),
@@ -958,28 +1050,32 @@ async function main(): Promise<void> {
     codeServer.forget(id);
     codeModeOf.forget(id);
     draftWatcher.forgetThread(id);
+    pluginConnectors.forgetThread(id);
+    managedConnectors.forgetThread(id);
+    managedRules.forgetThread(id);
   };
   // Started on first use, for Codex and ACP agents, which take tools over MCP.
   let toolServer: Promise<ToolServer> | null = null;
   // `/mcp-skills` adds the skill tool for agents in "tool" delivery mode.
-  const getToolServer = () =>
+  const getToolServer = (): Promise<ToolServer> =>
     (toolServer ??= startToolServer(
       harnessTools,
       // The project's skills too (.cubiq, .claude), which tool-mode agents don't read themselves.
-      // A design thread's (named by `?t=`) list adds the design-only skills.
+      // A design or Creator thread's (named by `?t=`) list adds its mode-only skills.
       (pid, tid) => [
-        skillTool(() => forAgent(skillsFor(projectPathOf(pid ?? null)), { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design: isDesignThread(tid) })),
+        skillTool(() => forAgent(skillsFor(projectPathOf(pid ?? null)), { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design: isDesignThread(tid), creator: isCreatorThread(tid) }), skillCopyOptions.assertSkill),
       ],
-      (pid) => routedTools(pid),
+      (pid, tid) => routedTools(pid, tid),
       () => threadTools,
       undefined,
-      (req, res, scope, name) => mcpGateway.handle(req, res, scope, name),
+      (req, res, scope, name) => scope === "plugin" ? pluginConnectors.handle(req, res, name) : scope === "managed" ? managedConnectors.handle(req, res, name) : mcpGateway.handle(req, res, scope, name),
       // `?d=` (Codex) or `?t=` (ACP) naming a design thread adds its design tools; a team thread's adds its team channel.
       (tid) => [...(isDesignThread(tid) ? designToolsOf(tid) : []), ...teamToolsOf(tid)],
       // `?c=` (put on by a driver whose thread has code mode on) adds that thread's run_code.
       (tid) => (codeModeOf(tid) !== "off" ? [codeServer.tool(tid)] : []),
       // `?s=` (put on by a driver whose thread's tools carry them) adds that thread's background-shell and document tools.
       (tid) => threadOwnTools(tid),
+      (list, tid) => managedRules.tools(list, tid),
     ));
   // Served only on a thread's own URL (`?t=`): ACP agents' question tool, answered in the app's card.
   const threadTools: HarnessTool[] = [askUserTool((threadId: string, questions: Question[], signal?: AbortSignal) => service.askFromTool(threadId, questions, signal))];
@@ -1001,17 +1097,17 @@ async function main(): Promise<void> {
             // Per project: Codex reads .agents/skills itself, but not .cubiq or .claude.
             // A design thread's set adds the design-only skills, in a folder of its own.
             // The bundled Office skills that Codex's own document plugins cover stay out (skills/codex-plugins.ts).
-            skillsDir: (cwd, design) =>
+            skillsDir: (cwd, design, threadId) =>
               cwd
-                ? ensureModelSkillsDir(
-                    withoutCodexCovered(forAgent(skillsFor(cwd), CODEX_CAPABILITIES.skillsDelivery, new Set(), { design }), codexCoveredSkills()),
-                    join(`${modelSkillsDir}-projects`, skillsKey(cwd, design)),
+                ? modelSkillCopies(
+                    withoutCodexCovered(forAgent(skillsFor(cwd), CODEX_CAPABILITIES.skillsDelivery, new Set(), { design, creator: isCreatorThread(threadId) }), codexCoveredSkills()),
+                    join(`${modelSkillsDir}-projects`, skillsKey(cwd, design, isCreatorThread(threadId))),
                   )
-                : ensureModelSkillsDir(withoutCodexCovered(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), codexCoveredSkills()), modelSkillsDir),
+                : modelSkillCopies(withoutCodexCovered(forAgent(skills.global(), CODEX_CAPABILITIES.skillsDelivery), codexCoveredSkills()), modelSkillsDir),
             toolServer: getToolServer,
             codeMode: codeModeOf,
             // run_code as a dynamic tool (top-level, not deferred behind Codex's tool search); the MCP copy stays as fallback.
-            codeTool: (tid) => codeServer.tool(tid),
+            codeTool: (tid) => managedRules.tool(codeServer.tool(tid), tid),
             onLimits: limits.for("codex"),
             injection: () => injectionFor(settings, "codex", process.env),
           }),
@@ -1028,7 +1124,7 @@ async function main(): Promise<void> {
           ? { ...config, capabilities: { ...config.capabilities, preToolGuard: true, guardEnforcement: { ask: "block" as const, "auto-edit": "block" as const, plan: "block" as const, full: "block" as const } } }
           : config;
       return createAcpDriver(driverConfig, {
-        skillsDir: () => ensureModelSkillsDir(forAgent(skills.global(), acpCapabilities(config).skillsDelivery), modelSkillsDir),
+        skillsDir: () => modelSkillCopies(forAgent(skills.global(), acpCapabilities(config).skillsDelivery), modelSkillsDir),
         clientVersion: app.getVersion(),
         toolServer: getToolServer,
         codeMode: codeModeOf,
@@ -1120,6 +1216,7 @@ async function main(): Promise<void> {
   const mcpAuth = new McpAuth({ vault: mcpVault, openExternal: (url) => shell.openExternal(url) });
   // URL servers reach agents through the tool server's /mcp-up route, which adds their credentials here.
   const mcpGateway = new McpGateway({
+    listingOnly: true,
     target: (scope, name) => {
       const entry = mcpScopes.store(scope)?.list().find((s) => s.name === name && s.enabled);
       const spec = entry && isRemote(entry.spec) ? resolveSpec(entry.spec) : null;
@@ -1138,12 +1235,68 @@ async function main(): Promise<void> {
   const gatewaySpec = (scope: string, name: string): McpServerSpec | null =>
     toolServerUp ? { type: "http", url: new URL(gatewayPath(scope, name), toolServerUp.url).toString(), headers: { Authorization: `Bearer ${toolServerUp.token}` } } : null;
   mcpScopes.setRemote(gatewaySpec);
+  const nativeConnectorAsk = (tid: string, server: string, tool: string, args: Record<string, unknown>) => {
+    return managedRules.takeDeferral(`mcp:${server}.${tool}`, args, { threadId: tid, signal: service.turnSignal(tid) });
+  };
+  const managedConnectors: ManagedConnectors = new ManagedConnectors({
+    configured: (pid) => mcpScopes.configured(pid), endpoint: () => toolServerUp,
+    resolve: (entry) => resolveSpec(entry.spec),
+    pool: (scope, name, changed) => new McpClientPool({
+      onToolsChanged: changed,
+      transport: (spec) => clientTransport(spec, isRemote(spec) ? mcpGateway.authedFetch(`${scope}:${name}`, spec) : undefined),
+    }),
+    policy: bundles,
+    nativeAsk: nativeConnectorAsk,
+    thread: (id) => {
+      const thread = threadOf(id);
+      return thread ? { projectId: threadRealProject(id) ?? undefined, permissionMode: thread.permissionMode, kind: thread.kind ?? "chat", agent: thread.agent, signal: service.turnSignal(id) } : null;
+    },
+    approve: (tid, server, tool, args, signal, gate) => service.permissionFromTool(tid, `Connector · ${server}.${tool}`, redactSecrets(stableStringify(args).slice(0, 2000), knownSecrets()), signal, gate && !gate.forced ? { name: `mcp:${server}.${tool}`, summary: stableStringify({ args, identity: gate.identity }) } : undefined),
+    changed: () => { mcpTools.invalidate(); broadcast({ type: "mcp-status" }); },
+  });
+  const pluginConnectors: PluginConnectors = new PluginConnectors({
+    bundles, endpoint: () => toolServerUp,
+    nativeAsk: nativeConnectorAsk,
+    resolve: (part) => bundleCredentials.resolve(part.owner.key, part),
+    pool: (part, _spec, changed) => new McpClientPool({
+      onToolsChanged: changed,
+      transport: (spec) => clientTransport(spec, isRemote(spec) ? mcpGateway.authedFetch(connectorCredentialKey(part.owner.key, part), spec) : undefined),
+    }),
+    thread: (id) => {
+      const thread = threadOf(id);
+      return thread ? { projectId: threadRealProject(id) ?? undefined, permissionMode: thread.permissionMode, design: thread.kind === "design", signal: service.turnSignal(id) } : null;
+    },
+    approve: (tid, server, tool, args, signal, gate) => service.permissionFromTool(tid, `Connector · ${server}.${tool}`, redactSecrets(stableStringify(args).slice(0, 2000), knownSecrets()), signal, gate && !gate.forced ? { name: `mcp:${server}.${tool}`, summary: stableStringify({ args, identity: gate.identity }) } : undefined),
+    changed: () => { mcpTools.invalidate(); broadcast({ type: "mcp-status" }); },
+  });
+  const pluginAccounts = new PluginConnectorAccounts({
+    bundles, credentials: bundleCredentials, auth: mcpAuth,
+    peek: (part) => pluginConnectors.peek(part), check: (part) => pluginConnectors.check(part),
+    changed: (owner) => { pluginConnectors.invalidate(owner); mcpTools.invalidate(); broadcast({ type: "mcp-status" }); },
+  });
+  const effectiveMcp = (projectId: string | null, threadId?: string): McpServerEntry[] => {
+    const external = managedConnectors.entries(threadId ? threadRealProject(threadId) : projectId, threadId);
+    const bundled = pluginConnectors.entries(threadId);
+    // A runtime-name collision is unavailable, not permission to call an unrelated user connector.
+    const conflicts = new Set(external.filter((e) => pluginConnectors.has(e.name)).map((e) => e.name));
+    return [...external, ...bundled].filter((e) => !conflicts.has(e.name));
+  };
+  const connectorRuleCalls = new Set<AbortController>();
+  const callConnector = (projectId: string | undefined, server: string, tool: string, args: Record<string, unknown>, signal?: AbortSignal, before?: (found: import("./mcp/servers").McpToolInfo, identity?: string) => Promise<string | null>, threadId?: string): ReturnType<typeof callServerTool> => {
+    if (pluginConnectors.has(server, threadId)) {
+      if (mcpScopes.effective(projectId ?? null).some((e) => e.name === server)) return Promise.resolve({ text: "This bundled connector's runtime name conflicts with a standalone connector; neither was called.", isError: true });
+      return pluginConnectors.call(projectId, server, tool, args, { signal, before, threadId });
+    }
+    return managedConnectors.call(projectId, server, tool, args, { signal, before, threadId });
+  };
   // Started now rather than on first use, so URL servers have their route before the first turn.
   void getToolServer().then((s) => {
     toolServerUp = s;
   });
   /** A server was signed in or out, edited or removed: drop what the gateway and the listing cache hold for it, and tell the window. */
   const mcpChanged = async (scope: string, name: string) => {
+    mcpAuth.cancel(`${scope}:${name}`);
+    managedConnectors.invalidate(scope, name);
     await mcpGateway.reset(`${scope}:${name}`);
     const spec = gatewaySpec(scope, name);
     if (spec) mcpTools.invalidate(spec);
@@ -1187,7 +1340,41 @@ async function main(): Promise<void> {
     });
   }
   /** The two router tools bound to the calling project's servers; only called when a session routes. */
-  const routedTools = (projectId?: string) => routerTools({ servers: (pid) => mcpScopes.effective(pid ?? null), listings: mcpTools, pool: mcpPool }, projectId);
+  const routedTools = (projectId?: string, threadId?: string): HarnessTool[] => managedRules.tools(routerTools({
+    servers: (pid) => effectiveMcp(pid ?? null, threadId), listings: mcpTools, pool: mcpPool,
+    defer: (ctx, args) => managedRules.deferCall("call_mcp_tool", args, ctx),
+    call: async (ctx, server, tool, args) => {
+      args = JSON.parse(stableStringify(args)) as Record<string, unknown>;
+      const tid = ctx?.threadId ?? threadId, thread = tid ? threadOf(tid) : null;
+      const pid = thread ? threadRealProject(thread.id) ?? undefined : ctx?.projectId;
+      const controller = new AbortController(); connectorRuleCalls.add(controller);
+      const turn = tid ? service.turnSignal(tid) : undefined;
+      const signal = AbortSignal.any([controller.signal, ...(ctx?.signal ? [ctx.signal] : []), ...(turn ? [turn] : [])]);
+      const policy = bundles.rulesRevision();
+      const unchanged = () => {
+        if (signal.aborted || policy !== bundles.rulesRevision()) return false;
+        if (!thread || !tid) return true;
+        const current = threadOf(tid);
+        return Boolean(current && current.projectId === thread.projectId && current.permissionMode === thread.permissionMode && current.kind === thread.kind && service.turnSignal(tid) === turn && turn && !turn.aborted);
+      };
+      try {
+        const deferred = tid && turn ? managedRules.takeDeferral("call_mcp_tool", { server, tool, arguments: args }, { ...ctx, threadId: tid, projectId: thread!.projectId, signal }) : false;
+        const result = await callConnector(pid, server, tool, args, signal, async (found, identity) => {
+          if (!unchanged()) return "Plugin rules, the originating turn or permissions changed; retry the call.";
+          if (thread && (thread.kind === "design" || thread.permissionMode === "plan") && !found.readOnly) return "Plan/design mode cannot change connector data.";
+          const outer = bundles.rules({ kind: "tool", name: "call_mcp_tool" }, found.readOnly === true);
+          const inner = bundles.rules({ kind: "connector", server, tool }, found.readOnly === true);
+          const permission = managedCallPermission([outer, inner, deferred && deferred.ask ? "ask" : null], found.readOnly === true, Boolean(deferred), thread?.permissionMode ?? "ask");
+          if (permission.ask) {
+            const forced = permission.forced;
+            if (!tid || !turn || !await service.permissionFromTool(tid, `Connector · ${server}.${tool}`, redactSecrets(stableStringify(args).slice(0, 2000), knownSecrets()), signal, forced || !identity ? undefined : { name: "call_mcp_tool", summary: stableStringify({ server, tool, args, identity }) })) return "The user denied this connector call.";
+          }
+          return !unchanged() ? "Plugin rules, the originating turn or permissions changed; retry the call." : null;
+        }, tid);
+        return !unchanged() ? { text: "Plugin rules, the originating turn or permissions changed; the late result was discarded.", isError: true } : result;
+      } finally { connectorRuleCalls.delete(controller); }
+    },
+  }, projectId), threadId);
   /** Whether a project's listed MCP tools reach the router threshold, for agents without native tool search. */
   async function mcpRoutingFor(servers: McpServerEntry[]): Promise<boolean> {
     if (settings.get().mcpRouter === "off") return false;
@@ -1195,7 +1382,7 @@ async function main(): Promise<void> {
     const count = servers.reduce((sum, s) => sum + (mcpTools.peek(s.spec)?.ok ? (mcpTools.peek(s.spec)?.tools.length ?? 0) : 0), 0);
     return count >= MCP_ROUTER_MIN_TOOLS;
   }
-  const service = new Service(
+  const service: Service = new Service(
     store,
     (cwd: string | null) => skillsFor(cwd),
     drivers,
@@ -1205,12 +1392,38 @@ async function main(): Promise<void> {
       const s = settings.get();
       return { agent: s.defaultAgent, permissionMode: s.defaultPermissionMode };
     },
-    (projectId) => mcpScopes.effective(projectId),
+    (projectId, threadId) => effectiveMcp(projectId, threadId),
     knownSecrets,
     join(userData, "worktrees"),
     experts,
     chats,
   );
+  service.setPluginDelivery({ command: (invocation) => bundles.command(invocation), assertSkill: skillCopyOptions.assertSkill });
+  // Driver-local descriptors are ephemeral; don't retain a per-thread cache for
+  // every turn. Their actual transport context still supplies the originating ID.
+  service.setManagedTools((_thread, tools) => managedRules.tools(tools));
+  service.setManagedRun((thread, tool, args, signal) => managedRules.execute(tool, args, { threadId: thread.id, projectId: thread.projectId, signal }));
+  service.setManagedPermission((thread, target, args, signal, requirement) => {
+    const ctx = { threadId: thread.id, projectId: thread.projectId, signal, ...(requirement ? { requireApproval: true as const } : {}) };
+    if (target.kind === "connector") {
+      if (!effectiveMcp(threadRealProject(thread.id), thread.id).some((s) => s.name === target.server && s.enabled && isMainMediatedServer(s))) return false;
+      return managedRules.deferCall(`mcp:${target.server}.${target.tool}`, args, { ...ctx, ...(!requirement ? { normalApproval: true as const } : {}) });
+    }
+    const list = [...turnTools(thread), ...routedTools(threadRealProject(thread.id) ?? undefined, thread.id), managedRules.tool(codeServer.tool(thread.id), thread.id), managedRules.tool(skillTool(() => forAgent(skillsFor(service.cwdOf(thread)), { mode: "tool", reads: TOOL_SKILL_READS }, new Set(), { design: thread.kind === "design", creator: isCreatorThread(thread.id) }), skillCopyOptions.assertSkill), thread.id)];
+    const tool = list.find((t) => t.name === target.name);
+    if (!tool?.pluginRulesHandled) return false;
+    if (!tool.deferPermission) {
+      // PluginTools already owns the invocation approval in run(). Defer the
+      // outer engine prompt too, not only explicit native Ask requirements.
+      const parsed = args === undefined ? undefined : z.object(tool.input).strict().safeParse(args);
+      return (!parsed || parsed.success) && managedRules.deferCall(tool.name, parsed?.data, ctx);
+    }
+    return (!requirement && tool.autoAllow) || (tool.deferPermission?.(args, ctx) ?? false);
+  });
+  service.setManagedRunCode((thread, args, execute, signal) => managedRules.execute({
+    name: "run_code", description: "Native code mode with individually guarded native tools", input: { code: z.string() }, autoAllow: true, effect: "mutate",
+    run: (input, ctx) => execute(input, ctx!.signal!),
+  }, args, { threadId: thread.id, projectId: thread.projectId, signal }));
   // Each saved provider is its own agent on CubiQ's own harness, kept in step with Settings.
   const providerAgents = new ProviderAgents({
     providers: () => settings.providers(),
@@ -1222,11 +1435,11 @@ async function main(): Promise<void> {
     guide: (cwd, design) => guide.forCwd(cwd, design),
     memory: memoryPromptFor,
     // The project's MCP servers through the app's router (search_tools / call_mcp_tool).
-    mcpTools: (projectId) => (mcpScopes.effective(projectId ?? null).length ? routedTools(projectId) : []),
+    mcpTools: (projectId) => (effectiveMcp(projectId ?? null).length ? routedTools(projectId) : []),
     // The project's model-invoked skills as a `skill` tool, when it has any.
-    skills: (cwd, design) => {
-      const list = forAgent(skillsFor(cwd), { mode: "tool", reads: [] }, new Set(), { design });
-      return list.length ? skillTool(() => list) : null;
+    skills: (cwd, design, threadId) => {
+      const list = forAgent(skillsFor(cwd), { mode: "tool", reads: [] }, new Set(), { design, creator: isCreatorThread(threadId) });
+      return list.length ? managedRules.tool(skillTool(() => list, skillCopyOptions.assertSkill), threadId) : null;
     },
     codeMode: codeModeOf,
     uiBlocks: () => settings.get().uiBlocks === true,
@@ -1312,9 +1525,9 @@ async function main(): Promise<void> {
       specimen: app.isPackaged ? join(process.resourcesPath, "design-preview", "specimen.html") : join(app.getAppPath(), "resources", "design-preview", "specimen.html"),
     }),
   );
-  // Scheduled automations: reconcile a crash's leftovers, then run what's due every minute and on wake.
-  const automations = startAutomations({ store, service, broadcast });
-  powerMonitor.on("resume", automations.tick);
+  // Construct the scheduler only after managed execution/review wiring is ready.
+  // Its recovery must not cancel a valid owned queue merely during initialization.
+  let automations: ReturnType<typeof startAutomations>;
   /** Foundation, what the catalog offers, and anything else installed on this machine. */
   const kitOptions = (): DesignKitOption[] => {
     const options: DesignKitOption[] = [];
@@ -1830,6 +2043,16 @@ async function main(): Promise<void> {
       custom: customAgents,
       liveCapabilities: (id) => service.listAgents().find((a) => a.id === id)?.capabilities,
     });
+  /** Whether a thread is a Creator thread (its skills then include the Creator-only ones). */
+  const isCreatorThread = (threadId: string | undefined): boolean => {
+    try {
+      if (!threadId) return false;
+      const t = store.getThread(threadId);
+      return t.kind !== "design" && t.preset === "creator";
+    } catch {
+      return false;
+    }
+  };
   /** Whether the tool server's `?t=` names a design thread (its skill tool then lists the design-only skills). */
   const isDesignThread = (threadId: string | undefined): boolean => {
     try {
@@ -1866,6 +2089,7 @@ async function main(): Promise<void> {
         ? { servers: projectScope.list().map((e) => viewOf(e, mcpVault, `${mcpScope(projectId)}:${e.name}`)), offGlobal: projectScope.offGlobal(), file: join(mcpProjectDir(projectId!), "mcp.json") }
         : null,
       external: readExternalMcp({ projectPath: projectPathOf(projectId) }),
+      bundled: pluginAccounts.list(),
       file: join(userData, "mcp.json"),
     };
   };
@@ -1935,7 +2159,10 @@ async function main(): Promise<void> {
     }
   };
   const extensionService = new ExtensionService({
+    bundles,
     extensions,
+    bundleOwned: (key) => bundles.owns(key),
+    bundleParts: (key) => bundles.parts(key),
     projectOf: (id) => {
       try {
         return store.getProject(id);
@@ -1986,17 +2213,7 @@ async function main(): Promise<void> {
       const found = target ? mcpTools.peekStale(target.spec)?.tools.find((t) => t.name === tool) : undefined;
       return found ? (found.readOnly ? "read" : "write") : "unknown";
     },
-    appsChanged: ({ key, removed }) => {
-      const decoded = decodeAppKey(key);
-      const dir = decoded ? appRegistry.dirOf(decoded) : null;
-      if (dir) appRegistry.forget(dir);
-      if (removed) {
-        appCalls.forget(key);
-        appRegistry.resetEnabled(key);
-      } else appCalls.invalidate(key);
-      broadcast({ type: "apps-changed" });
-      if (!removed) broadcast({ type: "app-reload", key });
-    },
+    appsChanged: ({ key, removed }) => appsChanged(key, removed),
   });
   setImmediate(() => extensionService.cleanupStartup());
 
@@ -2019,44 +2236,139 @@ async function main(): Promise<void> {
     if (scope !== undefined && scope !== "project" && scope !== "global") throw new Error("Invalid scope.");
     return extensionService.install(id, scope);
   });
-  ipcMain.handle("extensions:reject", (e, id: string) => {
+  ipcMain.handle("extensions:reject", async (e, id: string) => {
     assertMainWindow(e);
     if (typeof id !== "string") throw new Error("Invalid proposal id.");
-    return extensionService.reject(id);
+    const result = await extensionService.reject(id);
+    appThemes?.reconcile();
+    return result;
   });
   ipcMain.handle("extensions:installs", (_e, projectId?: string | null) => extensionService.installs(projectId));
+  ipcMain.handle("apps:commands", (e) => { assertMainWindow(e); return bundles.commands(); });
+  const themeWindow = (e: Electron.IpcMainInvokeEvent) => { assertMainWindow(e); const w = BrowserWindow.fromWebContents(e.sender); if (!w || !appThemes) throw new Error("App theme window unavailable."); appThemes.reconcile(); return { id: w.id, themes: appThemes }; };
+  ipcMain.handle("apps:theme-state", (e) => { const t = themeWindow(e); return t.themes.state(t.id); });
+  ipcMain.handle("apps:theme-preview", (e, source: import("../shared/app-themes").AppThemeSource) => { const t = themeWindow(e); return t.themes.preview(t.id, source); });
+  ipcMain.handle("apps:theme-apply", (e, handle: import("../shared/app-themes").AppThemeHandle, token?: string) => { const t = themeWindow(e); if (token !== undefined && typeof token !== "string") throw new Error("Invalid preview token."); return t.themes.apply(t.id, handle, token); });
+  ipcMain.handle("apps:theme-cancel", (e, token: string) => { const t = themeWindow(e); if (typeof token !== "string") throw new Error("Invalid preview token."); return t.themes.cancel(t.id, token); });
+  ipcMain.handle("apps:theme-revert", (e) => { const t = themeWindow(e); return t.themes.revert(t.id); });
+  ipcMain.handle("apps:connectors", (e) => { assertMainWindow(e); return pluginAccounts.list(); });
+  ipcMain.handle("apps:connector-save", (e, handle: import("../shared/plugin-parts").PluginConnectorHandle, values: Record<string, string>, clientSecret?: string) => {
+    assertMainWindow(e); pluginAccounts.save(handle, values, clientSecret);
+  });
+  ipcMain.handle("apps:connector-connect", async (e, handle: import("../shared/plugin-parts").PluginConnectorHandle) => {
+    assertMainWindow(e);
+    const result = await pluginAccounts.connect(handle);
+    return result.ok ? result : { ok: false, error: redactSecrets(result.error ?? "Sign-in failed.", knownSecrets()) };
+  });
+  ipcMain.handle("apps:connector-cancel", (e, handle: import("../shared/plugin-parts").PluginConnectorHandle) => {
+    assertMainWindow(e); pluginAccounts.cancel(handle);
+  });
+  ipcMain.handle("apps:connector-disconnect", (e, handle: import("../shared/plugin-parts").PluginConnectorHandle) => {
+    assertMainWindow(e); return pluginAccounts.disconnect(handle);
+  });
+  ipcMain.handle("apps:connector-check", async (e, handle: import("../shared/plugin-parts").PluginConnectorHandle) => {
+    assertMainWindow(e);
+    try { await pluginAccounts.check(handle); }
+    catch (err) { throw new Error(redactSecrets(err instanceof Error ? err.message : String(err), knownSecrets())); }
+    broadcast({ type: "mcp-status" });
+  });
 
   // Creator apps: installed folders served over cubiq-app://, their bridge calls checked here against app.json grants.
-  const realProjectPath = (projectId: string): string | null => {
-    try {
-      const p = store.getProject(projectId);
-      return isChatsRoot(p.path, chats) ? null : p.path;
-    } catch {
-      return null;
-    }
-  };
-  const appRegistry = new AppRegistry({ globalDir: join(userData, "apps"), stateFile: join(userData, "app-state.json"), projectPath: realProjectPath, draftsDir: creatorDraftsDir });
   const appCalls = new AppCalls({
     registry: appRegistry,
     dataDir: join(userData, "app-data"),
     draftProject: threadRealProject,
-    call: (projectId, server, tool, args, before) =>
-      callServerTool({ servers: (pid) => mcpScopes.effective(pid ?? null), listings: mcpTools, pool: mcpPool }, projectId, server, tool, args, undefined, before),
+    rules: { decision: (server, tool, readOnly) => bundles.rules({ kind: "connector", server, tool }, readOnly), revision: () => bundles.rulesRevision() },
+    call: (projectId, server, tool, args, before, signal) =>
+      callConnector(projectId, server, tool, args, signal, before),
   });
-  const draftWatcher = new DraftWatcher((key) => broadcast({ type: "app-reload", key }));
+  const pluginTools = new PluginTools({
+    registry: appRegistry,
+    calls: appCalls,
+    createWindow: () => electronCheckWindow(680, 200),
+    signal: (tid) => service.turnSignal(tid),
+    forceAsk: (name, args, tid) => {
+      const ticket = tid && args ? managedRules.takeDeferral(name, args, { threadId: tid, signal: service.turnSignal(tid) }) : false;
+      return Boolean(ticket && ticket.ask) || bundles.rules({ kind: "tool", name }, false) === "ask";
+    },
+    rulesRevision: () => bundles.rulesRevision(),
+    approve: async (tid, title, summary, signal, connector, forced) => {
+      const thread = threadOf(tid);
+      if (!thread || thread.permissionMode === "plan" || signal.aborted) return false;
+      // Full access covers the plugin invocation, not a new connector write grant.
+      if (!connector && !forced && thread.permissionMode === "full") return true;
+      return service.permissionFromTool(tid, `Plugin · ${title}`, summary, signal);
+    },
+    emit: (tid, event) => service.emitFromTool(tid, event),
+  });
+  function appsChanged(key: string, removed: boolean): void {
+    appThemes?.reconcile();
+    pluginAccounts.invalidate(key);
+    pluginTools.invalidate(key);
+    pluginConnectors.invalidate(key);
+    const policy = bundles.rulesRevision();
+    if (policy !== bundleRulesRevision) {
+      bundleRulesRevision = policy;
+      pluginTools.invalidateRules();
+      appCalls.invalidateRules();
+      pluginConnectors.invalidateRules();
+      managedConnectors.invalidateRules();
+      managedRules.invalidate();
+      for (const controller of connectorRuleCalls) controller.abort();
+    }
+    const decoded = decodeAppKey(key), dir = decoded ? appRegistry.dirOf(decoded) : null;
+    if (dir) appRegistry.forget(dir);
+    if (removed) {
+      appCalls.forget(key);
+      appRegistry.resetEnabled(key);
+    } else appCalls.invalidate(key);
+    skills.invalidate();
+    pruneSkillCopies();
+    broadcast({ type: "apps-changed" });
+    broadcast({ type: "mcp-status" });
+    for (const p of store.listProjects()) if (!isChatsRoot(p.path, chats)) broadcast({ type: "automations-changed", projectId: p.id });
+    if (!removed) broadcast({ type: "app-reload", key });
+  }
+  // A draft's app.json may have changed its title, size or placement: send its fresh listing with the reload.
+  const draftWatcher = new DraftWatcher((key) => {
+    const app = appRegistry.info(key);
+    broadcast({ type: "app-reload", key, ...(app && !app.error ? { app } : {}) });
+  });
   const appChecker = new AppChecker({
-    createWindow: () => electronCheckWindow(CHECK_WIDTH, CHECK_HEIGHT),
-    call: (key, server, tool, args) => appCalls.call(key, null, server, tool, args),
+    createWindow: (size) => electronCheckWindow(size.width, size.height),
+    call: (key, server, tool, args) => appCalls.call(key, null, server, tool, args, undefined, { readOnly: true }),
     storeGet: (key, name) => appCalls.storeGet(key, name),
     storeSet: (key, name, value) => appCalls.storeSet(key, name, value),
   });
   const appBridgeJs = appBridgeScript();
-  protocol.handle(APP_SCHEME, (req) => serveApp(req.url, { appRoot: (key) => appRegistry.root(key), bridge: appBridgeJs }));
+  const appBridgeOwnJs = appBridgeScript({ ownStyle: true });
+  protocol.handle(APP_SCHEME, (req) =>
+    serveApp(req.url, { appRoot: (key) => appRegistry.root(key), bridge: appBridgeJs, bridgeFor: (key) => (appRegistry.manifest(key)?.style === "own" ? appBridgeOwnJs : appBridgeJs) }),
+  );
   const str = (v: unknown, max = 200): string => {
     if (typeof v !== "string" || !v || v.length > max) throw new Error("Invalid argument.");
     return v;
   };
   const projectArg = (v: unknown): string | null => (v === null || v === undefined ? null : realProjectPath(str(v)) ? (v as string) : null);
+  const cardContext = (key: string, tid: string): string | null => {
+    const thread = threadOf(tid), decoded = decodeAppKey(key);
+    if (!thread || !decoded || decoded.scope === "draft" || (decoded.scope === "project" && decoded.projectId !== thread.projectId)) throw new Error("This card is not available in this thread.");
+    return threadRealProject(tid);
+  };
+  ipcMain.handle("apps:card-info", (e, key: unknown, card: unknown, threadId: unknown) => {
+    assertMainWindow(e);
+    const id = str(key), name = str(card, 32);
+    cardContext(id, str(threadId));
+    const manifest = appRegistry.manifest(id), surface = manifest?.cards?.find((c) => c.name === name);
+    const info = appRegistry.info(id);
+    return surface && info && !info.error ? { ...info, url: appUrl(id, surface.entry), height: surface.height } : null;
+  });
+  ipcMain.handle("apps:card-call", (e, key: unknown, threadId: unknown, server: unknown, tool: unknown, args: unknown) => {
+    assertMainWindow(e);
+    const id = str(key), pid = cardContext(id, str(threadId));
+    if (!appRegistry.manifest(id)?.cards?.length) return { ok: false, error: "This plugin has no transcript cards." };
+    return appCalls.call(id, pid, str(server), str(tool, 128), args && typeof args === "object" && !Array.isArray(args) ? args as Record<string, unknown> : {}, undefined, { readOnly: true });
+  });
   ipcMain.handle("apps:list", (e, projectId?: string | null) => {
     assertMainWindow(e);
     return appRegistry.list(projectArg(projectId));
@@ -2069,8 +2381,13 @@ async function main(): Promise<void> {
     assertMainWindow(e);
     if (typeof enabled !== "boolean") throw new Error("Invalid enabled state.");
     const id = str(key);
-    appRegistry.setEnabled(id, enabled);
-    appCalls.invalidate(id);
+    if (bundles.owns(id)) bundles.setEnabled(id, enabled);
+    else { appRegistry.setEnabled(id, enabled); appsChanged(id, false); }
+  });
+  ipcMain.handle("apps:favorite", (e, key: unknown, on: unknown) => {
+    assertMainWindow(e);
+    if (typeof on !== "boolean") throw new Error("Invalid favourite state.");
+    appRegistry.setFavorite(str(key), on);
     broadcast({ type: "apps-changed" });
   });
   ipcMain.handle("apps:edit", (e, key: unknown, threadId: unknown) => {
@@ -2158,6 +2475,7 @@ async function main(): Promise<void> {
   // A project can switch off an individual global server without editing either file.
   ipcMain.handle("mcp:global-off", (_e, projectId: string, name: string, off: boolean) => {
     mcpScopes.project(projectId).setGlobalOff(name, off);
+    managedConnectors.invalidateProject(projectId, name);
     return mcpOverview(projectId);
   });
   // Open in editor. The agents' API keys (set from Settings) stay out of the editor's environment.
@@ -2184,6 +2502,16 @@ async function main(): Promise<void> {
   ipcMain.handle("app:reveal", (_e, path: string) => {
     if (typeof path === "string" && existsSync(path)) shell.showItemInFolder(path);
   });
+
+  // All contribution factories, main mediation and review/account endpoints are
+  // now wired. Open admission before scheduler recovery or the next startup await.
+  pluginDeliveryReady = true;
+  appThemes.reconcile();
+  skills.invalidate();
+  pruneSkillCopies();
+  bundleRulesRevision = bundles.rulesRevision();
+  automations = startAutomations({ store, service, broadcast, owner: (id) => bundles.automationOwner(id) });
+  powerMonitor.on("resume", automations.tick);
 
   // The version that ran before this one, once, so the renderer opens What's new
   // after an update. A first install (no record yet) and dev builds stay quiet.
@@ -2213,7 +2541,9 @@ async function main(): Promise<void> {
   ipcMain.handle("settings:update", (_e, patch: Partial<Settings>) => {
     const before = settings.get().autoUpdate;
     const next = settings.update(patch);
+    if (patch.theme !== undefined) appThemes?.cancelPreviews();
     nativeTheme.themeSource = next.theme;
+    refreshThemeCaptions();
     if (next.autoUpdate !== before) updater.refresh();
     if (patch.zoom !== undefined) for (const w of windows) applyZoom(w);
     const view = settings.view();
@@ -2357,7 +2687,7 @@ async function main(): Promise<void> {
       guideParts: cwd ? guide.partsForCwd(cwd) : [],
       // An agent that keeps the shared memory itself doesn't need the memory tools.
       tools: turnTools(thread ?? undefined).filter((t) => !(thread && drivers.find((d) => d.id === thread.agent)?.capabilities.nativeMemory && (t.name === MEMORY_READ_TOOL || t.name === MEMORY_WRITE_TOOL))),
-      skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design") : null,
+      skills: thread && delivery ? skillsInputFor(delivery, cwd, thread.kind === "design", thread.kind !== "design" && thread.preset === "creator") : null,
       mcp: servers.map((s) => ({ name: s.name, listed: mcpTools.peek(s.spec), deferred })),
       memoryIndex: pid && memoryOn(settings.get(), pid) ? (({ lines, tokens }) => ({ lines, tokens }))(memoryBlockFor(pid)) : null,
     });
@@ -2601,6 +2931,26 @@ async function main(): Promise<void> {
       console.error(redactSecrets(err instanceof Error ? (err.stack ?? err.message) : String(err), knownSecrets()));
     });
   });
+  // Attachments read the user's own files: only the app window may ask, never a page or webview.
+  ipcMain.handle("attachments:save", (e, threadId: unknown, sources: unknown) => {
+    if (!isFromAppWindow(e) || e.sender.getType() === "webview") throw new Error("Not allowed from a page.");
+    return saveAttachments(service.threadFolder(str(threadId)), sources);
+  });
+  ipcMain.handle("attachments:pick", async (e) => {
+    if (!isFromAppWindow(e) || e.sender.getType() === "webview") throw new Error("Not allowed from a page.");
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const options: Electron.OpenDialogOptions = { title: "Attach files", properties: ["openFile", "multiSelections"] };
+    const res = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    if (res.canceled) return [];
+    return res.filePaths.flatMap((path) => {
+      try {
+        const stat = statSync(path);
+        return stat.isFile() ? [{ name: basename(path), path, size: stat.size }] : [];
+      } catch {
+        return [];
+      }
+    });
+  });
   ipcMain.handle("turn:interrupt", (_e, threadId: string) => service.interrupt(threadId));
   ipcMain.handle("permission:respond", (_e, requestId: string, decision: PermissionDecision) =>
     service.respondPermission(requestId, decision),
@@ -2725,6 +3075,7 @@ async function main(): Promise<void> {
   const open = () => {
     const win = createWindow();
     windows.add(win);
+    refreshThemeCaptions();
     win.on("closed", () => windows.delete(win));
     applyZoom(win);
     // Chromium resets zoom per page load, and a reload would otherwise come back at its own remembered level.
@@ -2845,6 +3196,9 @@ async function main(): Promise<void> {
     documents.dispose();
     service.dispose();
     previews.dispose();
+    pluginTools.dispose();
+    pluginDeliveryReady = false;
+    managedRules.dispose();
     designWatcher.closeAll();
     draftWatcher.closeAll();
     shooter.close();
@@ -2855,6 +3209,9 @@ async function main(): Promise<void> {
     mcpTools.flush();
     void toolServer?.then((s) => s.close());
     void mcpPool.closeAll();
+    mcpAuth.cancelAll();
+    void pluginConnectors.closeAll();
+    void managedConnectors.closeAll();
     void mcpGateway.closeAll();
     store.close();
   });

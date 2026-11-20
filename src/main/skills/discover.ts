@@ -9,8 +9,8 @@ export interface ParsedSkill {
   disableModelInvocation: boolean;
   userInvocable: boolean;
   argumentHint?: string;
-  /** `mode: design` in the frontmatter: delivered to design threads only. */
-  mode?: "design";
+  /** `mode: design` / `mode: creator` in the frontmatter: delivered to design / Creator threads only. */
+  mode?: "design" | "creator";
   /** Everything after the closing `---`. */
   body: string;
 }
@@ -51,7 +51,8 @@ export function parseSkillMd(text: string): ParsedSkill {
   if (description) parsed.description = description;
   const argumentHint = fields.get("argument-hint");
   if (argumentHint) parsed.argumentHint = argumentHint;
-  if (fields.get("mode") === "design") parsed.mode = "design";
+  const mode = fields.get("mode");
+  if (mode === "design" || mode === "creator") parsed.mode = mode;
   return parsed;
 }
 

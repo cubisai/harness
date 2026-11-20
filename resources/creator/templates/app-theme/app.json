@@ -1,0 +1,12 @@
+{
+  "name": "warm-ink",
+  "title": "Warm ink",
+  "description": "A warm primary palette for CubiQ. Apply separately after Install.",
+  "icon": "palette",
+  "contributes": {
+    "appTheme": {
+      "light": { "primary": "#3f2f22", "text-tertiary": "#686868" },
+      "dark": { "bg": "#080808", "primary": "#fff4e8", "text-tertiary": "#909090" }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "reading-list-tools",
+  "title": "Reading list",
+  "description": "Save an item through an agent tool and see its result in a chat card.",
+  "icon": "notebook",
+  "entry": "index.html",
+  "grants": [],
+  "toolEntry": "tools.html",
+  "tools": [{
+    "name": "add_item",
+    "description": "Save a title to my reading list (up to 100 items).",
+    "inputSchema": { "type": "object", "properties": { "title": { "type": "string", "description": "A title of at most 160 characters" } }, "required": ["title"], "additionalProperties": false }
+  }],
+  "cards": [{ "name": "saved_item", "entry": "card.html", "height": 120 }]
+}

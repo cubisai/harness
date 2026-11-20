@@ -21,6 +21,7 @@ export type ToolCaller = (
   tool: string,
   args: Record<string, unknown>,
   before: (found: McpToolInfo) => Promise<string | null>,
+  signal?: AbortSignal,
 ) => Promise<{ text: string; isError: boolean; data?: unknown }>;
 
 export interface AppCallsDeps {
@@ -30,15 +31,21 @@ export interface AppCallsDeps {
   dataDir: string;
   /** A Creator thread's real project (its draft uses that project's connectors), or null for global ones. */
   draftProject?: (threadId: string) => string | null;
+  rules?: {
+    decision(server: string, tool: string, readOnly: boolean): "ask" | "allow" | null;
+    revision(): string;
+  };
   now?: () => number;
 }
 
 const NEEDS_APPROVAL = "\u0000needs-approval";
+const READ_ONLY = "\u0000read-only";
 
 export class AppCalls {
-  private tokens = new Map<string, { key: string; server: string; tool: string; argsHash: string; exp: number }>();
+  private tokens = new Map<string, { key: string; projectId: string | undefined; server: string; tool: string; argsHash: string; policy: string; exp: number }>();
   private cache = new Map<string, { at: number; result: unknown }>();
   private revisions = new Map<string, number>();
+  private active = new Map<string, Set<AbortController>>();
   private now: () => number;
 
   constructor(private deps: AppCallsDeps) {
@@ -49,7 +56,8 @@ export class AppCalls {
    * One bridge call. `approval` is the token the pane got back with the question, sent again once the user said
    * yes (`remember`: for this app from now on).
    */
-  async call(key: string, contextProjectId: string | null, server: string, tool: string, args: Record<string, unknown>, approval?: { token: string; remember?: boolean }): Promise<AppCallResult> {
+  async call(key: string, contextProjectId: string | null, server: string, tool: string, args: Record<string, unknown>, approval?: { token: string; remember?: boolean }, opts?: { signal?: AbortSignal; readOnly?: boolean }): Promise<AppCallResult> {
+    if (opts?.signal?.aborted) return { ok: false, error: "The caller stopped." };
     if (this.deps.registry.isEnabled?.(key) === false) return { ok: false, error: "This app is disabled. Enable it in Library → Apps." };
     const manifest = this.deps.registry.manifest(key);
     const k = decodeAppKey(key);
@@ -59,39 +67,56 @@ export class AppCalls {
     if (!granted(manifest, server, tool)) return { ok: false, error: `"${server}.${tool}" is not in this app's grants (app.json).` };
     // A draft's connectors are its thread's, whatever window relays the call.
     const projectId = k.scope === "project" ? k.projectId : k.scope === "draft" ? (this.deps.draftProject?.(k.threadId) ?? undefined) : (contextProjectId ?? undefined);
+    const policy = this.deps.rules?.revision() ?? "";
+    const policyChanged = () => (this.deps.rules?.revision() ?? "") !== policy;
+    // Ask is mandatory even for reads. Evaluate before cache/remembered/Full-access shortcuts.
+    const forcedAsk = this.deps.rules?.decision(server, tool, false) === "ask";
     const argsJson = stableStringify(args);
     const argsHash = sha(argsJson);
-    const cacheKey = `${key}\u0000${projectId ?? ""}\u0000${server}\u0000${tool}\u0000${argsHash}`;
+    const cacheKey = `${key}\u0000${projectId ?? ""}\u0000${server}\u0000${tool}\u0000${argsHash}\u0000${policy}`;
     const ttl = (manifest.cacheSec ?? 0) * 1000;
     const hit = ttl ? this.cache.get(cacheKey) : undefined;
-    if (hit && this.now() - hit.at < ttl) return { ok: true, result: hit.result };
+    if (!forcedAsk && hit && this.now() - hit.at < ttl) return { ok: true, result: hit.result };
 
+    const controller = new AbortController();
+    const signal = opts?.signal ? AbortSignal.any([opts.signal, controller.signal]) : controller.signal;
+    const active = this.active.get(key) ?? new Set<AbortController>();
+    active.add(controller); this.active.set(key, active);
     let wasReadOnly = false;
     const before = async (found: McpToolInfo): Promise<string | null> => {
+      if (opts?.signal?.aborted) return "The caller stopped.";
       if (changed()) return "This app changed; retry the call.";
+      if (policyChanged()) return "Plugin rules changed; retry the call.";
+      if (signal.aborted) return "The caller stopped.";
       if (this.deps.registry.isEnabled?.(key) === false) return "This app is disabled.";
-      if (found.readOnly) {
-        wasReadOnly = true;
-        return null;
-      }
-      if (this.allowed(key).includes(`${server}.${tool}`)) return null;
+      if (!found.readOnly && opts?.readOnly) return READ_ONLY;
+      wasReadOnly = found.readOnly === true;
+      const mustAsk = forcedAsk || this.deps.rules?.decision(server, tool, wasReadOnly) === "ask";
+      if (!mustAsk && (wasReadOnly || this.allowed(key).includes(`${server}.${tool}`))) return null;
       if (approval) {
         const t = this.tokens.get(approval.token);
         this.tokens.delete(approval.token);
-        if (t && t.key === key && t.server === server && t.tool === tool && t.argsHash === argsHash && t.exp > this.now()) {
-          if (approval.remember) this.allow(key, `${server}.${tool}`);
+        if (t && t.key === key && t.projectId === projectId && t.server === server && t.tool === tool && t.argsHash === argsHash && t.policy === policy && t.exp > this.now()) {
+          // A forced Ask is for this request only, never a rewrite of remembered approvals.
+          if (approval.remember && !mustAsk && !wasReadOnly) this.allow(key, `${server}.${tool}`);
           return null;
         }
       }
       return NEEDS_APPROVAL;
     };
-    const r = await this.deps.call(projectId, server, tool, args, before);
+    let r: Awaited<ReturnType<ToolCaller>>;
+    try { r = await this.deps.call(projectId, server, tool, args, before, signal); }
+    finally { active.delete(controller); if (!active.size) this.active.delete(key); }
+    if (opts?.signal?.aborted) return { ok: false, error: "The caller stopped." };
     if (changed()) return { ok: false, error: "This app changed; retry the call." };
+    if (policyChanged()) return { ok: false, error: "Plugin rules changed; retry the call." };
+    if (signal.aborted) return { ok: false, error: "The caller stopped." };
     if (this.deps.registry.isEnabled?.(key) === false) return { ok: false, error: "This app is disabled." };
+    if (r.isError && r.text === READ_ONLY) return { ok: false, error: "This read-only surface cannot change connector data.", blocked: "read-only" };
     if (r.isError && r.text === NEEDS_APPROVAL) {
       this.sweepTokens();
       const token = randomBytes(16).toString("hex");
-      this.tokens.set(token, { key, server, tool, argsHash, exp: this.now() + TOKEN_TTL_MS });
+      this.tokens.set(token, { key, projectId, server, tool, argsHash, policy, exp: this.now() + TOKEN_TTL_MS });
       return { ok: false, approval: { token, server, tool, args: argsJson.length > 2000 ? `${argsJson.slice(0, 2000)}…` : argsJson } };
     }
     if (r.isError) return { ok: false, error: r.text.slice(0, 4000) || "The tool failed." };
@@ -135,8 +160,16 @@ export class AppCalls {
   /** Disable/update drops transient permissions and results, but retains saved app data and remembered grants. */
   invalidate(key: string): void {
     this.revisions.set(key, (this.revisions.get(key) ?? 0) + 1);
+    for (const controller of this.active.get(key) ?? []) controller.abort();
     for (const [token, value] of this.tokens) if (value.key === key) this.tokens.delete(token);
     for (const k of [...this.cache.keys()]) if (k.startsWith(`${key}\u0000`)) this.cache.delete(k);
+  }
+
+  /** A rule-owning bundle changed; approvals/results for every target must be reconsidered. */
+  invalidateRules(): void {
+    for (const controllers of this.active.values()) for (const controller of controllers) controller.abort();
+    this.tokens.clear();
+    this.cache.clear();
   }
 
   private allow(key: string, tool: string): void {

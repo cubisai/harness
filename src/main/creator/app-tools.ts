@@ -1,13 +1,15 @@
-// The Creator build loop for apps: write the draft with your own file tools, preview it in the App tab (it hot
+// The Creator build loop for apps: write the draft with your own file tools, preview it where it will open (it hot
 // reloads), check it off screen, look at a connector's real data first. Installing goes through creator_propose.
 
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { HarnessTool, ToolOutput } from "../agents/types";
-import type { AppCheckReport } from "../apps/check";
-import { APP_MANIFEST, validateApp } from "../apps/manifest";
+import type { AppCheckReport, CheckOptions } from "../apps/check";
+import { CHECK_THEME_URL } from "../apps/check";
+import { APP_MANIFEST, appSize, isSmallPlacement, validateApp } from "../apps/manifest";
 import { readAppFiles } from "../apps/registry";
+import { appUrl } from "../apps/serve";
 import type { McpToolInfo } from "../mcp/servers";
 import type { AppInfo, Thread } from "../../shared/types";
 
@@ -16,7 +18,9 @@ export const CREATOR_APP_CHECK_TOOL = "creator_app_check";
 export const CREATOR_CONNECTOR_TEST_TOOL = "creator_connector_test";
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
-export const APP_TEMPLATES = ["dashboard"] as const;
+const SHOWN_AS: Record<string, string> = { modal: "in a modal", floating: "as a floating widget", page: "as a page in the main area", dock: "docked above the composer", panel: "in the sidebar" };
+
+export const APP_TEMPLATES = ["dashboard", "widget", "page", "dock", "tool", "bundle", "app-theme"] as const;
 const SAMPLE_BYTES = 3000;
 
 export interface CreatorAppToolsDeps {
@@ -27,11 +31,11 @@ export interface CreatorAppToolsDeps {
   threadOf(threadId: string): Thread | null;
   /** The listing entry for a frame key (drafts included). */
   appInfo(key: string): AppInfo | null;
-  /** Show the draft in the App tab of the window showing this thread. */
+  /** Show the draft (modal or floating) in the window showing this thread. */
   openPreview(threadId: string, app: AppInfo): void;
   /** Reload the previewed frame when the draft folder changes. */
   watch(key: string, threadId: string, dir: string): void;
-  check(key: string, src: string, opts: { scheme: "light" | "dark"; screenshot: boolean }): Promise<AppCheckReport>;
+  check(key: string, src: string, opts: CheckOptions): Promise<AppCheckReport>;
   /** Whether this thread's model can take one more image now. */
   takeImage(threadId: string): boolean;
   /** The tools a connector lists, for this thread's project (or global ones). */
@@ -91,7 +95,7 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
     define({
       name: CREATOR_APP_PREVIEW_TOOL,
       description:
-        "Open your draft app in the user's App tab (it reloads by itself on every file change). The draft lives in the folder this returns; write it with your file tools. Pass template to start a new draft from one.",
+        "Open your draft app for the user the way it will show once installed, by its app.json placement: a modal, a floating widget, a page in the main area, a strip docked above the composer, or a sidebar panel (it reloads by itself on every file change). The draft lives in the folder this returns; write it with your file tools. Pass template to start a new draft from one (dashboard: a data modal; widget: a small floating widget; page: a full-page workspace; dock: a composer strip; tool: agent tools and a chat card; bundle: owned command and skill).",
       input: {
         name: z.string().describe("The app's name: lowercase letters, digits and dashes"),
         template: z.enum(APP_TEMPLATES).optional().describe("Seed a new draft from this template (only when the folder doesn't exist yet)"),
@@ -107,8 +111,19 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
         if (!dir) return error("This thread has no folder for drafts.");
         let seeded = false;
         if (!existsSync(dir)) {
-          if (!args.template) return error(`No draft at ${dir} yet. Write app.json and its entry page there first, or pass template: "dashboard".`);
           if (thread.permissionMode === "plan") return error("Plan mode can't create files. Switch to Ask or Auto-edit first.");
+          // A first call without a template makes the empty draft folder and says where to write: a normal step, not a failure.
+          if (!args.template) {
+            mkdirSync(dir, { recursive: true });
+            return {
+              text: JSON.stringify({
+                path: dir,
+                files: [],
+                shown: false,
+                next: 'Empty draft created. Write app.json and its entry page here with your file tools (or call again with template: "dashboard" or "widget"), then call creator_app_preview again to show it.',
+              }),
+            };
+          }
           const from = join(deps.templatesDir, args.template);
           if (!existsSync(from)) return error(`Template "${args.template}" is missing.`);
           mkdirSync(dir, { recursive: true });
@@ -140,7 +155,7 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
             ...(errors.length ? { errors, shown: false } : { shown: true }),
             next: errors.length
               ? "Fix these in the draft folder, then call creator_app_preview again."
-              : "Shown in the App tab; it reloads when you save. Run creator_app_check before proposing.",
+              : `Shown ${SHOWN_AS[info?.placement ?? "modal"]}; it reloads when you save. Run creator_app_check before proposing.`,
           }),
           ...(errors.length ? { isError: true } : {}),
         };
@@ -149,11 +164,13 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
     define({
       name: CREATOR_APP_CHECK_TOOL,
       description:
-        "Render your draft app off screen with real read-only connector data and report console errors, failed calls, whether it shows anything, its text, and a screenshot. Calls that can change data are not run. Run it before creator_propose.",
+        "Render your draft app off screen at the size it shows at (a floating widget's size, a dock's or panel's height at a typical width, else 900x700) with real read-only connector data and report console errors, failed calls, whether it shows anything, its text, and a screenshot. Calls that can change data are not run. Run it before creator_propose.",
       input: {
         name: z.string(),
         scheme: z.enum(["light", "dark"]).optional().describe("Theme to render in (default light)"),
-        screenshot: z.boolean().optional().describe("Include a 900x700 screenshot (default true)"),
+        screenshot: z.boolean().optional().describe("Include a screenshot at the app's size (default true)"),
+        card: z.string().optional().describe("Check this declared chat card instead of the main UI"),
+        cardData: z.string().optional().describe("JSON data for the card specimen (up to 64 KB); never executes the tool"),
       },
       autoAllow: true,
       effect: "read",
@@ -170,13 +187,30 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
         if (!info) return error("The draft can't be opened.");
         const wantImage = args.screenshot !== false;
         const image = wantImage && deps.takeImage(threadId);
-        const r = await deps.check(key, info.url, { scheme: args.scheme ?? "light", screenshot: image });
+        const card = args.card ? valid.manifest.cards?.find((c) => c.name === args.card) : null;
+        if (args.card && !card) return error("No declared card with that name.");
+        let cardData: unknown = null;
+        if (args.cardData !== undefined) {
+          if (!card || Buffer.byteLength(args.cardData) > 64 * 1024) return error("cardData needs a declared card and at most 64 KB of JSON.");
+          try { cardData = JSON.parse(args.cardData); } catch { return error("cardData is not valid JSON."); }
+        }
+        const r = await deps.check(key, card ? appUrl(key, card.entry) : info.url, { scheme: args.scheme ?? "light", screenshot: image, size: card ? { width: 680, height: card.height } : appSize(valid.manifest), ...(card ? { cardData } : isSmallPlacement(valid.manifest.placement) ? { minChars: 1 } : {}) });
+        if (!card && valid.manifest.tools?.length) {
+          const registered = await deps.check(key, appUrl(key, valid.manifest.toolEntry ?? valid.manifest.entry), { scheme: args.scheme ?? "light", screenshot: false, minChars: 0, expectedTools: valid.manifest.tools.map((t) => t.name) });
+          r.errors.push(...registered.errors);
+          r.calls.push(...registered.calls);
+          r.ok = r.ok && registered.ok;
+          r.timedOut = r.timedOut || registered.timedOut;
+        }
         const { png, ...report } = r;
+        const appTheme = valid.manifest.contributes?.appTheme;
+        const specimen = appTheme && !card ? await deps.check(key, CHECK_THEME_URL, { scheme: args.scheme ?? "light", screenshot: false, appTheme, size: { width: 900, height: 700 } }) : null;
+        const paletteSpecimen = specimen ? (({ png: _png, ...rest }) => rest)(specimen) : undefined;
         const next = r.ok
-          ? "Looks fine. Propose it with creator_propose kind: \"app\" when the user's ask is met."
+           ? "Looks fine. Propose it with creator_propose kind: \"app\" when the user's ask is met."
           : "Fix what's listed, then check again.";
         const note = wantImage && !image ? " No screenshot: this conversation already carries as many images as its model takes; rely on the text above." : "";
-        return { text: JSON.stringify({ ...report, next }) + note, ...(png ? { imagePng: png.toString("base64") } : {}) };
+        return { text: JSON.stringify({ ...report, ...(paletteSpecimen ? { paletteSpecimen, hostUiReviewed: false } : {}), next: paletteSpecimen && !paletteSpecimen.ok ? "Fix the palette specimen before proposing." : next }) + note, ...(png ? { imagePng: png.toString("base64") } : {}) };
       },
     }),
     define({

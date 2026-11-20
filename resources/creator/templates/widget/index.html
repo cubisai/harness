@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  /* style: "own" — no CubiQ base sheet, so the widget sets its own type. The --cq-* colours still follow light/dark. */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: transparent; color: var(--cq-text); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  main { height: 100%; display: grid; grid-template-rows: auto 1fr auto; gap: 6px; padding: 10px 14px 12px; }
+  .mode { font-size: 11px; font-weight: 500; color: var(--cq-text-secondary); }
+  .time { font-size: 40px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; align-self: center; }
+  .row { display: flex; gap: 6px; }
+  button { font: inherit; font-size: 12px; font-weight: 500; height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--cq-hairline-strong); background: transparent; color: var(--cq-text); cursor: pointer; }
+  button.primary { background: var(--cq-primary); color: var(--cq-on-primary); border-color: var(--cq-primary); }
+  button:hover { background: var(--cq-bg-hover); }
+  button.primary:hover { opacity: .9; background: var(--cq-primary); }
+  button:focus-visible { outline: 2px solid var(--cq-focus); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="mode" id="mode">Focus</div>
+  <div class="time" id="time" aria-live="off">25:00</div>
+  <div class="row">
+    <button class="primary" id="toggle" type="button">Start</button>
+    <button id="reset" type="button">Reset</button>
+  </div>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

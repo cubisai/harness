@@ -12,6 +12,7 @@ import { describeSchedule, nextDue, validSchedule } from "./schedule";
 import { defaultSources } from "./sources";
 import { AutomationStore, type Automation, type AutomationRun } from "./store";
 import { templates } from "./templates";
+import type { PluginOwner } from "../../shared/plugin-parts";
 
 const TICK_MS = 60_000;
 const LEASE_MS = 10 * 60_000;
@@ -96,11 +97,12 @@ export interface AutomationsApp {
 }
 
 /** Start automations: reconcile what a crash left behind, then tick every minute. */
-export function startAutomations(o: { store: Store; service: Service; broadcast: (u: LiveUpdate) => void; sources?: Map<string, Source> }): AutomationsApp {
+export function startAutomations(o: { store: Store; service: Service; broadcast: (u: LiveUpdate) => void; sources?: Map<string, Source>; owner?: (id: string) => PluginOwner | null }): AutomationsApp {
   const automations = new AutomationStore(o.store.sql);
   const own = new Set<string>();
   const runner = new AutomationRunner({
     store: automations,
+    owner: o.owner,
     createThread: async (a) => {
       const t = o.service.createThread(a.projectId, a.agent ?? undefined);
       own.add(t.id);
@@ -138,11 +140,19 @@ export function startAutomations(o: { store: Store; service: Service; broadcast:
   };
   void runner.recover().finally(tick);
   const timer = setInterval(tick, TICK_MS);
+  const ownedView = (a: Automation): AutomationView => {
+    const view = viewOf(a, automations, Date.now()), owner = o.owner?.(a.id);
+    return owner ? { ...view, owner, ...(!owner.enabled ? { nextAt: null, unavailable: "The owning plugin is Off or unavailable." } : {}) } : view;
+  };
   const overview = (projectId: string): AutomationsOverview => ({
     templates: templates(),
-    automations: automations.list(projectId).map((a) => viewOf(a, automations, Date.now())),
+    automations: automations.list(projectId).map(ownedView),
   });
   const save = (projectId: string, input: AutomationInput, id?: string): AutomationView => {
+    if (id) {
+      if (automations.get(id)?.projectId !== projectId) throw new Error("Automation does not belong to this project.");
+      if (o.owner?.(id)?.enabled === false) throw new Error("The owning plugin is Off or unavailable. Turn it On before changing this automation.");
+    }
     const name = input.name.trim();
     if (!name) throw new Error("Name the automation.");
     const bad = validSchedule(input.schedule);
@@ -153,14 +163,17 @@ export function startAutomations(o: { store: Store; service: Service; broadcast:
     const permissions: AutomationPermissions = input.permissions === "ask" ? "ask" : "unattended";
     const fields = { name, prompt: input.prompt, schedule: input.schedule, missed: input.missed, enabled: input.enabled, agent: input.agent, model: input.model, budgetUsd: input.budgetUsd, permissions };
     const a = id ? automations.update(id, fields) : automations.create({ id: randomUUID(), projectId, template: input.template, anchor: Date.now(), ...fields });
-    return viewOf(a, automations, Date.now());
+    return ownedView(a);
   };
   return {
     store: automations,
     runner,
     overview,
     save,
-    remove: (id) => automations.remove(id),
+    remove: (id) => {
+      if (o.owner?.(id)) throw new Error("This automation is managed by its plugin. Uninstall the plugin to remove its bundled parts.");
+      automations.remove(id);
+    },
     runNow: (id) => {
       const run = runner.runNow(id);
       void runner.drain();

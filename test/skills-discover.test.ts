@@ -52,9 +52,10 @@ describe("parseSkillMd", () => {
     expect(parsed.body).toBe("# Title\n\nJust text");
   });
 
-  it("reads `mode: design` and ignores any other mode", () => {
+  it("reads `mode: design` / `mode: creator` and ignores any other mode", () => {
     const design = parseSkillMd("---\ndescription: A design skill\nmode: design\n---\nbody");
     expect(design.mode).toBe("design");
+    expect(parseSkillMd("---\ndescription: Creator\nmode: creator\n---\nbody").mode).toBe("creator");
     const other = parseSkillMd("---\ndescription: Not design\nmode: something-else\n---\nbody");
     expect(other.mode).toBeUndefined();
   });
@@ -149,6 +150,13 @@ describe("forAgent", () => {
     const withDesign: Catalog = mergeCatalog([[entry("d", "project", { mode: "design" })]], new Set());
     expect(forAgent(withDesign, { mode: "none" }).map((s) => s.name)).toEqual([]);
     expect(forAgent(withDesign, { mode: "none" }, new Set(), { design: true }).map((s) => s.name)).toEqual(["d"]);
+  });
+
+  it("gives Creator-only skills to Creator threads only, never to design or chat threads", () => {
+    const both: Catalog = mergeCatalog([[entry("d", "project", { mode: "design" }), entry("c", "bundled", { mode: "creator" }), entry("x", "bundled")]], new Set());
+    expect(forAgent(both, { mode: "none" }).map((s) => s.name).sort()).toEqual(["x"]);
+    expect(forAgent(both, { mode: "none" }, new Set(), { creator: true }).map((s) => s.name).sort()).toEqual(["c", "x"]);
+    expect(forAgent(both, { mode: "none" }, new Set(), { design: true }).map((s) => s.name).sort()).toEqual(["d", "x"]);
   });
 });
 

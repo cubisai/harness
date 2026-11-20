@@ -141,7 +141,7 @@ jobs:
           TAG: ${{ needs.check.outputs.tag }}
           VERSION: ${{ needs.check.outputs.version }}
         run: |
-          if node src/scripts/release.mjs notes "$VERSION" > notes.md; then
+          if node src/scripts/release/release.mjs notes "$VERSION" > notes.md; then
             notes=(--notes-file notes.md)
           else
             echo "::warning::CHANGELOG.md has no section for $VERSION: using GitHub's generated notes"

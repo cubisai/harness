@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Density, Motion, PermissionMode, SettingsView, Theme } from "../../../shared/types";
+import { AppThemeControls } from "./AppThemeControls";
 import type { DesignReferenceStatus } from "../../../shared/design-mutation";
 import { DEFAULT_COMMIT_INSTRUCTIONS, MAX_RUNNING_CHOICES } from "../../../shared/types";
 import { api } from "../api";
@@ -91,15 +92,32 @@ export function richRepliesPatch(stop: RichReplies): Pick<SettingsView, "uiBlock
   return { uiBlocks: stop !== "off", linkPreviews: stop === "links" };
 }
 
+/** Keyboard opening may have no trigger; prefer the visible Settings button over Body. */
+export function restoreSettingsFocus(previous: HTMLElement | null, doc: Pick<Document, "body" | "querySelector"> = document): void {
+  if (previous?.isConnected && previous !== doc.body && !previous.matches(":disabled")) previous.focus();
+  else (doc.querySelector<HTMLElement>('button[aria-label^="Settings"], button[title^="Settings"]') ?? doc.querySelector<HTMLElement>(".composer textarea"))?.focus();
+}
+
 export function SettingsSheet() {
   const open = useStore((s) => s.settingsOpen);
   const settings = useStore((s) => s.settings);
   const setOpen = useStore((s) => s.setSettingsOpen);
   const [group, setGroup] = useState<SettingsGroup>("appearance");
   const panel = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(false);
 
-  useEffect(() => {
-    if (!open) return;
+  useLayoutEffect(() => {
+    if (!open) {
+      // React restores its saved focus after mutations; return focus only once
+      // the close has committed, before a replacement overlay's passive effect.
+      if (wasOpen.current) restoreSettingsFocus(previousFocus.current);
+      previousFocus.current = null;
+      wasOpen.current = false;
+      return;
+    }
+    if (!wasOpen.current) previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    wasOpen.current = true;
     const onKey = (e: KeyboardEvent) => {
       // An open pick list takes Escape for itself.
       if (e.key === "Escape" && selectPopupOpen()) return;
@@ -177,6 +195,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
               ))}
             </div>
           </div>
+          <div className="row"><span className="label">App theme</span><AppThemeControls /></div>
           <div className="row">
             <span className="label" title="Your system's reduce-motion setting always wins">Motion</span>
             <div className="segmented">

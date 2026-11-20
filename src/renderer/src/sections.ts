@@ -35,8 +35,9 @@ export function inboxModel(projectIds: string[], threads: Record<string, Thread[
     const group: Thread[] = [];
     for (const t of threads[projectId] ?? []) {
       const live = !t.archived && (running[t.id] || waiting?.has(t.id));
-      // A running thread of another mode is never hidden.
-      if (activeMode && !live && workspaceModeOf(t) !== activeMode) continue;
+      // A running thread of another mode is never hidden. Creator lives inside Chat now (a toggle in the composer), so Chat lists its threads.
+      const own = workspaceModeOf(t);
+      if (activeMode && !live && own !== activeMode && !(activeMode === "chat" && own === "creator")) continue;
       if (t.archived) (model.archived[projectId] ??= []).push(t);
       else if (live) model.running.push(t);
       else if (pinned?.[t.id] ?? t.pinned) model.pinned.push(t);
@@ -55,6 +56,9 @@ export function inboxModel(projectIds: string[], threads: Record<string, Thread[
 
 /** A thread's kind; older threads have none and are chats. */
 export const threadKind = (t: Pick<Thread, "kind">): ThreadKind => t.kind ?? "chat";
+
+/** The sidebar's switch shows Chat or Design; a Creator thread is a chat with the Creator toggle on. */
+export const sidebarMode = (kind: WorkspaceMode): "chat" | "design" => (kind === "design" ? "design" : "chat");
 
 /** A thread's workspace mode: design, creator or general chat. */
 export const workspaceModeOf = (t: Pick<Thread, "kind" | "preset">): WorkspaceMode =>

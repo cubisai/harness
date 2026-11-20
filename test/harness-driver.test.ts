@@ -2,10 +2,11 @@ import { CODE_HINT } from "../src/main/code-hint";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { PermissionMode, PlanDecision, Provider, Question, ThreadEvent } from "../src/shared/types";
 import type { HarnessTool, TurnInput } from "../src/main/agents/types";
+import { ManagedToolRules } from "../src/main/apps/tool-rules";
 import { BUILT_IN_GUARD } from "../src/main/guard";
 import { ASK_USER_TOOL } from "../src/main/questions";
 import { createProviderDriver, LOOK_AROUND, providerAgentId, RUN_CODE_TIP, type ProviderDriverDeps } from "../src/main/harness/driver";
@@ -132,6 +133,26 @@ function setup(
 }
 
 describe("provider driver", () => {
+  it.each([
+    ["todowrite", { todos: [{ content: "Local task", status: "pending" }] }],
+    ["glob", { pattern: "**/*" }], ["grep", { pattern: "fixture" }],
+    ["web_fetch", { url: "https://never-request.example.test/" }],
+    ["task", { description: "No child run", prompt: "Must not spawn a child" }],
+    ["ask_user", { questions: [{ header: "No question", question: "Must not ask", options: [] }] }],
+  ] as const)("the final native %s factory reaches mandatory Ask before any body effects", async (name, args) => {
+    const question = vi.fn<NonNullable<TurnInput["requestUserInput"]>>(async () => "dismiss");
+    const t = setup([[{ type: "tool-call", id: "native-call", name, input: args }], [{ type: "text", text: "Denied locally." }]], { mode: "full", requestUserInput: question });
+    const input = t.input("Local deterministic factory test"), approve = vi.fn(async () => false);
+    const manager = new ManagedToolRules({ policy: { rules: (target) => target.kind === "tool" && target.name === name ? "ask" : null, rulesRevision: () => "one" }, thread: () => ({ projectId: "p1", permissionMode: input.permissionMode, kind: "chat", agent: "provider-th", signal: input.signal }), approve });
+    input.managedTools = (tools) => manager.tools(tools);
+    input.managedRun = (tool, args, signal) => manager.execute(tool, args, { threadId: "t1", projectId: "p1", signal });
+    try { await t.driver.runTurn(input); } finally { manager.dispose(); }
+    expect(approve).toHaveBeenCalledOnce(); expect(t.asked).toHaveLength(0); expect(t.planRequests).toHaveLength(0); expect(question).not.toHaveBeenCalled();
+    expect(t.events.some((e) => e.kind === "plan")).toBe(false);
+    expect(t.requests).toHaveLength(2); // No network fetch or child-model invocation.
+    const history = t.sessions.load(t.session()!)!;
+    expect(history.some((m) => m.role === "tool" && m.results.some((r) => r.isError))).toBe(true);
+  });
   it("is its own agent with the provider's models", () => {
     const { driver } = setup([]);
     expect(driver.id).toBe("provider-th");

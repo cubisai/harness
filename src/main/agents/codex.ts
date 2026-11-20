@@ -10,9 +10,10 @@ import { createHash } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { forCodex, mcpChangeNotice } from "../mcp/servers";
+import { deferManagedPermission, managedTarget } from "./managed-permission";
 import { withBrowserOnDemandFlag, withCode, withDesign, withProject, withShells } from "../mcp-http";
 import { BROWSER_CALL } from "../browser/on-demand";
-import { SHELL_TOOL_NAMES } from "../shell-tools";
+import { carriesThreadOwnTools, isCreatorTool } from "../shell-tools";
 import { normalizeUsage } from "../usage";
 import type { InjectionPlan } from "../inject";
 import { RpcError, StdioRpc } from "./rpc";
@@ -195,6 +196,11 @@ export function turnPolicy(mode: PermissionMode, design?: string): { approvalPol
 /** Where a design thread's CubiQ skills are, so Codex reads them there instead of guessing a root. */
 export function designSkillsLine(root: string): string {
   return `CubiQ's design skills for this thread are in \`${root}\`: read \`${root}/<skill>/SKILL.md\` (e.g. design-build).`;
+}
+
+/** Where a Creator thread's CubiQ skill is, so Codex reads it there first. */
+export function creatorSkillsLine(root: string): string {
+  return `CubiQ's Creator skill for this thread is \`${root}/cubiq-creator/SKILL.md\`: read it before building anything.`;
 }
 
 /** Codex's per-turn sandbox policy, as the app-server schema spells it. */
@@ -904,12 +910,18 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
       return { decision: codexDecision(decision) };
     }
     if (method === "mcpServer/elicitation/request") return onElicitation(params as Elicitation);
-    // A dynamic tool call (run_code): emit its row if item/started hasn't yet, run it, and answer with content items.
+    // A dynamic tool call (run_code, a Creator tool): emit its row if item/started hasn't yet, run it, and answer with content items.
     if (method === "item/tool/call") {
       const call = params as { threadId: string; callId?: string; tool?: string; arguments?: unknown };
       const state = stateFor(call.threadId);
-      const tool = state && config.codeTool?.(state.input.threadId);
-      if (!state || !tool || call.tool !== tool.name) {
+      const code = state ? config.codeTool?.(state.input.threadId) : undefined;
+      const tool =
+        code && call.tool === code.name
+          ? code
+          : state && call.tool && isCreatorTool(call.tool)
+            ? state.input.tools.find((t) => t.name === call.tool)
+            : undefined;
+      if (!state || !tool) {
         return { contentItems: [{ type: "inputText", text: `No handler registered for tool: ${String(call.tool ?? "")}` }], success: false };
       }
       const args = call.arguments && typeof call.arguments === "object" ? (call.arguments as Record<string, unknown>) : {};
@@ -926,7 +938,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
           ...(parentId ? { parentId } : {}),
           signal: state.input.signal,
         });
-        return { contentItems: [{ type: "inputText", text: out.text }], success: !out.isError };
+        // A screenshot (creator_app_check, creator_theme_preview) rides along as an image item.
+        const image = out.imagePng ? [{ type: "inputImage", imageUrl: `data:image/png;base64,${out.imagePng}` }] : [];
+        return { contentItems: [{ type: "inputText", text: out.text }, ...image], success: !out.isError };
       } catch (err) {
         return { contentItems: [{ type: "inputText", text: err instanceof Error ? err.message : String(err) }], success: false };
       }
@@ -952,6 +966,9 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const owner = t.parent?.threadId ?? t.threadId;
     const allowed = alwaysAllowed.get(owner);
     if (allowed?.has(`${p.serverName}/${tool}`)) return { action: "accept", content: null };
+    // The display fields are not exact arguments and never become an approval.
+    // Main's execution gate validates/asks about the actual input after deferral.
+    if (deferManagedPermission(t.input, managedTarget(t.input, p.serverName, tool))) return { action: "accept", content: null };
     const decision = await t.input.requestPermission({
       toolName: TOOL_SERVERS.has(p.serverName) ? tool : `${p.serverName} · ${tool}`,
       summary: (p._meta.tool_params_display ?? []).map((d) => `${d.display_name ?? d.name}: ${String(d.value)}`).join(", ") || tool,
@@ -1109,7 +1126,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     const codeMode = config.codeMode?.(input.threadId) ?? "off";
     // Code mode's run_code rides the URL too (`&c=`), fixed for the thread, so the tool list never changes mid-session.
     // Background shells too (`&s=`), when the thread's tools carry them.
-    const shells = input.tools.some((t) => (SHELL_TOOL_NAMES as readonly string[]).includes(t.name)) ? input.threadId : undefined;
+    const shells = carriesThreadOwnTools(input.tools) ? input.threadId : undefined;
     const toolUrl = server
       ? withBrowserOnDemandFlag(withShells(withCode(withDesign(withProject(server.url, input.projectId), input.design || input.team?.length ? input.threadId : undefined), codeMode !== "off" ? input.threadId : undefined), shells), input.tools.some((t) => t.name === BROWSER_CALL))
       : "";
@@ -1130,17 +1147,21 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
     // Codex ships its own todo list tool off (0.159); on, the list arrives as turn/plan/updated and shows as the plan.
     threadConfig = { ...(threadConfig ?? {}), tools: { update_plan: { enabled: true } } };
     // Codex pins a design skill onto the wrong skills root (another plugin's) on its first read: say where CubiQ's are.
-    const skillRoot = input.design ? config.skillsDir?.(input.cwd, true, input.threadId) : null;
-    const skillLine = skillRoot ? designSkillsLine(skillRoot) : "";
+    // A Creator thread (the only preset) likewise gets its Creator skill's path.
+    const skillRoot = input.design || input.preset ? config.skillsDir?.(input.cwd, !!input.design, input.threadId) : null;
+    const skillLine = !skillRoot ? "" : input.design ? designSkillsLine(skillRoot) : creatorSkillsLine(skillRoot);
     // Opt-in (CUBIQ_CODEX_EXEC_MODE=1) until its approvals and rows are live-checked: Codex's own code_mode puts every tool, run_code included, inside `exec`.
     const execMode = codeMode !== "off" && Boolean(server) && process.env.CUBIQ_CODEX_EXEC_MODE === "1";
     if (execMode) threadConfig = { ...(threadConfig ?? {}), features: { code_mode: true } };
     // Code mode's run_code as a client-executed dynamic tool (0.159+): top-level, not deferred behind tool_search.
     // The MCP copy on the URL above stays as the fallback for threads started before dynamicTools.
     const runCode = codeMode !== "off" && !execMode && config.codeTool ? config.codeTool(input.threadId) : null;
-    const dynamicTools = runCode ? [dynamicToolSpec(runCode)] : null;
+    // A Creator thread's tools too: behind tool_search Codex never reaches for them (2026-11-19).
+    const creatorDynamic = input.tools.filter((t) => isCreatorTool(t.name));
+    const dynamicList = [...(runCode ? [runCode] : []), ...creatorDynamic];
+    const dynamicTools = dynamicList.length ? dynamicList.map(dynamicToolSpec) : null;
     // Without a dynamic tool Codex defers every MCP tool behind tool_search, so its hint says to load run_code first.
-    const codeHint = codeMode === "off" ? "" : execMode ? CODE_HINT_CODEX_EXEC : dynamicTools ? CODE_HINT : server ? CODE_HINT_DEFERRED : "";
+    const codeHint = codeMode === "off" ? "" : execMode ? CODE_HINT_CODEX_EXEC : runCode ? CODE_HINT : server ? CODE_HINT_DEFERRED : "";
     const guideText = [config.guide?.(input.cwd, input.design) ?? "", skillLine, codeHint, PLAN_HINT].filter(Boolean).join("\n\n");
     const signature = JSON.stringify(threadConfig ?? null);
     let threadId = "";
@@ -1159,7 +1180,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         const servers = (json: string) => ((JSON.parse(json) as { mcp_servers?: Record<string, unknown> } | null)?.mcp_servers ?? {});
         const notice = mcpChangeNotice(servers(was), servers(signature), true, "Codex");
         if (notice) input.onEvent({ kind: "notice", text: notice });
-        await conn.request("thread/unsubscribe", { threadId: input.sessionId }).catch(() => {});
+        try { await conn.request("thread/unsubscribe", { threadId: input.sessionId }); }
+        catch { throw new Error("Codex could not unload this session's old MCP configuration. Start a fresh session before continuing."); }
         loaded.delete(input.sessionId);
         input.onSessionRebuilt?.();
       }
@@ -1391,7 +1413,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         return;
       }
 
-      const runOne = async (prompt: string, mode: PermissionMode): Promise<{ turn: Turn; planText: string | null }> => {
+      const runOne = async (prompt: string, mode: PermissionMode, images?: { path: string }[]): Promise<{ turn: Turn; planText: string | null }> => {
         const policy = turnPolicy(mode, input.design);
         // Plan mode is a native collaboration mode; leaving it must say so
         // explicitly, since the mode sticks to the thread between turns.
@@ -1417,7 +1439,7 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         try {
           const res = await conn.request<{ turn: Turn }>("turn/start", {
             threadId,
-            input: [{ type: "text", text: prompt, text_elements: [] }],
+            input: [{ type: "text", text: prompt, text_elements: [] }, ...(images ?? []).map((img) => ({ type: "localImage", path: img.path }))],
             model,
             approvalPolicy: policy.approvalPolicy,
             // Summarized reasoning streams back as `summary: "auto"`.
@@ -1460,7 +1482,8 @@ export function createCodexDriver(config: CodexConfig): AgentDriver {
         for (let round = 0; round < 6; round++) {
           // A Stop between rounds must end the run, never start another round.
           if (round > 0 && input.signal.aborted) break;
-          const r = await runOne(prompt, mode);
+          // Attached images go with the user's own message only, not a plan round's follow-up.
+          const r = await runOne(prompt, mode, round === 0 ? input.images : undefined);
           const alreadyStopped = r.turn.status === "interrupted";
           if (mode !== "plan" || !r.planText || r.turn.status !== "completed" || input.signal.aborted) break;
           const d = await input.requestPlanDecision({ plan: r.planText });

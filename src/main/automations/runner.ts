@@ -5,6 +5,7 @@ import type { RunStatus } from "../../shared/automations";
 import type { DeliveryCheck, Destination, Source } from "./io";
 import { dueTimes, runKey } from "./schedule";
 import type { Automation, AutomationRun, AutomationStore } from "./store";
+import type { PluginOwner } from "../../shared/plugin-parts";
 
 export interface RunnerDeps {
   store: AutomationStore;
@@ -29,6 +30,8 @@ export interface RunnerDeps {
   leaseMs: number;
   /** How often a pending run renews its lease and checks waitingInput; default 1000. */
   pollMs?: number;
+  /** Main-owned plugin availability. Schedule Off and owner Off are different gates. */
+  owner?(id: string): PluginOwner | null;
 }
 
 export interface RecoverCounts {
@@ -72,6 +75,14 @@ export class AutomationRunner {
 
   constructor(private deps: RunnerDeps) {}
 
+  private allowed(id: string): boolean { return this.deps.owner?.(id)?.enabled !== false; }
+  private cancel(run: AutomationRun, a: Automation): void {
+    const current = this.deps.store.run(run.id);
+    if (!current || !["queued", "running", "waiting-input"].includes(current.status)) return;
+    if (current.threadId) this.deps.interrupt?.(current.threadId);
+    this.notify(this.deps.store.finishRun(run.id, { status: "cancelled", error: "The owning plugin is Off, unavailable or changed." }), a);
+  }
+
   /**
    * Reconcile what was in flight before anything retries: stale runs are
    * interrupted; a confirmed check confirms; a missing one is re-published
@@ -83,11 +94,16 @@ export class AutomationRunner {
     const store = this.deps.store;
     const counts: RecoverCounts = { interrupted: store.interruptStale(true), requeued: 0, confirmed: 0, republished: 0, unknown: 0 };
     for (const r of store.queuedRuns()) {
+      const a = store.get(r.automationId);
+      if (!this.allowed(r.automationId)) { if (a) this.cancel(r, a); continue; }
       if (this.queue.includes(r.id)) continue;
       this.queue.push(r.id);
       counts.requeued++;
     }
     for (const d of store.pendingDeliveries()) {
+      const pending = store.run(d.runId);
+      // Off does not retry or publish a crash's queued delivery.
+      if (pending && !this.allowed(pending.automationId)) { counts.unknown++; continue; }
       const key = d.idempotencyKey;
       let check: DeliveryCheck;
       try {
@@ -109,6 +125,7 @@ export class AutomationRunner {
           counts.unknown++;
           continue;
         }
+        if (!this.allowed(a.id)) { counts.unknown++; continue; }
         try {
           const receipt = await this.deps.destination.publish({
             key,
@@ -138,7 +155,7 @@ export class AutomationRunner {
     const store = this.deps.store;
     let claimed = 0;
     for (const a of store.list()) {
-      if (!a.enabled) continue;
+      if (!a.enabled || !this.allowed(a.id)) continue;
       try {
         if (budgetPaused(store, a)) continue;
         const last = store.lastScheduled(a.id) ?? a.createdAt;
@@ -160,6 +177,7 @@ export class AutomationRunner {
   runNow(id: string): AutomationRun | null {
     const store = this.deps.store;
     if (!store.get(id)) return null;
+    if (!this.allowed(id)) throw new Error("The owning plugin is Off or unavailable. Turn it On before running this automation.");
     const at = this.deps.now();
     const run = store.claimRun(id, `${id}@manual-${new Date(at).toISOString()}`, at);
     if (!run) return null;
@@ -193,7 +211,7 @@ export class AutomationRunner {
   private async runOne(id: number): Promise<void> {
     const store = this.deps.store;
     const run = store.run(id);
-    if (!run) return;
+    if (!run || run.status !== "queued") return;
     const a = store.get(run.automationId);
     // Disabled only stops the schedule: a manual run still goes.
     const manual = run.runKey.startsWith(`${run.automationId}@manual-`);
@@ -201,6 +219,12 @@ export class AutomationRunner {
       store.finishRun(id, { status: "cancelled" });
       return;
     }
+    const owner = this.deps.owner?.(a.id);
+    const current = () => {
+      const live = this.deps.owner?.(a.id);
+      return (!owner || (live?.key === owner.key && live.revision === owner.revision)) && live?.enabled !== false && ["queued", "running", "waiting-input"].includes(store.run(id)?.status ?? "");
+    };
+    if (!current()) { this.cancel(run, a); return; }
     if (!manual && budgetPaused(store, a, id)) {
       store.finishRun(id, { status: "cancelled" });
       return;
@@ -210,6 +234,7 @@ export class AutomationRunner {
       const sections: string[] = [];
       const advances: { source: string; next: string }[] = [];
       for (const sourceId of this.deps.sourcesFor(a)) {
+        if (!current()) { this.cancel(run, a); return; }
         const src = this.deps.sources.get(sourceId);
         if (!src) {
           store.failSource(a.id, sourceId, "unknown source");
@@ -232,8 +257,10 @@ export class AutomationRunner {
       let prompt = a.prompt;
       if (sections.length > 0) prompt += `\n\n## Sources\n${sections.join("\n")}`;
 
+      if (!current()) { this.cancel(run, a); return; }
       const tid = await this.deps.createThread(a);
       threadId = tid;
+      if (!current()) { this.deps.interrupt?.(tid); this.cancel(run, a); return; }
       store.startRun(run.id, tid, this.deps.leaseMs);
 
       let budgetStopped = false;
@@ -246,6 +273,7 @@ export class AutomationRunner {
         }
       };
       const timer = setInterval(() => {
+        if (!current()) { this.cancel(run, a); return; }
         store.renewLease(run.id, this.deps.leaseMs);
         checkMidBudget();
         const wait = this.deps.waitingInput(tid);
@@ -262,6 +290,8 @@ export class AutomationRunner {
       } finally {
         clearInterval(timer);
       }
+      // Off/On cannot resurrect a cancelled send or publish its late result.
+      if (!current()) { this.cancel(run, a); return; }
       if (store.run(run.id)?.status === "waiting-input") store.setStatus(run.id, "running");
 
       const totals = this.deps.totals(tid);
@@ -279,6 +309,7 @@ export class AutomationRunner {
       store.deliveryIntent(key, run.id, this.deps.destination.id);
       try {
         const receipt = await this.deps.destination.publish({ key, automationId: a.id, runId: run.id, threadId: tid, title: a.name, text });
+        if (!current()) { store.markUnknown(key); this.cancel(run, a); return; }
         store.markPublished(key, receipt);
         store.confirmDelivery(key, receipt);
         // The bookmark only moves once the delivery is confirmed.
@@ -291,6 +322,7 @@ export class AutomationRunner {
       const finished = store.finishRun(run.id, { status, costUsd: totals.costUsd, inputTokens: totals.inputTokens, outputTokens: totals.outputTokens, result: text });
       this.notify(finished, a);
     } catch (err) {
+      if (!current()) { this.cancel(run, a); return; }
       const totals = threadId ? this.totalsOrNull(threadId) : null;
       const failed = store.finishRun(run.id, {
         status: "failed",

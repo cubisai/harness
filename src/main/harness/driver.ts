@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { BoundedMap, BoundedSet } from "../bounded";
 import { CODE_HINT } from "../code-hint";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { CodeMode, ModelOption, PermissionMode, Provider } from "../../shared/types";
@@ -250,7 +250,15 @@ async function runTurn(
     }
     sid = sessionId;
     messages = repairHistory(history);
-    const userMessage: LlmMessage = { role: "user", content: [{ type: "text", text: prompt }] };
+    // Attached images go as image parts to a model that sees images; the prompt lists their paths either way.
+    const images = entry.capabilities.vision ? (input.images ?? []).flatMap((img) => {
+      try {
+        return [{ type: "image" as const, mediaType: img.mediaType, data: readFileSync(img.path).toString("base64") }];
+      } catch {
+        return [];
+      }
+    }) : [];
+    const userMessage: LlmMessage = { role: "user", content: [...images, { type: "text", text: prompt }] };
     messages.push(userMessage);
     deps.sessions.append(sid, userMessage);
   }
@@ -353,7 +361,7 @@ async function runTurn(
     platform,
   });
   const tip = { codeMode: codeMode !== "off", looks: 0 };
-  const nativeLoop = nativeTools(wire).map((t) => nativeLoopTool(t, toolCtx, input, tip));
+  const nativeLoop = nativeTools(wire).map((t) => managedLoopTool(nativeLoopTool(t, toolCtx, input, tip), input));
   // The turn's live mode: plan mode's propose_plan flips it once the user approves.
   let mode: PermissionMode = input.permissionMode;
   const planLoop = input.permissionMode === "plan" ? createProposePlanTool({ mode: () => mode, decide: (plan) => input.requestPlanDecision({ plan }), signal: input.signal, onApproved: (m) => {
@@ -363,14 +371,15 @@ async function runTurn(
     const i = system.indexOf(PLAN_MODE_NOTE);
     if (i >= 0) system.splice(i, 1);
   } }) : null;
-  const appTools = [...input.tools, ...deps.mcpTools(input.projectId)].map((t) => appLoopTool(t, input, deps.outputDir));
-  const askLoop = input.requestUserInput ? appLoopTool(askUserTool((_threadId, questions) => input.requestUserInput!(questions)), input, deps.outputDir) : null;
+  const appTool = (tool: HarnessTool) => appLoopTool(input.managedTools?.([tool])[0] ?? tool, input, deps.outputDir);
+  const appTools = [...input.tools, ...deps.mcpTools(input.projectId)].map(appTool);
+  const askLoop = input.requestUserInput ? appTool(askUserTool((_threadId, questions) => input.requestUserInput!(questions))) : null;
   const skill = deps.skills?.(input.cwd, Boolean(input.design), input.threadId) ?? null;
-  const skillLoop = skill ? appLoopTool(skill, input, deps.outputDir) : null;
+  const skillLoop = skill ? appTool(skill) : null;
   // The task tool is read-only and runs in every mode; it hands its children the
   // three read-only native tools only, never the app's tools or propose_plan. A
   // team thread's members also get the team channel tools (team_write and co).
-  const taskLoop = createTaskTool({
+  const taskLoop = managedLoopTool(createTaskTool({
     route,
     request: subagentRequest,
     tools: () => nativeLoop.filter((t) => ["read", "glob", "grep"].includes(t.definition.name)),
@@ -402,7 +411,7 @@ async function runTurn(
           },
         }
       : {}),
-  });
+  }), input);
   // Code mode: one sandboxed script can chain the other tools. Every call the
   // script makes goes back through authorize, so ask mode still asks and the
   // thread still shows each call.
@@ -410,13 +419,13 @@ async function runTurn(
   if (!codeState) codeStateBySession.set(sid, (codeState = new Map<string, string>()));
   const codeLoop: LoopTool | null =
     codeMode !== "off"
-      ? createCodeTool({
+      ? managedCodeLoop(createCodeTool({
           tools: () => scriptable,
           outputDir: deps.outputDir,
           state: codeState,
           broker: createCodeBroker({ tools: () => scriptable, emit: (e) => input.onEvent(e), authorize: (tool, args, summary) => authorize(tool, args, summary), outputDir: deps.outputDir }),
           ...(deps.uiBlocks?.() ? { show: (widgets: ShownWidget[], callId: string) => widgets.forEach((w, i) => input.onEvent({ kind: "widget", envelope: scriptEnvelope(w.spec, callId, i, w.complete) })) } : {}),
-        })
+        }), input)
       : null;
   const scriptable: LoopTool[] = [...nativeLoop, ...appTools, ...(skillLoop ? [skillLoop] : []), ...(planLoop ? [planLoop] : []), ...(askLoop ? [askLoop] : []), taskLoop, ...(codeLoop ? [codeLoop] : [])].filter((t, i, all) => all.findIndex((o) => o.definition.name === t.definition.name) === i);
   // With code mode on the model sees run_code instead of read, glob and grep (prompt text alone never moved small
@@ -461,6 +470,7 @@ async function runTurn(
     if (verdict === "deny") return { ok: false, reason: refusal(mode, "deny") };
     // A design thread's own folder is its canvas: file edits there don't ask.
     if (tool.targets && designWriteAllowed(mode, input.cwd, input.design, tool.targets(args))) return { ok: true };
+    if (tool.deferPermission?.(args)) return { ok: true };
     const decision = await input.requestPermission({ toolName: tool.displayName, summary, canAlwaysAllow: true });
     return decision === "deny" ? { ok: false, reason: refusal(mode, "denied-by-user") } : { ok: true };
   };
@@ -630,7 +640,32 @@ function nativeLoopTool(
 }
 
 /** One of the app's tools (browser, memory, design, MCP router) in the loop, or in a script (code mode). */
-export function appLoopTool(tool: HarnessTool, input: Pick<TurnInput, "projectId" | "threadId">, outputDir: string): LoopTool {
+export function managedCodeLoop(tool: LoopTool, input: Pick<TurnInput, "managedRunCode">): LoopTool {
+  if (!input.managedRunCode) return tool;
+  return { ...tool, run: (args, call) => input.managedRunCode!(args, (approved, signal) => tool.run(approved, { ...call, signal }), call.signal) };
+}
+
+/** Native-loop factories otherwise bypass the main HarnessTool list. Keep their
+ * model schema, access, output/display and local validators intact; only wrap the
+ * actual call. The envelope freezes raw arguments before a mandatory wait. */
+export function managedLoopTool(tool: LoopTool, input: Pick<TurnInput, "threadId" | "projectId" | "signal" | "managedTools" | "managedRun">): LoopTool {
+  if (!input.managedRun) return tool;
+  const raw: HarnessTool = {
+    name: tool.definition.name, description: tool.definition.description,
+    input: { arguments: z.custom<Record<string, unknown>>((v) => typeof v === "object" && v !== null && !Array.isArray(v)) },
+    autoAllow: tool.access === "read" || tool.access === "control",
+    effect: tool.access === "read" || tool.definition.name === "todowrite" ? "read" : "mutate",
+    summarize: (args) => tool.summarize(args.arguments as Record<string, unknown>),
+    run: async () => ({ text: "A native call requires its originating invocation.", isError: true }),
+  };
+  const gate = input.managedTools?.([raw])[0];
+  return { ...tool,
+    ...(gate?.deferPermission ? { deferPermission: (args: Record<string, unknown>) => gate.deferPermission!({ arguments: args }, { threadId: input.threadId, projectId: input.projectId, signal: input.signal }) } : {}),
+    run: (args, call) => input.managedRun!({ ...raw, run: (approved, ctx) => tool.run(approved.arguments as Record<string, unknown>, { ...call, signal: ctx!.signal! }) }, { arguments: args }, call.signal),
+  };
+}
+
+export function appLoopTool(tool: HarnessTool, input: Pick<TurnInput, "projectId" | "threadId"> & Partial<Pick<TurnInput, "signal" | "managedPermission">>, outputDir: string): LoopTool {
   let parameters: Record<string, unknown>;
   try {
     const { $schema: _schema, ...schema } = z.toJSONSchema(z.object(tool.input), { io: "input", unrepresentable: "any" }) as Record<string, unknown>;
@@ -646,6 +681,8 @@ export function appLoopTool(tool: HarnessTool, input: Pick<TurnInput, "projectId
     access: tool.autoAllow ? "read" : "edit",
     // Permission and scheduling are separate: a tool may be safe to run without asking yet still change state.
     parallel: tool.effect ? tool.effect === "read" : tool.autoAllow,
+    ...(tool.pluginRulesHandled ? { deferPermission: (args: Record<string, unknown>) => input.managedPermission?.({ kind: "tool", name: tool.name }, args)
+      || Boolean(input.signal && tool.deferPermission?.(args, { threadId: input.threadId, projectId: input.projectId, signal: input.signal })) } : {}),
     summarize: (args) => {
       if (tool.summarize) return tool.summarize(args);
       const first = Object.values(args).find((v) => typeof v === "string");

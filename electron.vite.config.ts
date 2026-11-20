@@ -3,9 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
-import { releasedEntries } from "./scripts/release.mjs";
+import { releasedEntries } from "./scripts/release/release.mjs";
 
-// Dev runs the branded clone scripts/brand-dev-electron.mjs makes: macOS names the Dock after the bundle's file name.
+// Dev runs the branded clone scripts/build/brand-dev-electron.mjs makes: macOS names the Dock after the bundle's file name.
 if (process.platform === "darwin" && !process.env.ELECTRON_EXEC_PATH) {
   const clone = resolve("node_modules/electron/dist/CubiQ.app/Contents/MacOS/Electron");
   if (existsSync(clone)) process.env.ELECTRON_EXEC_PATH = clone;

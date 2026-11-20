@@ -62,7 +62,7 @@ export interface Task {
   turns?: { prompt: string; reply?: string }[];
   /** Memory text the agent is given (native engine: returned from the driver's `memory` dep). */
   memory?: string;
-  /** Mock MCP servers from scripts/mock-extensions-lib.mjs `generate`. */
+  /** Mock MCP servers from scripts/dev/mock-extensions-lib.mjs `generate`. */
   mcp?: { servers: number; tools: number; seed: number };
   /** Capabilities the bun eval runner can't provide (they need Electron); such tasks are skipped, see run.ts. */
   requires?: ("browser" | "team")[];
@@ -70,7 +70,7 @@ export interface Task {
   permissions?: "allow" | "deny";
   /** How the runner answers a plan proposal: "stop" ends the turn there (default), the others approve it. */
   planDecision?: "stop" | "auto" | "manual";
-  /** Mock skill kit written into the fixture copy (scripts/mock-extensions-lib.mjs). */
+  /** Mock skill kit written into the fixture copy (scripts/dev/mock-extensions-lib.mjs). */
   skills?: { kit: { skills: number; seed: number } };
   graders: Grader[];
   budget: Budget;
