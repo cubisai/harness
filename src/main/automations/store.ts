@@ -246,15 +246,16 @@ export class AutomationStore {
 
   /** Delete the automation and everything it owns, all or nothing. */
   remove(id: string): void {
-    this.db.exec("BEGIN");
+    // A bundle may remove several owned rows inside its existing transaction.
+    this.db.exec("SAVEPOINT automation_remove");
     try {
       this.db.prepare("DELETE FROM automation_deliveries WHERE run_id IN (SELECT id FROM automation_runs WHERE automation_id = ?)").run(id);
       this.db.prepare("DELETE FROM automation_runs WHERE automation_id = ?").run(id);
       this.db.prepare("DELETE FROM automation_cursors WHERE automation_id = ?").run(id);
       this.db.prepare("DELETE FROM automations WHERE id = ?").run(id);
-      this.db.exec("COMMIT");
+      this.db.exec("RELEASE automation_remove");
     } catch (err) {
-      this.db.exec("ROLLBACK");
+      this.db.exec("ROLLBACK TO automation_remove; RELEASE automation_remove");
       throw err;
     }
   }

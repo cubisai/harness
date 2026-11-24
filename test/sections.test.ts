@@ -75,8 +75,10 @@ describe("inboxModel", () => {
 
     const chatMode = inboxModel(["p1"], mixed, { running: { "creator-1": true }, mode: "chat" });
     expect(ids(chatMode.running)).toEqual(["creator-1"]);
-    expect(ids(chatMode.pinned)).toEqual([]);
+    // Creator is a toggle inside Chat: its threads list with the chats.
+    expect(ids(chatMode.pinned)).toEqual(["creator-pin"]);
     expect(ids(chatMode.recent)).toEqual(["chat-1", "old"]);
+    expect(ids(inboxModel(["p1"], mixed, { running: {}, mode: "chat" }).recent)).toEqual(["chat-1", "old", "creator-1"]);
 
     const creatorMode = inboxModel(["p1"], mixed, { running: { "design-1": true }, mode: "creator" });
     expect(ids(creatorMode.running)).toEqual(["design-1"]);

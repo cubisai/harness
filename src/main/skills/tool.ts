@@ -40,7 +40,7 @@ function line(s: SkillEntry): string {
  * `- name: description` listing. Past either limit the description is names
  * only and the tool takes a `query` to search.
  */
-export function skillTool(skills: () => SkillEntry[]): HarnessTool {
+export function skillTool(skills: () => SkillEntry[], assertSkill?: (entry: SkillEntry) => void): HarnessTool {
   const list = [...skills()].sort((a, b) => a.name.localeCompare(b.name));
   const lines = list.map(line);
   const legacyDescription = lines.length
@@ -49,12 +49,18 @@ export function skillTool(skills: () => SkillEntry[]): HarnessTool {
 
   // Live first, snapshot second: a skill added after the tool was built still loads.
   const load = async (name: string): Promise<{ text: string; isError?: boolean }> => {
-    const found = skills().find((s) => s.name === name) ?? list.find((s) => s.name === name);
+    const live = skills().find((s) => s.name === name);
+    const snapshot = list.find((s) => s.name === name);
+    // Plugin names are revocable: no snapshot fallback after Off, or silent substitution after Update.
+    if ((snapshot?.owner && (!live || live.owner?.key !== snapshot.owner.key || live.owner.revision !== snapshot.owner.revision)) || (live?.origin === "plugin" && !assertSkill)) return { text: "This plugin skill is Off, removed or changed. Start a new thread for its current skills.", isError: true };
+    const found = live ?? snapshot;
     if (!found) {
       const names = skills().map((s) => s.name);
       return { text: names.length ? `Unknown skill "${name}". Available: ${names.join(", ")}.` : `Unknown skill "${name}". No skills are installed.`, isError: true };
     }
     const base = found.dir ?? "";
+    try { assertSkill?.(found); }
+    catch (e) { return { text: (e as Error).message, isError: true }; }
     return { text: `<skill name="${name}" base="${base}">\n${readSkillBodyAt(base)}\n</skill>` };
   };
 

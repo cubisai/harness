@@ -1,9 +1,32 @@
-/** The message box's "/" commands: plan mode, the model picker, the issue picker, context, MCP servers, a new thread, doctor and code mode. The other permission modes live on the mode chip (and ⇧Tab). */
+import type { PluginCommandInvocation, PluginCommandView, PluginSkillInvocation } from "../../shared/plugin-parts";
+import type { SkillEntry } from "../../shared/types";
+
+export interface PluginSelections { pluginCommand?: PluginCommandInvocation; pluginSkills?: PluginSkillInvocation[] }
+
+/** Pin selected owned skills when they enter the composer/queue, not when a queue drains. */
+export function pluginSkillSelections(skills: readonly SkillEntry[]): PluginSelections {
+  const selected = skills.filter((s) => s.origin === "plugin").map((s) => {
+    if (!s.owner?.revision) throw new Error("This plugin skill is unavailable. Pick its current skill again.");
+    return { key: s.owner.key, name: s.name, revision: s.owner.revision };
+  });
+  return selected.length ? { pluginSkills: selected } : {};
+}
+
+/** Qualified text is never silently sent as ordinary chat when a plugin is Off/changed. */
+export function selectedPluginCommand(text: string, commands: readonly PluginCommandView[], pinned?: PluginCommandInvocation | null): PluginCommandInvocation | null {
+  const name = /^\s*\/([A-Za-z0-9_-]+\.[A-Za-z0-9_.-]+)(?:\s|$)/.exec(text)?.[1];
+  if (!name) return null;
+  if (pinned && `${pinned.key.slice(2)}.${pinned.name}` === name) return { ...pinned };
+  const command = commands.find((c) => c.command === name);
+  if (!command) throw new Error("This plugin command is Off, removed or unavailable. Pick its current command again.");
+  return { key: command.key, name: command.name, revision: command.revision };
+}
 
 /** One command the message box can run when the text starts with "/name". */
 export interface ComposerCommand {
   name: string;
   description: string;
+  plugin?: PluginCommandInvocation;
 }
 
 /** Every "/" command, in menu order. */
@@ -45,11 +68,12 @@ export function exactCommand(text: string): ComposerCommand | null {
 }
 
 /** Commands matching the query: name-prefix matches first, then any name substring. */
-export function matchCommands(query: string): ComposerCommand[] {
+export function matchCommands(query: string, plugins: readonly PluginCommandView[] = []): ComposerCommand[] {
   const q = query.toLowerCase();
   const prefix: ComposerCommand[] = [];
   const rest: ComposerCommand[] = [];
-  for (const c of COMPOSER_COMMANDS) {
+  const dynamic = plugins.filter((p) => !COMPOSER_COMMANDS.some((c) => c.name === p.command)).map((p) => ({ name: p.command, description: p.description, plugin: { key: p.key, name: p.name, revision: p.revision } }));
+  for (const c of [...COMPOSER_COMMANDS, ...dynamic]) {
     if (c.name.startsWith(q)) prefix.push(c);
     else if (c.name.includes(q)) rest.push(c);
   }

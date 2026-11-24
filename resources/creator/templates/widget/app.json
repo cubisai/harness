@@ -1,0 +1,10 @@
+{
+  "name": "focus-timer",
+  "title": "Focus timer",
+  "description": "A small floating timer: 25 minutes of focus, then a 5 minute break.",
+  "icon": "clock",
+  "entry": "index.html",
+  "placement": "floating",
+  "size": { "width": 260, "height": 150 },
+  "style": "own"
+}

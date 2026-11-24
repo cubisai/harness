@@ -219,6 +219,7 @@ class VaultProvider implements OAuthClientProvider {
     private spec: RemoteSpec,
     private redirect: string,
     private open: (url: string) => Promise<void>,
+    private assertCurrent: () => void = () => {},
   ) {}
 
   private oauth(): VaultOAuth {
@@ -226,6 +227,7 @@ class VaultProvider implements OAuthClientProvider {
   }
 
   private save(patch: Partial<VaultOAuth>): void {
+    this.assertCurrent();
     const next: VaultOAuth = { ...this.oauth(), ...patch };
     for (const k of Object.keys(next) as (keyof VaultOAuth)[]) if (next[k] === undefined) delete next[k];
     this.vault.update(this.key, { oauth: next });
@@ -291,11 +293,13 @@ class VaultProvider implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    this.assertCurrent();
     const url = safeAuthorizationUrl(authorizationUrl);
     // Record the issuer to expect back before the browser leaves (RFC 9207).
     const meta = (this.oauth().discovery as OAuthDiscoveryState | undefined)?.authorizationServerMetadata as { issuer?: string; authorization_response_iss_parameter_supported?: boolean } | undefined;
     this.issuer = { recorded: meta?.issuer, advertised: meta?.authorization_response_iss_parameter_supported === true };
     await this.open(url.toString());
+    this.assertCurrent();
   }
 
   saveCodeVerifier(codeVerifier: string): void {
@@ -338,8 +342,9 @@ export interface McpAuthDeps {
 
 /** Sign-in, tokens, refresh and sign-out for the remote servers, keyed like the vault ("global:name"). */
 export class McpAuth {
-  private refreshing = new Map<string, Promise<string | null>>();
-  private signingIn = new Map<string, Promise<{ ok: true } | { ok: false; error: string }>>();
+  private refreshing = new Map<string, { stop: AbortController; run: Promise<string | null> }>();
+  private signingIn = new Map<string, { stop: AbortController; run: Promise<{ ok: true } | { ok: false; error: string }> }>();
+  private generations = new Map<string, number>();
 
   constructor(private deps: McpAuthDeps) {}
 
@@ -372,26 +377,66 @@ export class McpAuth {
   }
 
   /** Interactive sign-in: opens the browser and waits (up to 5 minutes) for the redirect. One at a time per server. */
-  connect(key: string, spec: RemoteSpec): Promise<{ ok: true } | { ok: false; error: string }> {
+  connect(key: string, spec: RemoteSpec, valid: () => boolean = () => true): Promise<{ ok: true } | { ok: false; error: string }> {
     const running = this.signingIn.get(key);
-    if (running) return running;
-    const run = this.signIn(key, spec).finally(() => this.signingIn.delete(key));
-    this.signingIn.set(key, run);
+    if (running) return running.run;
+    // A refresh from the previous account must not replace this sign-in's tokens.
+    this.cancel(key);
+    const stop = new AbortController();
+    const work = this.work(key, stop.signal, valid);
+    const run = this.signIn(key, spec, work).finally(() => {
+      if (this.signingIn.get(key)?.stop === stop) this.signingIn.delete(key);
+    });
+    this.signingIn.set(key, { stop, run });
     return run;
   }
 
-  private async signIn(key: string, spec: RemoteSpec): Promise<{ ok: true } | { ok: false; error: string }> {
+  isSigningIn(key: string): boolean { return this.signingIn.has(key); }
+
+  /** Cancel local work only. Off retains already saved values; no revoke/network action. */
+  cancel(key: string): void {
+    this.generations.set(key, (this.generations.get(key) ?? 0) + 1);
+    this.signingIn.get(key)?.stop.abort(); this.signingIn.delete(key);
+    this.refreshing.get(key)?.stop.abort(); this.refreshing.delete(key);
+  }
+
+  cancelAll(): void { for (const key of new Set([...this.signingIn.keys(), ...this.refreshing.keys()])) this.cancel(key); }
+
+  cancelPrefix(prefix: string): void {
+    for (const key of new Set([...this.signingIn.keys(), ...this.refreshing.keys()])) if (key.startsWith(prefix)) this.cancel(key);
+  }
+
+  private work(key: string, signal: AbortSignal, valid: () => boolean = () => true) {
+    const generation = this.generations.get(key) ?? 0;
+    const assert = () => {
+      if (signal.aborted || (this.generations.get(key) ?? 0) !== generation || !valid()) throw new Error("Sign-in was cancelled or its connector changed.");
+    };
+    return { signal, assert };
+  }
+
+  private guardedWorkFetch(spec: RemoteSpec, work: { signal: AbortSignal; assert(): void }): FetchLike {
+    const base = this.fetchFor(spec);
+    return async (url, init) => {
+      work.assert();
+      const result = await authWait(base(url, { ...init, signal: AbortSignal.any([work.signal, ...(init?.signal ? [init.signal] : [])]) }), work.signal);
+      work.assert(); return result;
+    };
+  }
+
+  private async signIn(key: string, spec: RemoteSpec, work: { signal: AbortSignal; assert(): void }): Promise<{ ok: true } | { ok: false; error: string }> {
     if (!this.deps.vault.available) return { ok: false, error: "This computer can't encrypt secrets (no OS keychain), so a sign-in can't be kept." };
     const fixed = spec.oauth?.callbackPort !== undefined;
     let callback: Callback;
     try {
+      work.assert();
       callback = await startCallback(spec.oauth?.callbackPort ?? DEFAULT_CALLBACK_PORT, fixed);
+      try { work.assert(); } catch (err) { callback.finish(false, "Sign-in was cancelled."); throw err; }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
-    const provider = new VaultProvider(this.deps.vault, key, spec, callback.url, this.deps.openExternal);
+    const provider = new VaultProvider(this.deps.vault, key, spec, callback.url, this.deps.openExternal, work.assert);
     provider.fresh = true;
-    const fetchFn = this.fetchFor(spec);
+    const fetchFn = this.guardedWorkFetch(spec, work);
     const o = this.oauth(key);
     // Ask for what the user set, plus anything a 403 said was missing (step-up keeps earlier grants: scopes are unioned).
     const scope = union(spec.oauth?.scopes, o.tokens?.scope && o.stepUpScopes ? o.tokens.scope : undefined, o.stepUpScopes);
@@ -399,12 +444,14 @@ export class McpAuth {
     try {
       // Rediscover each time: the URL or the server's setup may have changed since the last sign-in.
       provider.invalidateCredentials("discovery");
-      const first = await auth(provider, { serverUrl: spec.url, ...(scope && { scope }), fetchFn });
+      const first = await authWait(auth(provider, { serverUrl: spec.url, ...(scope && { scope }), fetchFn }), work.signal);
+      work.assert();
       if (first === "AUTHORIZED") return { ok: true };
       const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error("Sign-in timed out after 5 minutes.")), this.deps.callbackTimeoutMs ?? SIGN_IN_TIMEOUT_MS);
       });
-      const answer = await Promise.race([callback.result, timeout]);
+      const answer = await authWait(Promise.race([callback.result, timeout]), work.signal);
+      work.assert();
       const issuerMatches = issuerOk(provider.issuer.recorded, provider.issuer.advertised, answer.iss);
       // The state proves this redirect answers our request; single use.
       const stateMatches = Boolean(answer.state) && answer.state === provider.expectedState;
@@ -419,7 +466,8 @@ export class McpAuth {
         return { ok: false, error: answer.error === "access_denied" ? "Sign-in was cancelled." : `The server refused the sign-in: ${why}` };
       }
       provider.fresh = false;
-      await auth(provider, { serverUrl: spec.url, authorizationCode: answer.code, fetchFn });
+      await authWait(auth(provider, { serverUrl: spec.url, authorizationCode: answer.code, fetchFn }), work.signal);
+      work.assert();
       this.deps.vault.update(key, { oauth: { ...this.oauth(key), stepUpScopes: undefined } });
       callback.finish(true, "You can close this tab and go back to CubiQ.");
       return { ok: true };
@@ -436,41 +484,50 @@ export class McpAuth {
 
   /** A usable access token, refreshed first when most of its life is gone; null = sign in. Never opens the browser. */
   async accessToken(key: string, spec: RemoteSpec): Promise<string | null> {
+    const generation = this.generations.get(key) ?? 0;
     const t = this.oauth(key).tokens;
     if (!t) return null;
     const stale = t.expires_in !== undefined && this.now() >= t.obtained_at + t.expires_in * 1000 * REFRESH_AT;
     if (!stale) return t.access_token;
-    return (await this.refresh(key, spec)) ?? (this.now() < t.obtained_at + (t.expires_in ?? 0) * 1000 ? t.access_token : null);
+    const refreshed = await this.refresh(key, spec);
+    if ((this.generations.get(key) ?? 0) !== generation) return null;
+    return refreshed ?? (this.now() < t.obtained_at + (t.expires_in ?? 0) * 1000 ? t.access_token : null);
   }
 
   /** Refresh now (the server said 401). One refresh per server at a time; null when there's no way to. */
   refresh(key: string, spec: RemoteSpec): Promise<string | null> {
     const running = this.refreshing.get(key);
-    if (running) return running;
-    const run = this.doRefresh(key, spec).finally(() => this.refreshing.delete(key));
-    this.refreshing.set(key, run);
+    if (running) return running.run;
+    if (this.signingIn.has(key)) return Promise.resolve(null);
+    const stop = new AbortController(), work = this.work(key, stop.signal);
+    const run = this.doRefresh(key, spec, work).finally(() => {
+      if (this.refreshing.get(key)?.stop === stop) this.refreshing.delete(key);
+    });
+    this.refreshing.set(key, { stop, run });
     return run;
   }
 
-  private async doRefresh(key: string, spec: RemoteSpec): Promise<string | null> {
+  private async doRefresh(key: string, spec: RemoteSpec, work: { signal: AbortSignal; assert(): void }): Promise<string | null> {
     const o = this.oauth(key);
     const refreshToken = o.tokens?.refresh_token;
     const discovery = o.discovery as OAuthDiscoveryState | undefined;
     if (!refreshToken || !discovery?.authorizationServerUrl) return null;
-    const provider = new VaultProvider(this.deps.vault, key, spec, "http://127.0.0.1/callback", this.deps.openExternal);
+    const provider = new VaultProvider(this.deps.vault, key, spec, "http://127.0.0.1/callback", this.deps.openExternal, work.assert);
     const clientInformation = provider.clientInformation() ?? (o.client as OAuthClientInformationMixed | undefined);
     if (!clientInformation) return null;
     try {
-      const tokens = await refreshAuthorization(discovery.authorizationServerUrl, {
+      const tokens = await authWait(refreshAuthorization(discovery.authorizationServerUrl, {
         metadata: discovery.authorizationServerMetadata,
         clientInformation,
         refreshToken,
         ...(discovery.resourceMetadata?.resource && { resource: new URL(discovery.resourceMetadata.resource) }),
-        fetchFn: this.fetchFor(spec),
-      });
+        fetchFn: this.guardedWorkFetch(spec, work),
+      }), work.signal);
+      work.assert();
       provider.saveTokens(tokens);
       return tokens.access_token;
     } catch {
+      try { work.assert(); } catch { return null; }
       // invalid_grant and friends: the refresh token is dead; the user has to sign in again.
       this.deps.vault.update(key, { oauth: { ...o, tokens: undefined } });
       return null;
@@ -485,7 +542,11 @@ export class McpAuth {
 
   /** Sign out: revoke at the server when it offers that (best effort), then forget tokens and the registered client. */
   async disconnect(key: string, spec: RemoteSpec): Promise<void> {
+    this.cancel(key);
     const o = this.oauth(key);
+    // Forget immediately, before waiting for best-effort revocation. A later
+    // fresh sign-in must not be wiped by this old request's completion.
+    this.deps.vault.update(key, { oauth: o.clientSecret ? { clientSecret: o.clientSecret } : undefined });
     const discovery = o.discovery as OAuthDiscoveryState | undefined;
     const endpoint = (discovery?.authorizationServerMetadata as { revocation_endpoint?: string } | undefined)?.revocation_endpoint;
     const client = (spec.oauth?.clientId ? { client_id: spec.oauth.clientId, client_secret: o.clientSecret } : o.client) as { client_id?: string; client_secret?: string } | undefined;
@@ -497,7 +558,6 @@ export class McpAuth {
       }
     }
     // The user's own client secret stays (it's configuration); everything the sign-in produced goes.
-    this.deps.vault.update(key, { oauth: o.clientSecret ? { clientSecret: o.clientSecret } : undefined });
   }
 
   /** Store or clear the secret of a client the user registered themselves. */
@@ -505,6 +565,16 @@ export class McpAuth {
     const o = this.oauth(key);
     this.deps.vault.update(key, { oauth: { ...o, clientSecret: secret || undefined } });
   }
+}
+
+function authWait<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) { work.catch(() => {}); return Promise.reject(new Error("Sign-in was cancelled.")); }
+  let stop!: () => void;
+  const aborted = new Promise<never>((_, reject) => {
+    stop = () => reject(new Error("Sign-in was cancelled."));
+    signal.addEventListener("abort", stop, { once: true });
+  });
+  return Promise.race([work, aborted]).finally(() => signal.removeEventListener("abort", stop));
 }
 
 /** Space-separated scope lists merged, without duplicates; undefined when empty. */

@@ -14,7 +14,7 @@ import { runCheck } from "../../src/main/check";
 import { canonicalTool, clipSummary } from "../../src/shared/tools";
 import { spansOf, timeSplit, type TimedEvent } from "../../src/shared/run-trace";
 import type { McpServerEntry, ThreadEvent } from "../../src/shared/types";
-import { generate } from "../../scripts/mock-extensions-lib.mjs";
+import { generate } from "../../scripts/dev/mock-extensions-lib.mjs";
 import { grade, score } from "./graders";
 import { assembleTask } from "./store";
 import type { CompactEvent, Coverage, GradeInput, Scenario, Task, TaskResult, TrialResult, TrialStatus } from "./types";

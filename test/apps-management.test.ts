@@ -52,6 +52,22 @@ describe("app management", () => {
     expect(new AppRegistry(e.deps).isEnabled("g~sales")).toBe(true);
   });
 
+  it("persists favourites in their own file, keeps the enable-state file's array format, and clears them on uninstall", () => {
+    const e = setup();
+    const deps = { ...e.deps, favoritesFile: join(e.root, "app-favorites.json") };
+    const registry = new AppRegistry(deps);
+    expect(() => registry.setFavorite("d~creator~sales", true)).toThrow(/installed/);
+    registry.setFavorite("g~sales", true, 42);
+    registry.setEnabled("g~sales", false);
+    expect(JSON.parse(readFileSync(e.deps.stateFile, "utf8"))).toEqual(["g~sales"]);
+    expect(new AppRegistry(deps).info("g~sales")).toMatchObject({ favorite: 42, enabled: false });
+    registry.setFavorite("g~sales", true, 99);
+    expect(new AppRegistry(deps).info("g~sales")?.favorite).toBe(42);
+    registry.resetEnabled("g~sales");
+    expect(new AppRegistry(deps).info("g~sales")).not.toHaveProperty("favorite");
+    expect(new AppRegistry(deps).isEnabled("g~sales")).toBe(true);
+  });
+
   it("seeds an editable draft even while disabled, without changing installed files", () => {
     const e = setup();
     e.registry.setEnabled("g~sales", false);

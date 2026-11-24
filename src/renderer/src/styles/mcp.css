@@ -106,3 +106,12 @@
 .mcp-sheet .mcp-panel .mcp-section { border-top: 1px solid var(--hairline); padding: 12px 0 0; margin-top: 0; }
 .mcp-sheet .mcp-panel .mcp-section h3 { margin: 0 0 4px; }
 .mcp-field > .button { justify-self: start; }
+
+/* New owner/credential disclosures must be readable in both schemes. */
+.plugin-connectors h3,
+.plugin-connectors .mcp-source,
+.plugin-connectors .mcp-keys,
+.plugin-connectors .mcp-meta { color: var(--text-secondary); }
+.plugin-connectors .mcp-error { color: var(--text); }
+.plugin-connectors .text-input:focus { border-color: var(--hairline-strong); }
+.plugin-connectors .text-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

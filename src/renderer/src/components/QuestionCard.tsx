@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, type KeyboardEvent } from "react";
 import type { QuestionAnswer, QuestionRequest } from "../../../shared/types";
 import { Markdown } from "../markdown";
 import { answered, cardAnswer, initialCardState, questionCardReducer, type QuestionCardAction, type QuestionCardState } from "../question-card";
+import { chromeSafetyStyle } from "../app-themes";
 
 /**
  * The agent's questions, docked above the message box (Claude-app style): one
@@ -85,7 +86,7 @@ export function QuestionCardBody({
   };
 
   return (
-    <div className="dock-card question-card" role="dialog" aria-label={q.question} tabIndex={-1} ref={cardRef} onKeyDown={onKeyDown}>
+    <div className="dock-card question-card" style={chromeSafetyStyle()} role="dialog" aria-label={q.question} tabIndex={-1} ref={cardRef} onKeyDown={onKeyDown}>
       <div className="dock-head">
         {q.header && <span className="dock-chip">{q.header}</span>}
         {questions.length > 1 && (
@@ -98,7 +99,7 @@ export function QuestionCardBody({
       </div>
       <div className="qc-question">{q.question}</div>
       <div className={`qc-body${hasPreview ? " with-preview" : ""}`}>
-        <div className="qc-options" role="listbox" aria-multiselectable={q.multiSelect || undefined}>
+        <div className="qc-options" role="listbox" aria-label={q.question} aria-multiselectable={q.multiSelect || undefined}>
           {q.options.map((o, i) => {
             const picked = picks.includes(o.label);
             return (

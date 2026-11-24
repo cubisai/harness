@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import type { Project, Thread } from "../../../shared/types";
 import { IconChat, IconChevron, IconCompose, IconFolder, IconGear, IconLibrary, IconMore, IconPlus, IconSearch } from "../icons";
 import { api } from "../api";
-import { elapsed, inboxModel, shortTime, waitingThreads } from "../sections";
+import { elapsed, inboxModel, shortTime, sidebarMode, waitingThreads } from "../sections";
 import { ThreadRow, type ThreadStatus } from "./ThreadRow";
-import { appIcon } from "./AppPane";
+import { SidebarApps } from "./SidebarApps";
+import { SidebarPanels } from "./PluginHost";
 import { useStore } from "../store";
 import { InboxBell } from "./MessageCenter";
 import { SidebarToggle } from "./PaneRail";
@@ -237,11 +238,6 @@ export function Sidebar() {
   const finished = useStore((s) => s.finished);
   const turnStartedAt = useStore((s) => s.turnStartedAt);
   const selectedProjectId = useStore((s) => s.selectedProjectId);
-  const apps = useStore((s) => s.apps);
-  const appOpen = useStore((s) => s.appOpen);
-  const openApp = useStore((s) => s.openApp);
-  const inspectorTab = useStore((s) => s.inspectorTab);
-  const inspectorOpen = useStore((s) => s.inspectorOpen);
   useEffect(() => {
     void useStore.getState().loadApps();
   }, [selectedProjectId]);
@@ -252,6 +248,8 @@ export function Sidebar() {
   const grouped = useStore((s) => s.settings?.sidebarGroupByProject ?? true);
   const collapsed = useStore((s) => s.collapsedProjects);
   const kind = useStore((s) => s.threadKind);
+  // Creator is a composer toggle inside Chat: the switch shows Chat for it, and its threads list with the chats.
+  const shownMode = sidebarMode(kind);
   const { setThreadKind, addProject, newChat, selectProject, selectThread, newThread, setSearchOpen, toggleProjectCollapsed } = useStore.getState();
   const [archivedOpen, setArchivedOpen] = useState<Record<string, boolean>>({});
   // The flat view's Projects list starts folded (Recent already lists every thread); opening a project there shows its threads.
@@ -270,7 +268,7 @@ export function Sidebar() {
   const model = inboxModel(
     ordered.map((p) => p.id),
     threads,
-    { running, waiting, mode: kind },
+    { running, waiting, mode: shownMode },
   );
   const now = useNow(model.running.length > 0);
   const projectName = (id: string) => projects.find((p) => p.id === id)?.name ?? "";
@@ -350,9 +348,9 @@ export function Sidebar() {
       </div>
       <div className="sidebar-mode">
         <div className="segmented compact mode-switch" role="group" aria-label="Mode">
-          {(["chat", "design", "creator"] as const).map((k) => (
-            <button key={k} type="button" className={kind === k ? "on" : undefined} aria-pressed={kind === k} onClick={() => void setThreadKind(k)}>
-              {k === "chat" ? "Chat" : k === "design" ? "Design" : "Creator"}
+          {(["chat", "design"] as const).map((k) => (
+            <button key={k} type="button" className={shownMode === k ? "on" : undefined} aria-pressed={shownMode === k} onClick={() => shownMode !== k && void setThreadKind(k)}>
+              {k === "chat" ? "Chat" : "Design"}
             </button>
           ))}
         </div>
@@ -364,7 +362,7 @@ export function Sidebar() {
           <span>{newLabel}</span>
           <kbd>{newThreadKey}</kbd>
         </button>
-        {kind === "chat" && (
+        {shownMode === "chat" && (
           <button className="nav-row" title="New chat, with no project folder" onClick={() => void newChat()}>
             <IconChat />
             <span>New chat</span>
@@ -401,29 +399,8 @@ export function Sidebar() {
             {model.pinned.map((t) => row(t))}
           </section>
         )}
-        {apps.some((a) => a.enabled !== false) && (
-          <section className="inbox-section" aria-label="Apps">
-            <div className="section-label">Apps</div>
-            {apps.filter((a) => a.enabled !== false).map((a) => {
-              const Icon = appIcon(a.icon);
-              const open = appOpen?.key === a.key && inspectorTab === "app" && inspectorOpen;
-              return (
-                <button
-                  key={a.key}
-                  type="button"
-                  className={`nav-row app-row${open ? " current" : ""}`}
-                  aria-current={open ? "true" : undefined}
-                  disabled={Boolean(a.error)}
-                  title={a.error ?? `${a.description}${a.scope === "global" ? " (global)" : ""}`}
-                  onClick={() => openApp(a)}
-                >
-                  <Icon size={16} strokeWidth={1.75} aria-hidden />
-                  <span>{a.title}</span>
-                </button>
-              );
-            })}
-          </section>
-        )}
+        <SidebarPanels />
+        <SidebarApps />
         {projects.length > 0 && (
           <section className="inbox-section" aria-label="Recent">
             <div className="section-label">

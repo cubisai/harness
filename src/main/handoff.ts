@@ -126,8 +126,11 @@ export async function buildCheckpoint(store: Store, threadId: string, opts?: { b
     // A subagent's inner messages are not the thread's own history.
     if (event.parentId) continue;
     if (event.kind === "user") {
-      if (goal === "") goal = event.text.slice(0, MAX_MESSAGE_CHARS);
-      messages.push({ role: "user", text: event.text.slice(0, MAX_MESSAGE_CHARS) });
+      // Attached files go by path only: the incoming agent opens them itself if it needs them.
+      const attached = event.attachments?.length ? `\n(Attached: ${event.attachments.map((a) => a.path).join(", ")})` : "";
+      const text = attached ? (event.text.slice(0, MAX_MESSAGE_CHARS) + attached).trim() : event.text.slice(0, MAX_MESSAGE_CHARS);
+      if (goal === "") goal = text;
+      messages.push({ role: "user", text });
     } else if (event.kind === "assistant-text" || event.kind === "plan-proposal") {
       // Inline UI blocks go as one-line summaries: their bodies were for the screen.
       messages.push({ role: "assistant", text: summarizeUiFences(event.text).slice(0, MAX_MESSAGE_CHARS) });

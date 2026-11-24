@@ -1,0 +1,10 @@
+{
+  "name": "todays-focus",
+  "title": "Today's focus",
+  "description": "A one-line strip above the composer with the one thing to get done today.",
+  "icon": "activity",
+  "entry": "index.html",
+  "placement": "dock",
+  "height": 40,
+  "style": "own"
+}

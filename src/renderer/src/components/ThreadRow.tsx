@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Wand2 } from "lucide-react";
 import type { AgentInfo, Thread } from "../../../shared/types";
 import { api } from "../api";
 import { IconArchive, IconMore, IconPin, IconStop } from "../icons";
@@ -121,6 +122,7 @@ export function ThreadRow({
           <span className={`thread-dot${status ? ` ${status === "answering" ? "waiting" : status}` : ""}`} role={status ? "img" : undefined} aria-label={status ? STATUS_LABEL[status] : undefined} />
           <span className="title">
             {thread.pinned && <IconPin size={11} />}
+            {thread.preset === "creator" && <Wand2 size={11} strokeWidth={1.75} aria-label="Creator" />}
             {thread.title}
           </span>
           <span className="thread-time">

@@ -1,5 +1,7 @@
 import { skillsOf } from "../../shared/skill-list";
-import type { StoredEvent } from "../../shared/types";
+import type { Attachment, StoredEvent } from "../../shared/types";
+import type { PluginSelections } from "./commands";
+type RetryPrompt = { text: string; skills?: string[]; attachments?: Attachment[] } & PluginSelections;
 import { canonicalTool } from "../../shared/tools";
 
 /** One thing the thread draws: an event as is, a folded run of work, or a turn's footer. */
@@ -8,7 +10,7 @@ export type Segment =
   /** Consecutive tool calls (and the thinking between them). `done` = something came after, so it folds. */
   | { kind: "work"; key: number; items: StoredEvent[]; startedAt: number; endedAt: number; done: boolean }
   /** A turn's end: its final answer (for Copy), the message that started it (for Retry, and its seq for the turn's score), what it changed, and the web pages it fetched. */
-  | { kind: "turn-end"; stored: StoredEvent; answer: string; prompt: { text: string; skills?: string[] } | null; userSeq: number | null; changes: TurnChanges | null; sources: string[] };
+  | { kind: "turn-end"; stored: StoredEvent; answer: string; prompt: RetryPrompt | null; userSeq: number | null; changes: TurnChanges | null; sources: string[] };
 
 export interface TurnChanges {
   files: string[];
@@ -41,7 +43,7 @@ function toolResults(events: StoredEvent[]): Map<string, { summary?: string; isE
 
 /** What a closed turn carries into the next: the last prompt and its user seq. Answer, edits and the fold all reset at a turn-end. */
 interface Carry {
-  prompt: { text: string; skills?: string[] } | null;
+  prompt: RetryPrompt | null;
   userSeq: number | null;
 }
 
@@ -52,7 +54,7 @@ function segmentRun(events: StoredEvent[], running: boolean, results: Map<string
   const out: Segment[] = [];
   let run: StoredEvent[] = [];
   let answer: string[] = [];
-  let prompt: { text: string; skills?: string[] } | null = carry.prompt;
+  let prompt: RetryPrompt | null = carry.prompt;
   let userSeq: number | null = carry.userSeq;
   let edits = new Map<string, { additions: number; deletions: number }>();
   let statKnown = false;
@@ -105,7 +107,7 @@ function segmentRun(events: StoredEvent[], running: boolean, results: Map<string
     flush(true, e.createdAt);
     if (ev.kind === "user") {
       const skills = skillsOf(ev);
-      prompt = { text: ev.text, ...(skills.length ? { skills } : {}) };
+      prompt = { text: ev.text, ...(skills.length ? { skills } : {}), ...(ev.attachments?.length ? { attachments: ev.attachments } : {}), ...(ev.pluginCommand ? { pluginCommand: ev.pluginCommand } : {}), ...(ev.pluginSkills ? { pluginSkills: ev.pluginSkills } : {}) };
       userSeq = e.seq;
       answer = [];
       edits = new Map();
@@ -146,7 +148,7 @@ export function segmentEvents(events: StoredEvent[], running: boolean): Segment[
   return segmentRun(events, running, toolResults(events), NO_CARRY).segments;
 }
 
-const carryKey = (c: Carry): string => JSON.stringify([c.userSeq, c.prompt?.text ?? null, c.prompt?.skills ?? null]);
+const carryKey = (c: Carry): string => JSON.stringify([c.userSeq, c.prompt?.text ?? null, c.prompt?.skills ?? null, c.prompt?.attachments?.map((a) => a.path) ?? null]);
 
 /**
  * A stateful `segmentEvents` for the thread view (P2.2). It splits the input at

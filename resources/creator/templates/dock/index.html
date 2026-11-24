@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  /* style: "own" — no base sheet. A dock is a short strip as wide as the composer: keep it to one row. */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: transparent; color: var(--cq-text); font: 12.5px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  main { height: 100%; display: flex; align-items: center; gap: 8px; padding: 0 10px; min-width: 0; }
+  .label { flex: none; font-size: 11px; font-weight: 600; color: var(--cq-text-tertiary); }
+  input { flex: 1; min-width: 0; height: 26px; padding: 0 8px; font: inherit; color: var(--cq-text); background: transparent; border: 1px solid transparent; border-radius: 6px; }
+  input:hover { background: var(--cq-bg-hover); }
+  input:focus { outline: none; border-color: var(--cq-hairline-strong); background: var(--cq-bg-subtle); }
+  input::placeholder { color: var(--cq-text-tertiary); }
+  button { flex: none; font: inherit; font-size: 12px; font-weight: 500; height: 24px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--cq-hairline-strong); background: transparent; color: var(--cq-text); cursor: pointer; }
+  button:hover { background: var(--cq-bg-hover); }
+  button:focus-visible { outline: 2px solid var(--cq-focus); outline-offset: 2px; }
+  button[hidden] { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <span class="label">Today</span>
+  <input id="focus" placeholder="The one thing to get done today" aria-label="Today's focus" maxlength="160">
+  <button id="ask" type="button" hidden>Plan it</button>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

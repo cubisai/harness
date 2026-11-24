@@ -9,6 +9,9 @@ import type { Catalog } from "../skills/catalog";
 import { discoverSkills } from "../skills/discover";
 import type { AppInfo, McpOverview, McpServerView, Project, Thread } from "../../shared/types";
 import { readAppFiles } from "../apps/registry";
+import { validateApp } from "../apps/manifest";
+import { CHROME_THEME_TOKENS, type AppThemeState } from "../../shared/app-themes";
+import { CHROME_THEME_BASE } from "../../shared/chrome-theme-tokens.generated";
 
 export const CREATOR_INSPECT_TOOL = "creator_inspect";
 export const CREATOR_PROPOSE_TOOL = "creator_propose";
@@ -38,6 +41,7 @@ export interface CreatorToolsDeps {
   prepareAutomation?: (name: string, config: unknown, thread: Thread) => AutomationDraft;
   automations?: (projectId: string) => { id: string; name: string; enabled: boolean; scheduleText: string }[];
   themeTokens?: (projectId: string, base: string) => { name: string; light: string; dark: string | null }[];
+  appThemes?: () => AppThemeState;
 }
 
 function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
@@ -46,7 +50,7 @@ function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
 
 const error = (text: string): ToolOutput => ({ text, isError: true });
 
-const DOC_TOPICS = new Set(["overview", "skill-format", "connector-format", "app-format", "app-bridge", "app-check", "theme-format", "automation-format"]);
+const DOC_TOPICS = new Set(["overview", "skill-format", "connector-format", "app-format", "app-bridge", "app-check", "plugin-tools", "plugin-bundle", "chat-card", "theme-format", "automation-format", "app-theme-format"]);
 
 // Zod schemas: avoid z.record (use z.object({}).catchall(z.string())) so Claude SDK tools/list never drops tools.
 const stringMapSchema = z.object({}).catchall(z.string());
@@ -76,9 +80,9 @@ export function creatorTools(deps: CreatorToolsDeps, threadId: string): HarnessT
   return [
     define({
       name: CREATOR_INSPECT_TOOL,
-      description: "Read a Creator reference or inspect installed extensions.",
+      description: "Creator's references (how to build apps, skills, connectors, page themes, scheduled prompts) and what is already installed. Call it before building anything in a Creator thread.",
       input: {
-        topic: z.enum(["overview", "skill-format", "connector-format", "app-format", "app-bridge", "app-check", "theme-format", "theme-tokens", "automation-format", "installed"]),
+        topic: z.enum(["overview", "skill-format", "connector-format", "app-format", "app-bridge", "app-check", "plugin-tools", "plugin-bundle", "chat-card", "theme-format", "theme-tokens", "automation-format", "installed", "app-theme-format", "app-theme-tokens"]),
         name: z.string().optional(),
       },
       autoAllow: true,
@@ -90,6 +94,7 @@ export function creatorTools(deps: CreatorToolsDeps, threadId: string): HarnessT
           if (!existsSync(file)) return error(`Creator reference doc not found: ${args.topic}.md`);
           return { text: readFileSync(file, "utf-8") };
         }
+        if (args.topic === "app-theme-tokens") return { text: JSON.stringify({ scope: "global", format: "contributes.appTheme", tokens: CHROME_THEME_TOKENS.map((name) => ({ name, light: CHROME_THEME_BASE.light[name], dark: CHROME_THEME_BASE.dark[name] })), values: "Opaque 3/6-digit hex only; no CSS. Install never applies; the user previews/applies separately." }) };
         const thread = deps.threadOf(threadId);
         if (!thread) return error("Thread not found.");
         const project = deps.projectOf(thread.projectId);
@@ -119,6 +124,7 @@ export function creatorTools(deps: CreatorToolsDeps, threadId: string): HarnessT
                 invocation: s.invocation,
                 ...(s.mode ? { mode: s.mode } : {}),
                 description: s.description,
+                ...(s.owner ? { owner: s.owner, enabled: s.enabled !== false } : {}),
               })),
               connectors: {
                 global: mcp.servers.map(summarizeServer),
@@ -126,8 +132,9 @@ export function creatorTools(deps: CreatorToolsDeps, threadId: string): HarnessT
                 offGlobal: mcp.project ? mcp.project.offGlobal : [],
                 external: mcp.external.map((e) => ({ name: e.name, agent: e.agent, source: e.source, type: e.type })),
               },
-              apps: (deps.apps?.(effectiveProjectId) ?? []).map((a) => ({ name: a.name, scope: a.scope, title: a.title, grants: a.grants, ...(a.error ? { error: a.error } : {}) })),
+              apps: (deps.apps?.(effectiveProjectId) ?? []).map((a) => ({ name: a.name, scope: a.scope, title: a.title, grants: a.grants, ...(a.tools?.length ? { tools: a.tools.map((t) => t.name) } : {}), ...(a.cards?.length ? { cards: a.cards.map((c) => c.name) } : {}), ...(a.parts?.length ? { parts: a.parts, partsAvailable: a.enabled !== false && !a.error } : {}), ...(a.enabled === false ? { enabled: false } : {}), ...(a.error ? { error: a.error } : {}) })),
               themes: effectiveProjectId ? (deps.themes?.(effectiveProjectId) ?? []).slice(0, 20) : [],
+              appThemes: deps.appThemes ? { selected: deps.appThemes().selected, themes: deps.appThemes().themes.map(({ key, title, enabled, error }) => ({ key, title, enabled, ...(error ? { error } : {}), scope: "global" })) } : undefined,
               automations: effectiveProjectId ? (deps.automations?.(effectiveProjectId) ?? []).slice(0, 20) : [],
               threadProposals: proposals.map((p) => ({
                 id: p.id,
@@ -205,7 +212,10 @@ export function creatorTools(deps: CreatorToolsDeps, threadId: string): HarnessT
           if (!existsSync(dir)) return error(`No draft named "${args.name}" (expected ${dir}). Build it and check it with creator_app_preview and creator_app_check first.`);
           const read = readAppFiles(dir);
           if (read.errors.length) return error(read.errors.join("\n"));
-          draftInput = { kind: "app", name: args.name, files: read.files };
+          const app = validateApp(args.name, read.files);
+          if (!app.ok) return error(app.errors.join("\n"));
+          if (app.manifest.contributes?.automations?.length && (!project || chatsThread)) return error("Bundled automations require this Creator thread's project folder.");
+          draftInput = { kind: "app", name: args.name, files: app.files, ...(app.manifest.contributes?.automations?.length && project ? { bundleProjectId: project.id } : {}) };
         } else if (args.kind === "theme") {
           if (!deps.prepareTheme || !project) return error("Page themes are not supported in this build.");
           if (typeof args.config !== "string" || Buffer.byteLength(args.config) > 32 * 1024) return error("Pass theme config as JSON, up to 32 KB (theme-format).");

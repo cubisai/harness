@@ -4,7 +4,9 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createSdkMcpServer, query, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage, StopHookInput } from "@anthropic-ai/claude-agent-sdk";
+import { deferManagedPermission, wireManagedTarget } from "./managed-permission";
+import { HEARTBEAT_MS } from "../mcp-http";
+import type { EffortLevel, HookCallback, ModelInfo, ModelUsage, Options, PermissionResult, SDKMessage, SDKResultMessage, SDKUserMessage, StopHookInput } from "@anthropic-ai/claude-agent-sdk";
 import type { CodeMode, McpServerEntry, ModelOption, ModelPricing, PermissionMode, PlanEntry, ThreadEvent } from "../../shared/types";
 import { canonicalTool, clipAgentSummary, clipSummary, type EditResult, type RunPayload, type RunResult } from "../../shared/tools";
 import { diffSummary, unifiedDiff } from "../../shared/diff";
@@ -15,7 +17,7 @@ import { CODE_TOOL } from "../code-mode";
 import { CODE_HINT } from "../code-hint";
 import { todoResult, todosOf, todoTool } from "../harness/tools/todo";
 import { ToolError } from "../harness/tools/types";
-import { BACKGROUND_BASH_DENY, backgroundsItself, SHELL_TOOL_NAMES } from "../shell-tools";
+import { BACKGROUND_BASH_DENY, backgroundsItself, isCreatorTool, SHELL_TOOL_NAMES } from "../shell-tools";
 import { checkCommand } from "../guard";
 import type { InjectionPlan } from "../inject";
 import { normalizeUsage } from "../usage";
@@ -56,6 +58,29 @@ export const STALE_LIST = `Your ${TODO_TOOL} list still shows unfinished parts. 
 /** The Stop hook's one nudge when a multi-part request changed files and got no list. */
 export const NO_LIST = `This request has several parts and you changed files without a ${TODO_TOOL} list. Call ${TODO_TOOL} once with each part and its real status, then end your turn.`;
 
+type ImageMediaType = "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+
+/**
+ * A turn's query prompt: the text alone, or, with attached images, one streamed user
+ * message holding the images then the text. An image that can't be read is left out
+ * (the prompt still lists its path).
+ */
+export function claudePrompt(text: string, images?: { path: string; mediaType: string }[]): string | AsyncIterable<SDKUserMessage> {
+  const blocks = (images ?? []).flatMap((img) => {
+    try {
+      const data = readFileSync(img.path).toString("base64");
+      return [{ type: "image" as const, source: { type: "base64" as const, media_type: img.mediaType as ImageMediaType, data } }];
+    } catch {
+      return [];
+    }
+  });
+  if (!blocks.length) return text;
+  const message: SDKUserMessage = { type: "user", message: { role: "user", content: [...blocks, { type: "text", text }] }, parent_tool_use_id: null };
+  return (async function* () {
+    yield message;
+  })();
+}
+
 /** Whether a prompt lists three or more parts on their own numbered or bulleted lines. */
 export function multiPartRequest(prompt: string): boolean {
   let parts = 0;
@@ -73,7 +98,7 @@ export function shellWrites(command: string): boolean {
 /** Claude Code's own prompt points it at Read, Glob and Grep, so code mode says which calls run_code replaces. */
 export const CODE_NUDGE = "That means one run_code script in place of two or more Read, Glob or Grep calls in a row.";
 
-/** Its calls become the thread's plan as they're made (see emitAssistantBlock); the result only tells the model it landed. */
+/** The plan publishes only on this tool's successful host result. */
 const claudeTodoTool: HarnessTool = {
   name: TODO_TOOL,
   description: todoTool.description,
@@ -112,7 +137,14 @@ export function harnessToolOptions(tools: HarnessTool[], ctx?: ToolContext): Pic
     name: TOOL_SERVER,
     version: "1.0.0",
     tools: tools.map((t) =>
-      tool(t.name, t.description, t.input, async (args) => toCallToolResult(await t.run(args, ctx)), {
+      tool(t.name, t.description, t.input, async (args, extra) => {
+        const e = extra && typeof extra === "object" ? extra as { signal?: unknown; _meta?: { progressToken?: unknown }; sendNotification?: (notification: unknown) => Promise<void> } : null;
+        const caller = ctx?.signal && e?.signal instanceof AbortSignal ? { ...ctx, signal: AbortSignal.any([ctx.signal, e.signal]) } : ctx;
+        const token = e?._meta?.progressToken; let progress = 0;
+        const timer = t.pluginRulesHandled && e?.sendNotification && (typeof token === "string" || typeof token === "number")
+          ? setInterval(() => { void e.sendNotification!({ method: "notifications/progress", params: { progressToken: token, progress: ++progress } }).catch(() => {}); }, HEARTBEAT_MS) : undefined;
+        try { return toCallToolResult(await t.run(args, caller)); } finally { clearInterval(timer); }
+      }, {
         ...(t.effect ? { annotations: { readOnlyHint: t.effect === "read" } } : {}),
         // run_code stays in the prompt instead of behind tool search: deferred, Claude never reaches for it
         // unless told to. Its schema is fixed per thread, so the cached prefix doesn't move.
@@ -120,7 +152,8 @@ export function harnessToolOptions(tools: HarnessTool[], ctx?: ToolContext): Pic
         // The todo list too: headless Claude Code has none of its own, and one behind tool search goes unused.
         // A design thread's own tools too: deferred, Sonnet searched `design_tokens_apply` without the MCP prefix,
         // found nothing and stopped (2026-11-09 live test). Only design threads have them, so other threads pay nothing.
-        ...(t.name === CODE_TOOL || t.name === TODO_TOOL || (SHELL_TOOL_NAMES as readonly string[]).includes(t.name) || t.name.startsWith("design_") ? { alwaysLoad: true } : {}),
+        // A Creator thread's tools too: deferred, Claude built plain files and never staged a proposal (2026-11-19).
+        ...(t.name === CODE_TOOL || t.name === TODO_TOOL || (SHELL_TOOL_NAMES as readonly string[]).includes(t.name) || t.name.startsWith("design_") || isCreatorTool(t.name) ? { alwaysLoad: true } : {}),
       }),
     ),
   });
@@ -587,7 +620,8 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
       const memoryText = input.projectId ? config.memory?.(input.projectId, input.threadId, input.sessionId ?? null) ?? null : null;
       const codeMode = input.threadId && config.codeTool ? (config.codeMode?.(input.threadId) ?? "off") : "off";
       const systemAppend = [guideText, TODO_HINT, input.expert, input.preset, memoryText, codeMode !== "off" ? `${CODE_HINT} ${CODE_NUDGE}` : null].filter((part): part is string => Boolean(part)).join("\n\n");
-      const harnessTools = [...input.tools, ...(codeMode !== "off" ? [config.codeTool!(input.threadId)] : []), claudeTodoTool];
+      const finalTools = [...input.tools, ...(codeMode !== "off" ? [config.codeTool!(input.threadId)] : []), claudeTodoTool];
+      const harnessTools = input.managedTools?.(finalTools) ?? finalTools;
       const bashHooks = [...(hasShells ? [noBackgroundBash] : []), guard];
       // Claude writes its list up front and rarely comes back to it: stopping with parts still open,
       // it's asked once to bring the list up to date, so the dock doesn't show finished work as pending.
@@ -631,7 +665,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         // A team's members run in the foreground, inside the lead's turn: a backgrounded member outlives
         // the turn, and with it the permission stream its tool calls need.
         ...(input.team?.length ? { env: { ...(plan?.env ?? process.env), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" } } : plan ? { env: plan.env } : {}),
-        ...withUserServers(harnessToolOptions(harnessTools, { ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.threadId ? { threadId: input.threadId } : {}) }), input.mcpServers),
+        ...withUserServers(harnessToolOptions(harnessTools, { ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.threadId ? { threadId: input.threadId } : {}), signal: input.signal }), input.mcpServers),
         hooks: {
           PreToolUse: [
             { matcher: "Bash", hooks: bashHooks },
@@ -639,7 +673,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           ],
           Stop: [{ hooks: [staleList] }],
         },
-        canUseTool: async (toolName, toolInput, { suggestions }): Promise<PermissionResult> => {
+        canUseTool: async (toolName, toolInput, { suggestions, defaultToNo, suppressAlwaysAllowRule, matchedAskRule }): Promise<PermissionResult> => {
           // Plan mode's own gate: Claude presents its plan, the user decides how
           // to proceed, and the answer sets the mode for the accepted edits.
           if (toolName === "ExitPlanMode") {
@@ -673,7 +707,12 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
             const annotations = claudeAnnotations(questions, answer);
             return { behavior: "allow", updatedInput: { ...toolInput, answers: claudeAnswers(questions, answer), ...(annotations ? { annotations } : {}) } };
           }
-          // Full access means no cards: the CLI still routes Bash commands its
+          // A native explicit Ask on a managed descriptor remains mandatory,
+          // including under Full access. Ordinary native tools keep their mode.
+          const target = wireManagedTarget(input, toolName);
+          const nativeAsk = defaultToNo || suppressAlwaysAllowRule || matchedAskRule ? "ask" as const : undefined;
+          if (target && nativeAsk && deferManagedPermission({ ...input, tools: harnessTools }, target, toolInput, nativeAsk)) return { behavior: "allow", updatedInput: toolInput };
+          // Full access means no ordinary cards: the CLI still routes Bash commands its
           // shell parser can't read (heredocs, code from stdin) to this
           // callback even under bypassPermissions, so answer them here. The
           // git guard hook runs before this and still denies its commands.
@@ -682,6 +721,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
           if (designWriteAllowed(input.permissionMode, input.cwd, input.design, claudeWriteTargets(toolName, toolInput))) {
             return { behavior: "allow", updatedInput: toolInput };
           }
+          if (target && deferManagedPermission({ ...input, tools: harnessTools }, target, toolInput, nativeAsk)) return { behavior: "allow", updatedInput: toolInput };
           const decision = await input.requestPermission({
             toolName,
             summary: summarizeToolInput(toolName, toolInput),
@@ -708,7 +748,7 @@ export function createClaudeDriver(config: ClaudeDriverConfig): AgentDriver {
         // so a breakdown requested there would always reject.
         let breakdown: Promise<{ rows: { label: string; tokens: number }[]; total: number } | null> | null = null;
         try {
-          const q = query({ prompt, options: opts });
+          const q = query({ prompt: claudePrompt(prompt, input.images), options: opts });
           for await (const message of q) {
             if (message.type === "rate_limit_event") config.onLimits?.(claudeLimitsPatch(message.rate_limit_info));
             else if (
@@ -804,6 +844,8 @@ export interface TurnState {
   toolPayloads: Map<string, RunPayload | { diff: ToolDiff[] } | undefined>;
   /** tool_use ids of TodoWrite calls, whose plan replaced their tool rows; their results are skipped too. */
   planToolIds: Set<string>;
+  /** Managed plans wait for a successful host result, and never publish a subagent's list. */
+  managedPlans: Map<string, ReturnType<typeof todosOf>>;
   /** The thread's latest plan this turn still has unfinished parts. */
   openPlan: boolean;
   /** A main-thread list was written this turn. */
@@ -847,6 +889,7 @@ export function newTurnState(): TurnState {
     pending: new Map(),
     toolPayloads: new Map(),
     planToolIds: new Set(),
+    managedPlans: new Map(),
     openPlan: false,
     planMade: false,
     edits: 0,
@@ -1027,6 +1070,13 @@ export function handleMessage(message: SDKMessage, input: TurnInput, turn: TurnS
           // A TodoWrite call already showed up as a plan event; its result is not a tool row.
           if (turn.planToolIds.has(block.tool_use_id)) {
             turn.planToolIds.delete(block.tool_use_id);
+            const entries = turn.managedPlans.get(block.tool_use_id);
+            turn.managedPlans.delete(block.tool_use_id);
+            if (entries && !block.is_error && !parentId) {
+              turn.openPlan = entries.some((e) => e.status !== "completed");
+              turn.planMade = true;
+              input.onEvent({ kind: "plan", entries });
+            }
             continue;
           }
           const used = turn.toolPayloads.get(block.tool_use_id);
@@ -1120,9 +1170,18 @@ function emitAssistantBlock(block: AssistantBlock, itemId: string, input: TurnIn
   // Blocks reach here once each (handleMessage's blocksSeen), so this is one edit per block.
   if (!parentId && (["Edit", "MultiEdit", "Write", "NotebookEdit"].includes(block.name) || (block.name === "Bash" && shellWrites(String((block.input as { command?: unknown } | undefined)?.command ?? ""))))) turn.edits += 1;
   const toolInput = (block.input ?? {}) as Record<string, unknown>;
-  // TodoWrite is a plan, not a tool: emit plan entries and skip both its row and
-  // (below) its tool_result. A subagent's todo list is not the thread's plan.
-  if ((block.name === "TodoWrite" || block.name === `mcp__${TOOL_SERVER}__${TODO_TOOL}`) && Array.isArray(toolInput.todos)) {
+  // The managed todo publishes only after its successful host result, never merely
+  // because the model proposed a tool-use block. Keep its transcript rows silent.
+  if (block.name === `mcp__${TOOL_SERVER}__${TODO_TOOL}`) {
+    turn.planToolIds.add(block.id);
+    if (!parentId) {
+      try { turn.managedPlans.set(block.id, todosOf(toolInput)); } catch { /* Invalid lists never publish. */ }
+    }
+    return;
+  }
+  // Native SDK TodoWrite is outside bundle rules. A subagent's todo list is not
+  // the thread's plan; skip both its row and (below) its tool_result.
+  if (block.name === "TodoWrite" && Array.isArray(toolInput.todos)) {
     const entries = normalizePlan(toolInput.todos);
     if (entries) {
       turn.planToolIds.add(block.id);

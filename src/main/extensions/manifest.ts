@@ -46,6 +46,8 @@ export type AppDraft = {
   kind: "app";
   name: string;
   files: { path: string; content: string }[];
+  /** Bound by main to the authoring project, only when the bundle owns scheduled prompts. */
+  bundleProjectId?: string;
 };
 
 export type ThemeDraft = {
@@ -111,7 +113,7 @@ export function computeProposalDigest(scope: ProposalScope, draft: ExtensionDraf
     draft.kind === "skill"
       ? { kind: "skill", name: draft.name, description: draft.description, files: [...draft.files].sort(byPath) }
       : draft.kind === "app"
-        ? { kind: "app", name: draft.name, files: [...draft.files].sort(byPath) }
+        ? { kind: "app", name: draft.name, files: [...draft.files].sort(byPath), ...(draft.bundleProjectId ? { bundleProjectId: draft.bundleProjectId } : {}) }
         : draft;
   return createHash("sha256")
     .update(stableStringify({ scope, draft: canonicalDraft }))
@@ -237,7 +239,9 @@ export function validateProposal(input: unknown, ctx: ValidateProposalContext): 
     if (errors.length > 0) return { ok: false, errors };
     const check = validateApp(name, input.files);
     if (!check.ok) return { ok: false, errors: check.errors };
-    const draft: AppDraft = { kind: "app", name, files: check.files.map((f) => ({ path: f.path, content: f.content.replace(/\r\n/g, "\n") })) };
+    if (check.manifest.contributes?.automations?.length && (typeof input.bundleProjectId !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(input.bundleProjectId))) return { ok: false, errors: ["Bundled automations require a project fixed by main at proposal time."] };
+    if (!check.manifest.contributes?.automations?.length && input.bundleProjectId !== undefined) return { ok: false, errors: ["Only bundled automations may bind a project."] };
+    const draft: AppDraft = { kind: "app", name, files: check.files.map((f) => ({ path: f.path, content: f.content.replace(/\r\n/g, "\n") })), ...(typeof input.bundleProjectId === "string" ? { bundleProjectId: input.bundleProjectId } : {}) };
     return { ok: true, proposal: { scope: ctx.scope, draft, digest: computeProposalDigest(ctx.scope, draft) } };
   }
 

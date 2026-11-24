@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Store } from "../src/main/db";
 import { segmentEvents } from "../src/renderer/src/turns";
-import { makeHistory, seedStore } from "../scripts/history-fixtures";
+import { makeHistory, seedStore } from "../scripts/dev/history-fixtures";
 import type { ThreadEvent } from "../src/shared/types";
 import { closeAfter, tempDir } from "./helpers";
 

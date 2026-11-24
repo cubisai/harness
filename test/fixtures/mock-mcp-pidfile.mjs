@@ -6,7 +6,7 @@ import { appendFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { makeTools } from "../../scripts/mock-extensions-lib.mjs";
+import { makeTools } from "../../scripts/dev/mock-extensions-lib.mjs";
 
 if (process.env.PID_FILE) appendFileSync(process.env.PID_FILE, `${process.pid}\n`);
 

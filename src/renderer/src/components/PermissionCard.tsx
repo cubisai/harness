@@ -1,6 +1,7 @@
 import type { GuardEnforcement, PermissionDecision, PermissionRequest } from "../../../shared/types";
 import { IconDiff, IconShield, IconSparkle, IconTerminal } from "../icons";
 import { useStore } from "../store";
+import { chromeSafetyStyle } from "../app-themes";
 
 /** Card titles that mean a shell command: Claude and the native harness say Bash, ACP and Codex say Run. */
 const COMMAND_TOOLS = new Set(["Bash", "Run"]);
@@ -21,7 +22,7 @@ export function PermissionCardView({
   const isEdit = request.toolName === "Edit";
   const title = isCommand ? "Run this command?" : isEdit ? "Apply this edit?" : `Allow ${request.toolName}?`;
   return (
-    <div className="permission-card permission-ask" role="alertdialog" aria-label={title}>
+    <div className="permission-card permission-ask" style={chromeSafetyStyle()} role="alertdialog" aria-label={title}>
       <div className="permission-head">
         <span className="permission-icon">{isCommand ? <IconTerminal size={14} /> : isEdit ? <IconDiff size={14} /> : <IconSparkle size={14} />}</span>
         <span className="permission-title">{title}</span>

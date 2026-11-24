@@ -1,4 +1,4 @@
-// Tests for the design-system guard scripts/design-check.mjs. Every check runs
+// Tests for the design-system guard scripts/design/design-check.mjs. Every check runs
 // on tiny in-memory file arrays; only the final smoke test touches the tree.
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -22,7 +22,7 @@ import {
   type DesignAllowlistEntry,
   type DesignFile,
   type DesignIssue,
-} from "../scripts/design-check.mjs";
+} from "../scripts/design/design-check.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const f = (path: string, text: string): DesignFile => ({ path, text });
@@ -248,7 +248,7 @@ describe("applyAllowlist", () => {
     const res = applyAllowlist([base()], allow);
     expect(res.issues).toHaveLength(1);
     expect(res.unused).toHaveLength(1);
-    expect(res.unused[0]).toMatchObject({ code: "design/allowlist-unused", severity: "warning", file: "scripts/design-allowlist.json" });
+    expect(res.unused[0]).toMatchObject({ code: "design/allowlist-unused", severity: "warning", file: "scripts/design/design-allowlist.json" });
   });
 });
 
@@ -275,7 +275,7 @@ describe("runChecks", () => {
 
 describe("CLI smoke", () => {
   it("prints a JSON array on --json", () => {
-    const res = spawnSync(process.execPath, ["scripts/design-check.mjs", "--json"], { cwd: repoRoot, encoding: "utf8" });
+    const res = spawnSync(process.execPath, ["scripts/design/design-check.mjs", "--json"], { cwd: repoRoot, encoding: "utf8" });
     const parsed = JSON.parse(String(res.stdout));
     expect(Array.isArray(parsed)).toBe(true);
   });

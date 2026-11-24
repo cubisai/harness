@@ -17,9 +17,10 @@ export function composePrompt(
   text: string,
   skillNames?: string | readonly string[],
   delivery: SkillsDelivery | string = { mode: "plugin", prefix: "harness-skills:" },
+  command?: { name: string; prompt: string },
 ): string {
   const names = typeof skillNames === "string" ? [skillNames] : [...new Set(skillNames ?? [])];
-  if (names.length === 0) return text;
+  if (names.length === 0 && !command) return text;
   // Every name must resolve before anything is built; an unknown one is fatal.
   const skills = names.map((name) => {
     const skill = catalog.byName.get(name);
@@ -41,5 +42,12 @@ export function composePrompt(
     ].join("\n");
   });
   const args = text.trim();
+  if (command) blocks.unshift([
+    `<skill name="${command.name}">`,
+    `The user ran /${command.name}. Follow these saved instructions.`,
+    "",
+    command.prompt.trimEnd(),
+    "</skill>",
+  ].join("\n"));
   return [blocks.join("\n\n"), "", args ? `Arguments: ${args}` : "(no arguments)"].join("\n");
 }

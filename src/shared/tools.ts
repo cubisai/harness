@@ -78,6 +78,14 @@ const TOOL_WORDS: Record<string, string> = {
   TodoWrite: "Plan",
   todowrite: "Plan",
   update_plan: "Plan",
+  skill: "Load skill",
+  Skill: "Load skill",
+  creator_inspect: "Inspect",
+  creator_propose: "Propose",
+  creator_app_preview: "Preview app",
+  creator_app_check: "Check app",
+  creator_connector_test: "Test connector",
+  creator_theme_preview: "Preview theme",
 };
 
 /** `design_tokens_apply` / `kebab-name` / `camelName` → "Design tokens apply". */

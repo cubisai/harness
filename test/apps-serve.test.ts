@@ -16,6 +16,19 @@ function app() {
 }
 
 describe("cubiq-app:// server", () => {
+  it("gives an own-style app the bridge without the base sheet, others the full bridge", async () => {
+    const { dir } = app();
+    const full = appBridgeScript();
+    const own = appBridgeScript({ ownStyle: true });
+    expect(full).toContain(":where(html){background");
+    expect(own).not.toContain(":where(html){background");
+    expect(own).toContain("pill:");
+    for (const op of ['op: "notify"', 'op: "open"', 'op: "ask"']) expect(full).toContain(op);
+    const deps = { appRoot: () => dir, bridge: full, bridgeFor: (k: string) => (k === "g~own" ? own : full) };
+    expect(await serveApp(appUrl("g~own"), deps).text()).not.toContain(":where(html){background");
+    expect(await serveApp(appUrl("g~sales"), deps).text()).toContain(":where(html){background");
+  });
+
   it("round-trips URLs and refuses escapes, dotfiles and bad keys", () => {
     expect(parseAppUrl(appUrl("g~sales", "lib/chart.js"))).toEqual({ key: "g~sales", rel: "lib/chart.js" });
     expect(parseAppUrl(appUrl("p~proj_1~sales"))).toEqual({ key: "p~proj_1~sales", rel: "index.html" });

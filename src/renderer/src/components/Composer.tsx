@@ -1,15 +1,18 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { AtSign, Blocks, BriefcaseBusiness, Check, CircleDot, File, Folder, ImagePlus, Puzzle, Slash, Sparkles } from "lucide-react";
+import { AtSign, Blocks, BriefcaseBusiness, Check, CircleDot, File, Folder, ImagePlus, Paperclip, Puzzle, Slash, Sparkles } from "lucide-react";
 import type { PermissionMode, SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
 import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../composer";
 import { MAX_REFS, imageFiles, refLabel, refThumb, withRefs } from "../design/refs";
+import { MAX_ATTACHMENTS, type PendingAttachment, pendingFrom, pendingFromPicked, shortName, sizeLabel } from "../attachments";
+import { FileIcon } from "./FileIcon";
 import { designChipLabel, designIntent, designPlaceholder, systemChips } from "../design/intent";
 import { elementLabel, withScope } from "../../../shared/selection";
 import { designDirName } from "../../../shared/design";
-import { exactCommand, isCommandSkill, issueCommand, matchCommands, type ComposerCommand } from "../commands";
+import { exactCommand, isCommandSkill, issueCommand, matchCommands, pluginSkillSelections, selectedPluginCommand, type ComposerCommand, type PluginSelections } from "../commands";
+import type { PluginCommandInvocation } from "../../../shared/plugin-parts";
 import { folderPaths, mentionQueryAt, mentionsIn, rankMentions } from "../mentions";
 import { nextMode } from "../modes";
 import { findThread, useStore } from "../store";
@@ -72,7 +75,12 @@ export function Composer({
   // Design-only skills are offered in design threads (and a design draft) only; threadKind follows the open thread.
   const designKind = useStore((s) => s.threadKind) === "design";
   // The issue skills run as "/" commands, so "$" leaves them out.
-  const skills = useMemo(() => allSkills.filter((s) => !isCommandSkill(s) && (designKind || s.mode !== "design")), [allSkills, designKind]);
+  const skills = useMemo(() => allSkills.filter((s) => s.enabled !== false && !isCommandSkill(s) && s.mode !== "creator" && (designKind || s.mode !== "design")), [allSkills, designKind]);
+  const pluginCommands = useStore((s) => s.pluginCommands);
+  const pluginCommandsError = useStore((s) => s.pluginCommandsError);
+  const pluginCommandsLoading = useStore((s) => s.pluginCommandsLoading);
+  const [pluginCommand, setPluginCommand] = useState<PluginCommandInvocation | null>(null);
+  useEffect(() => { void useStore.getState().loadPluginCommands(); }, []);
   const running = useStore((s) => (threadId ? Boolean(s.running[threadId]) : false));
   const insert = useStore((s) => s.composerInsert);
   const { send, interrupt, enqueue, startThread, sendInBackground } = useStore.getState();
@@ -93,6 +101,10 @@ export function Composer({
   // Reference images pasted or dropped into a design thread: saved in its design folder, sent as mentions.
   const [refs, setRefs] = useState<{ path: string; thumb: string }[]>([]);
   const [addingRefs, setAddingRefs] = useState(false);
+  // Files pasted, dropped or picked in a chat or Creator thread: copied into the thread's folder when the message is sent.
+  const [files, setFiles] = useState<PendingAttachment[]>([]);
+  // Files are being dragged over the window: the box shows it takes them.
+  const [dropping, setDropping] = useState(false);
   // Images handed over by the canvas (Draw → Attach) join the reference chips, up to the cap.
   const pendingRefs = useStore((s) => (threadId ? s.pendingRefs[threadId] : undefined));
   useEffect(() => {
@@ -111,7 +123,7 @@ export function Composer({
   const [droppedSystem, setDroppedSystem] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => setDroppedSystem(new Set()), [systemWhere?.page, systemWhere?.theme]);
   const system = systemChips(systemWhere, droppedSystem);
-  const hasChips = Boolean(issue || picked.length || chips.length || refs.length || selection || designChip || system.length);
+  const hasChips = Boolean(issue || picked.length || chips.length || refs.length || files.length || selection || designChip || system.length);
   const screenshotInput = useRef<HTMLInputElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
@@ -136,7 +148,7 @@ export function Composer({
   const menuOpen = query !== null;
 
   const cmdQuery = picked.length ? null : commandQuery(text);
-  const commandMatches = useMemo(() => (cmdQuery === null ? [] : matchCommands(cmdQuery)), [cmdQuery]);
+  const commandMatches = useMemo(() => (cmdQuery === null ? [] : matchCommands(cmdQuery, pluginCommands)), [cmdQuery, pluginCommands]);
   const commandOpen = cmdQuery !== null;
 
   const mentionQuery = mentionQueryAt(text, caret);
@@ -194,6 +206,7 @@ export function Composer({
     setCaret(0);
     setChips([]);
     setRefs([]);
+    setFiles([]);
     setPicked(entriesOf(useStore.getState().takePendingSkills()));
   }, [threadId]);
 
@@ -227,6 +240,69 @@ export function Composer({
     return true;
   };
 
+  const addPending = (added: PendingAttachment[], refused: string[]) => {
+    if (added.length) setFiles((list) => [...list, ...added].slice(0, MAX_ATTACHMENTS));
+    if (refused.length) useStore.getState().showNotice(`Not attached: ${refused.join(", ")}.`);
+    area.current?.focus();
+  };
+
+  /** Pasted or dropped files: a design thread's images become references; anywhere else any file is attached. True when handled. */
+  const takeFiles = (list: ArrayLike<File> | null | undefined): boolean => {
+    if (takeImages(list)) return true;
+    if (designKind || !list?.length) return false;
+    const room = MAX_ATTACHMENTS - files.length;
+    void pendingFrom(list, room, (f) => api().pathForFile(f)).then(({ added, refused }) => addPending(added, refused));
+    return true;
+  };
+
+  const pickFiles = () => {
+    void api()
+      .pickAttachments()
+      .then((picked) => {
+        const { added, refused } = pendingFromPicked(picked, MAX_ATTACHMENTS - files.length);
+        addPending(added, refused);
+      })
+      .catch((err) => useStore.getState().showNotice(`Couldn't open the file picker: ${err instanceof Error ? err.message : String(err)}`));
+  };
+
+  // Files dropped anywhere in the window (outside a dialog or another drop zone) come here; the box lights up while they're dragged.
+  const takeFilesRef = useRef(takeFiles);
+  takeFilesRef.current = takeFiles;
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    const inDialog = (e: DragEvent) => e.target instanceof Element && e.target.closest('[role="dialog"]') !== null;
+    const enter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth++;
+      setDropping(true);
+    };
+    const leave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setDropping(false);
+    };
+    const over = (e: DragEvent) => {
+      if (hasFiles(e) && !inDialog(e)) e.preventDefault();
+    };
+    const drop = (e: DragEvent) => {
+      depth = 0;
+      setDropping(false);
+      if (e.defaultPrevented || !hasFiles(e) || inDialog(e)) return;
+      if (takeFilesRef.current(e.dataTransfer?.files)) e.preventDefault();
+    };
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("dragover", over);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragenter", enter);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("drop", drop);
+    };
+  }, []);
+
   // Skills picked from the command palette or the Library while this thread is open join the chips.
   const pendingSkills = useStore((s) => s.pendingSkills);
   useEffect(() => {
@@ -242,6 +318,7 @@ export function Composer({
   useEffect(() => {
     if (!draft) return;
     setText(draft.text);
+    setPluginCommand(draft.pluginCommand ?? null);
     setCaret(draft.text.length);
     pendingCaret.current = draft.text.length;
     useStore.setState({ composerDraft: null });
@@ -294,6 +371,14 @@ export function Composer({
 
   // Run a "/" command: set the permission mode, ask for the model picker, open the context or MCP sheet, or start a new thread.
   const runCommand = (c: ComposerCommand) => {
+    if (c.plugin) {
+      // Picking/completing a saved prompt only prepares it. The next ordinary
+      // Send/Enter is the explicit action that may start a turn.
+      const next = `/${c.name} `;
+      setPluginCommand({ ...c.plugin });
+      setText(next); setCaret(next.length); pendingCaret.current = next.length;
+      area.current?.focus(); return;
+    }
     setText("");
     setCaret(0);
     const s = useStore.getState();
@@ -317,6 +402,11 @@ export function Composer({
   };
 
   const submit = () => {
+    let selections: PluginSelections;
+    try {
+      const command = selectedPluginCommand(text, pluginCommands, pluginCommand);
+      selections = { ...pluginSkillSelections(picked), ...(command ? { pluginCommand: command } : {}) };
+    } catch (e) { useStore.getState().showNotice(e instanceof Error ? e.message : String(e)); return; }
     // "/issue <description>", "/triage 12", "/pr 12" run their bundled skill with the argument.
     const issueRun = !picked.length && issueCommand(text);
     if (issueRun) {
@@ -358,7 +448,7 @@ export function Composer({
     }
     const refPaths = refs.map((r) => r.path);
     const message = withRefs(composeMessage(text, chips), refPaths);
-    if (!message && !picked.length) return;
+    if (!message && !picked.length && !files.length) return;
     if (designChip?.kind === "match-screenshot" && !refs.length) {
       useStore.getState().showNotice("Add the screenshot first: paste it, drop it here, or pick it from + → Match a screenshot….");
       return;
@@ -368,12 +458,18 @@ export function Composer({
     const mentions = [...mentionsIn(text, knownSet), ...refPaths];
     const names = picked.map((p) => p.name);
     if (selection && threadId) useStore.getState().setDesignSelection(threadId, null);
+    const pending = files;
+    const sources = pending.map((f) => f.source);
     const go = () => {
-      if (!threadId) void startThread(body, names, mentions);
-      else if (running) enqueue(threadId, body, names, mentions);
+      if (!threadId) void startThread(body, names, mentions, sources, selections);
+      else if (running) enqueue(threadId, body, names, mentions, sources, selections);
       else
-        void send(body, names, undefined, mentions).then((ok) => {
-          if (!ok) setText((cur) => cur || text);
+        void send(body, names, undefined, mentions, { ...selections, ...(sources.length ? { files: sources } : {}) }).then((ok) => {
+          if (ok) return;
+          setText((cur) => cur || text);
+          setFiles((cur) => (cur.length ? cur : pending));
+          setPicked((cur) => (cur.length ? cur : picked));
+          setPluginCommand((cur) => cur ?? selections.pluginCommand ?? null);
         });
     };
     // The intent reaches the main process before the message, which takes it into the turn.
@@ -384,12 +480,19 @@ export function Composer({
     setText("");
     setChips([]);
     setRefs([]);
+    setFiles([]);
     setPicked([]);
+    setPluginCommand(null);
     setCaret(0);
   };
 
   // Alt+Return starts the message as its own thread in the background and leaves this one open.
   const submitInBackground = () => {
+    let selections: PluginSelections;
+    try {
+      const command = selectedPluginCommand(text, pluginCommands, pluginCommand);
+      selections = { ...pluginSkillSelections(picked), ...(command ? { pluginCommand: command } : {}) };
+    } catch (e) { useStore.getState().showNotice(e instanceof Error ? e.message : String(e)); return; }
     // "/codemode [on|off]" sets code mode for new threads (no argument flips it); it never goes to the agent.
     const codeMatch = !picked.length && /^\/codemode(?:\s+(on|off))?$/i.exec(text.trim());
     if (codeMatch) {
@@ -408,13 +511,15 @@ export function Composer({
     }
     const refPaths = refs.map((r) => r.path);
     const body = withRefs(composeMessage(text, chips), refPaths);
-    if (!body && !picked.length) return;
+    if (!body && !picked.length && !files.length) return;
     const mentions = [...mentionsIn(text, knownSet), ...refPaths];
-    void sendInBackground(body, picked.map((p) => p.name), undefined, mentions);
+    void sendInBackground(body, picked.map((p) => p.name), selections, mentions, files.map((f) => f.source));
     setText("");
     setChips([]);
     setRefs([]);
+    setFiles([]);
     setPicked([]);
+    setPluginCommand(null);
     setCaret(0);
   };
 
@@ -474,6 +579,7 @@ export function Composer({
         e.preventDefault();
         const c = commandMatches[menuIndex];
         if (c) {
+          if (c.plugin) setPluginCommand({ ...c.plugin });
           const next = `/${c.name} `;
           pendingCaret.current = next.length;
           setText(next);
@@ -557,7 +663,7 @@ export function Composer({
     area.current?.focus();
   };
 
-  const canSend = Boolean(text.trim() || picked.length || chips.length || refs.length) && !addingRefs;
+  const canSend = Boolean(text.trim() || picked.length || chips.length || refs.length || files.length) && !addingRefs;
 
   // The controls stay one row. When the chips wrap or the actions run into them, the bar folds a step at a time:
   // 1 the chips drop their labels (icons), 2 they merge into `compactMode` (a design thread's one chip), and 3 only if
@@ -626,7 +732,7 @@ export function Composer({
 
   return (
     <div className="composer-wrap">
-      <div className={`composer${running ? " running" : ""}`}>
+      <div className={`composer${running ? " running" : ""}${dropping ? " dropping" : ""}`}>
         {running && <Beam />}
         {lip}
         {menuOpen && (
@@ -654,6 +760,8 @@ export function Composer({
         )}
         {commandOpen && (
           <div className="skill-menu" role="listbox">
+            {pluginCommandsLoading && <div className="empty-line">Loading plugin commands…</div>}
+            {pluginCommandsError && <div className="empty-line">Plugins unavailable · <button className="button ghost" onClick={() => void useStore.getState().loadPluginCommands()}>Retry</button></div>}
             {commandMatches.length === 0 && <div className="empty-line">No command matches “{cmdQuery}”</div>}
             {commandMatches.map((c, i) => (
               <div
@@ -698,10 +806,11 @@ export function Composer({
         <div
           className={`composer-input${hasChips ? " has-chips" : ""}`}
           onDragOver={(e) => {
-            if (designKind && Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+            if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
           }}
           onDrop={(e) => {
-            if (takeImages(e.dataTransfer.files)) e.preventDefault();
+            setDropping(false);
+            if (takeFiles(e.dataTransfer.files)) e.preventDefault();
           }}
         >
           {issue && (
@@ -761,6 +870,16 @@ export function Composer({
             </span>
           ))}
           {addingRefs && <span className="skill-chip context-chip ref-chip">Adding image…</span>}
+          {files.map((f) => (
+            <span key={f.id} className="skill-chip context-chip ref-chip attach-chip" title={`${f.name} · ${sizeLabel(f.size)}`}>
+              {f.thumb ? <img className="attach-thumb" src={f.thumb} alt="" /> : <FileIcon name={f.name} className="attach-icon" />}
+              <span className="chip-label">{shortName(f.name)}</span>
+              <span className="attach-size">{sizeLabel(f.size)}</span>
+              <button className="chip-x" aria-label={`Remove ${f.name}`} onClick={() => setFiles((list) => list.filter((x) => x.id !== f.id))}>
+                ×
+              </button>
+            </span>
+          ))}
           {picked.map((p) => (
             <span key={p.name} className="skill-chip" title={p.description}>
               ${p.name}
@@ -788,7 +907,7 @@ export function Composer({
             }}
             onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
             onPaste={(e) => {
-              if (takeImages(e.clipboardData.files)) e.preventDefault();
+              if (takeFiles(e.clipboardData.files)) e.preventDefault();
             }}
             onKeyDown={onKeyDown}
           />
@@ -801,6 +920,7 @@ export function Composer({
                 { id: "experts", label: "Experts", icon: <BriefcaseBusiness size={14} />, onSelect: () => {}, submenu: (close) => <ExpertsSubmenu close={close} /> },
                 { id: "skills", label: "Skills", icon: <Puzzle size={14} />, onSelect: () => {}, submenu: (close) => <SkillsSubmenu close={close} /> },
                 { id: "issues", label: "Issues", icon: <CircleDot size={14} />, onSelect: () => {}, submenu: (close) => <IssuesSubmenu close={close} /> },
+                ...(designKind ? [] : [{ id: "attach", label: "Attach files…", icon: <Paperclip size={14} />, onSelect: pickFiles }]),
                 { id: "mention", label: "Mention a file or folder (@)", icon: <AtSign size={14} />, onSelect: () => startTrigger("@") },
                 { id: "skill", label: "Use a skill ($)", icon: <Sparkles size={14} />, onSelect: () => startTrigger("$") },
                 { id: "command", label: "Run a command (/)", icon: <Slash size={14} />, onSelect: () => startTrigger("/") },
@@ -841,7 +961,7 @@ export function Composer({
                 <IconStop />
               </button>
             )}
-            {(!running || text.trim() || chips.length > 0) && (
+            {(!running || text.trim() || chips.length > 0 || files.length > 0) && (
               <button className="send" title={running ? "Queue for the next turn" : "Send"} disabled={!canSend} onClick={submit}>
                 {/* Ready to send: the beam invites the click. */}
                 {canSend && <Beam />}

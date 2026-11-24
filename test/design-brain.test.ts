@@ -65,8 +65,10 @@ describe("bundled design skills", () => {
     const chat = forAgent(cat, { mode: "plugin" }).map((s) => s.name);
     const design = forAgent(cat, { mode: "plugin" }, new Set(), { design: true }).map((s) => s.name);
     expect(chat.some((n) => n.startsWith("design-"))).toBe(false);
-    // The chat set is exactly the non-design model skills, as before D3; user-invoked ones ($issue, $pr…) ride only when picked.
-    expect(chat.sort()).toEqual(bundled.filter((s) => s.mode !== "design" && s.invocation === "model").map((s) => s.name).sort());
+    // The chat set is exactly the unmoded model skills (no design-only, no Creator-only); user-invoked ones ($issue, $pr…) ride only when picked.
+    expect(chat.sort()).toEqual(bundled.filter((s) => s.mode === undefined && s.invocation === "model").map((s) => s.name).sort());
+    expect(chat).not.toContain("cubiq-creator");
+    expect(design).not.toContain("cubiq-creator");
     expect(bundled.filter((s) => ["issue", "issue-setup", "triage", "pr"].includes(s.name)).map((s) => s.invocation)).toEqual(["user", "user", "user", "user"]);
     expect(design.filter((n) => n.startsWith("design-")).sort()).toEqual(ALL_DESIGN_SKILLS);
   });

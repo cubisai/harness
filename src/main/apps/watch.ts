@@ -1,4 +1,4 @@
-// Hot reload for a previewed Creator draft: one recursive fs watch per draft folder, debounced, so the App tab
+// Hot reload for a previewed Creator draft: one recursive fs watch per draft folder, debounced, so the open preview
 // reloads its frame shortly after the agent writes a file. Bounded: the oldest watch closes past the cap.
 
 import { type FSWatcher, watch } from "node:fs";

@@ -403,6 +403,17 @@ export class Store {
           UNIQUE(scope, kind, name)
         );`,
       },
+      // 38: reviewed plugin part ownership and recoverable folder/database operations.
+      {
+        applied: () => this.hasTable("plugin_bundles"),
+        sql: `CREATE TABLE IF NOT EXISTS plugin_bundles (
+          key TEXT PRIMARY KEY, install_id TEXT NOT NULL, parts TEXT NOT NULL,
+          project_id TEXT, revision TEXT NOT NULL, automations TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS plugin_bundle_ops (
+          key TEXT PRIMARY KEY, operation TEXT NOT NULL, committed INTEGER NOT NULL DEFAULT 0, error TEXT
+        );`,
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;

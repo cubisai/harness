@@ -3,6 +3,8 @@ import { ChevronUp, PanelBottom } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
 import { SearchDialog } from "./components/SearchDialog";
 import { Library } from "./components/Library";
+import { ComposerDocks, FloatingPlugins, PluginModal, PluginPage, setPluginPageSlot, setPluginTray } from "./components/PluginHost";
+import { appIcon } from "./components/AppFrame";
 import { Composer } from "./components/Composer";
 import { ComposerLip, StudioActions } from "./components/StudioComposer";
 import { RequestDock } from "./components/RequestDock";
@@ -34,8 +36,10 @@ import { usePaneLayout } from "./hooks/usePaneLayout";
 import { BOUNDS, DEFAULT_LAYOUT, DESIGN_FLOOR, designChatWidth, isWideInspector } from "./layout";
 import { ESCAPE_OWNERS, ESCAPE_OWNERS_OVER_DRAWER, escapeStopsTurn, type EscapeTarget } from "./escape";
 import { lastAgentLine } from "./prompt-bar";
-import { inboxModel, nthVisibleThread, threadKind, waitingThreads } from "./sections";
+import { inboxModel, nthVisibleThread, sidebarMode, threadKind, waitingThreads } from "./sections";
 import { useSelectedThread, useStore } from "./store";
+import { applyTheme } from "./store";
+import { AppThemePreviewBar, cancelThemePreview } from "./components/AppThemeControls";
 
 // Its own chunk: Chat never loads the design canvas.
 const DesignCanvas = lazy(() => import("./design/DesignCanvas"));
@@ -56,6 +60,19 @@ export function App() {
   useEffect(() => {
     void init();
   }, [init]);
+  useEffect(() => {
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    const change = () => applyTheme(useStore.getState().settings?.theme ?? "system");
+    const escape = (event: KeyboardEvent) => {
+      const preview = useStore.getState().appThemes?.preview;
+      if (event.key !== "Escape" || event.defaultPrevented || !preview || document.querySelector(ESCAPE_OWNERS)) return;
+      event.preventDefault();
+      void cancelThemePreview(preview.token, true).catch(() => {});
+    };
+    mq.addEventListener("change", change);
+    window.addEventListener("keydown", escape);
+    return () => { mq.removeEventListener("change", change); window.removeEventListener("keydown", escape); };
+  }, []);
 
   // ⌘K: search (> in it, or ⌘⇧P, for the command palette). ⌘\: sidebar. ⌘N / Ctrl+N: new thread. ⌘⇧D: changes. Esc: stop the running turn.
   useEffect(() => {
@@ -110,7 +127,7 @@ export function App() {
         const model = inboxModel(
           s.projects.map((p) => p.id),
           s.threads,
-          { running: s.running, waiting: waitingThreads(s.permissions, s.plans, s.questions), mode: s.threadKind },
+          { running: s.running, waiting: waitingThreads(s.permissions, s.plans, s.questions), mode: sidebarMode(s.threadKind) },
         );
         const target = nthVisibleThread(model, Number(e.key), { groupByProject: s.settings?.sidebarGroupByProject ?? true, collapsed: s.collapsedProjects });
         if (target) {
@@ -126,8 +143,8 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [newThread, showInspector, interrupt, running]);
 
-  // The browser and an app work without a project; Changes and Files need one.
-  const inspectorVisible = inspectorOpen && (project || inspectorTab === "browser" || inspectorTab === "app");
+  // The browser works without a project; Changes and Files need one.
+  const inspectorVisible = inspectorOpen && (project || inspectorTab === "browser");
   const layout = useStore((s) => s.paneLayout);
   const designThread = Boolean(thread && threadKind(thread) === "design");
   const pane = usePaneLayout(Boolean(inspectorVisible), designThread ? DESIGN_FLOOR : undefined);
@@ -152,6 +169,9 @@ export function App() {
     useStore.setState({ studioFold: studio ? true : null });
   }, [studio]);
   const studioFold = useStore((s) => s.studioFold);
+  const page = useStore((s) => s.appPage);
+  const appPage = page !== null && !canvasFirst;
+  const PageIcon = appIcon(page?.icon);
   const sidebarCollapsed = studioFold ?? layout.sidebarCollapsed;
   // The main header's slot the canvas puts its own header into (canvas-first only): one top bar, not two.
   const [headSlot, setHeadSlot] = useState<HTMLDivElement | null>(null);
@@ -203,12 +223,18 @@ export function App() {
           <>
             <header className="main-header drag">
               {sidebarCollapsed && <CollapsedHeaderControls />}
-              {!studio && (
+              {!studio && appPage && page ? (
+                <div className="main-title" title={page.description}>
+                  <PageIcon size={14} strokeWidth={1.75} aria-hidden className="main-title-icon" />
+                  {page.title}
+                </div>
+              ) : !studio && (
                 <div className="main-title">
                   {thread ? thread.title : project ? project.name : "CubiQ"}
                   {thread && project && <span className="sub">{project.name}</span>}
                 </div>
               )}
+              {appPage && <div className="plugin-page-controls" ref={setPluginPageSlot} />}
               {canvasFirst && <div className="main-header-design" ref={setHeadSlot} />}
               {thread?.expertId && <ExpertChip expertId={thread.expertId} />}
               {design && thread && !studio && (
@@ -222,6 +248,7 @@ export function App() {
                   <PanelBottom size={16} strokeWidth={1.75} aria-hidden />
                 </button>
               )}
+              <div className="plugin-tray" ref={setPluginTray} />
               {project && !studio && (
                 <>
                   <button
@@ -254,8 +281,11 @@ export function App() {
                 </>
               )}
             </header>
+            <AppThemePreviewBar />
 
-            {!project ? (
+            {appPage ? (
+              <PluginPage />
+            ) : !project ? (
               initError ? (
                 <div className="empty" role="alert">
                   <div>
@@ -304,6 +334,7 @@ export function App() {
                     </>
                   )}
                 </div>
+                {!designMode && <ComposerDocks />}
                 <Composer
                   threadId={null}
                   mode={
@@ -353,6 +384,7 @@ export function App() {
                 <RequestDock threadId={thread.id} />
                 {thread.expertId && <TeamStrip threadId={thread.id} expertId={thread.expertId} agent={thread.agent} leadModel={thread.model} />}
                 {canvasFirst && !studio && <DrawerHandle buttonRef={drawerHandle} threadId={thread.id} open={drawerOpen} onToggle={() => setDrawerOpen(!drawerOpen)} />}
+                {!designThread && <ComposerDocks />}
                 <Composer
                   threadId={thread.id}
                   mode={
@@ -439,6 +471,8 @@ export function App() {
       <MessageCenter />
       <Notice />
       <Library />
+      <FloatingPlugins />
+      <PluginModal />
       <CommandPalette />
       <SearchHost />
       <SwitchDialogHost />

@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { describe, expect, it } from "vitest";
 import { Store } from "../src/main/db";
-import { seedStore } from "../scripts/history-fixtures";
+import { seedStore } from "../scripts/dev/history-fixtures";
 import type { StoredEvent } from "../src/shared/types";
 import { closeAfter, tempDir } from "./helpers";
 

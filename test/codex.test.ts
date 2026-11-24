@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PermissionDecision, ThreadEvent } from "../src/shared/types";
 import { z } from "zod";
-import { blockingQuestionCatalog, codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, designSkillsLine, turnPolicy, PLAN_HINT, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
+import { blockingQuestionCatalog, codexAuthStamp, codexDecision, codexWindows, codexPolicy, codexToolConfig, createCodexDriver, creatorSkillsLine, designSkillsLine, turnPolicy, PLAN_HINT, toolFor, turnEndFromUsage } from "../src/main/agents/codex";
 
 /** The guide as Codex gets it: the plan hint always follows. */
 const GUIDE = `GUIDE\n\n${PLAN_HINT}`;
@@ -451,6 +451,23 @@ describe("Codex driver", () => {
       const sent = JSON.parse(readFileSync(probe, "utf8")) as { effort?: string; summary?: string };
       expect(sent.effort).toBe("high");
       expect(sent.summary).toBe("auto");
+    } finally {
+      delete process.env.EFFORT_PROBE;
+    }
+  });
+
+  it("sends attached images as localImage items after the text", async () => {
+    const probe = join(tempDir(), "images.json");
+    process.env.EFFORT_PROBE = probe;
+    const d = createCodexDriver({ command: process.execPath, args: ["-e", EFFORT_PROBE], clientVersion: "test" });
+    closeAfter(() => d.dispose?.());
+    try {
+      await d.runTurn(turn("look", { model: "gpt-5", images: [{ path: "/tmp/a.png", mediaType: "image/png" }] }).input);
+      const sent = JSON.parse(readFileSync(probe, "utf8")) as { input: unknown[] };
+      expect(sent.input).toEqual([
+        { type: "text", text: expect.stringContaining("look"), text_elements: [] },
+        { type: "localImage", path: "/tmp/a.png" },
+      ]);
     } finally {
       delete process.env.EFFORT_PROBE;
     }
@@ -1476,6 +1493,12 @@ describe("designSkillsLine", () => {
   });
 });
 
+describe("creatorSkillsLine", () => {
+  it("points Codex at the delivered Creator skill", () => {
+    expect(creatorSkillsLine("/ud/p/ab12")).toBe("CubiQ's Creator skill for this thread is `/ud/p/ab12/cubiq-creator/SKILL.md`: read it before building anything.");
+  });
+});
+
 describe("Codex dynamic run_code", () => {
   const DYNAMIC_PROBE = `
 const fs = require("node:fs");
@@ -1518,7 +1541,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       return;
     }
     const callId = "call_dyn_1";
-    const toolName = prompt === "unknown-tool" ? "not_registered" : "run_code";
+    const toolName = prompt === "unknown-tool" ? "not_registered" : prompt === "creator" ? "creator_inspect" : "run_code";
     const code = prompt === "syntax-error" ? "function (" : 'return await tools.read({ path: "hello.txt" });';
     if (prompt !== "started-after") {
       send({ method: "item/started", params: { threadId: params.threadId, turnId: turn.id, item: { type: "dynamicToolCall", id: callId, tool: toolName, status: "inProgress", arguments: { code } } } });
@@ -1607,6 +1630,33 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       await d.runTurn(unknownTurn.input);
       const unknownResult = unknownTurn.events.find((e): e is Extract<ThreadEvent, { kind: "tool-result" }> => e.kind === "tool-result" && e.toolUseId === "call_dyn_1");
       expect(unknownResult).toMatchObject({ isError: true });
+    } finally {
+      delete process.env.DYNAMIC_PROBE;
+    }
+  });
+
+  it("registers a Creator thread's tools as top-level dynamic tools and returns their screenshot as an image item", async () => {
+    const probe = join(tempDir(), "dynamic-creator.jsonl");
+    process.env.DYNAMIC_PROBE = probe;
+    try {
+      const d = createCodexDriver({ command: process.execPath, args: ["-e", DYNAMIC_PROBE], clientVersion: "test", guide: () => "GUIDE", codeMode: () => "off" });
+      closeAfter(() => d.dispose?.());
+      const inspect: HarnessTool = { name: "creator_inspect", description: "Creator refs", input: { topic: z.string().optional() }, autoAllow: true, run: async () => ({ text: "installed: none", imagePng: "AAAA" }) };
+      const other: HarnessTool = { name: "browser_snapshot", description: "b", input: {}, autoAllow: true, run: async () => ({ text: "" }) };
+      const t = turn("creator", { tools: [inspect, other], preset: "# Creator mode" });
+      await d.runTurn(t.input);
+      const logs = readFileSync(probe, "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
+      const startCall = logs.find((l) => l.method === "thread/start") as { params: { developerInstructions?: string; dynamicTools?: Record<string, unknown>[] } };
+      expect(startCall.params.dynamicTools?.map((x) => x.name)).toEqual(["creator_inspect"]);
+      expect(startCall.params.dynamicTools![0]).toMatchObject({ deferLoading: false });
+      // No run_code here, so no code hint either.
+      expect(startCall.params.developerInstructions).not.toContain(CODE_HINT);
+      const toolResp = logs.find((l) => l.kind === "tool_response") as { result: { success: boolean; contentItems: Record<string, string>[] } };
+      expect(toolResp.result).toEqual({
+        success: true,
+        contentItems: [{ type: "inputText", text: "installed: none" }, { type: "inputImage", imageUrl: "data:image/png;base64,AAAA" }],
+      });
+      expect(t.events.some((e) => e.kind === "tool-use" && e.name === "creator_inspect")).toBe(true);
     } finally {
       delete process.env.DYNAMIC_PROBE;
     }

@@ -1,7 +1,7 @@
-// Tests for the release helpers in scripts/release.mjs. These are pure: no fs,
+// Tests for the release helpers in scripts/release/release.mjs. These are pure: no fs,
 // no git, no prompts — the CLI is exercised by the maintainer.
 import { describe, expect, it } from "vitest";
-import { bumpVersion, draftFromSubjects, insertRelease, parseChangelog, releaseNotes, setUnreleased } from "../scripts/release.mjs";
+import { bumpVersion, draftFromSubjects, insertRelease, parseChangelog, releaseNotes, setUnreleased } from "../scripts/release/release.mjs";
 
 const changelog = [
   "# Changelog",

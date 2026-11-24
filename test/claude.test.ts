@@ -519,7 +519,8 @@ describe("Claude context breakdown", () => {
       sdk.calls.length = 0;
       sdk.attempts.length = 0;
       const write = { type: "assistant", parent_tool_use_id: null, message: { id: "m1", model: "claude-x", content: [{ type: "tool_use", id: "w1", name: `mcp__${TOOL_SERVER}__todowrite`, input: { todos } }] } };
-      sdk.attempts.push({ messages: [initMessage, write, successResult] });
+      const result = { type: "user", parent_tool_use_id: null, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "w1", content: "ok" }] } };
+      sdk.attempts.push({ messages: [initMessage, write, result, successResult] });
       const { input } = turnInput();
       await createClaudeDriver({ pluginDir: () => null }).runTurn(input);
       const hooks = sdk.calls[0]!.options.hooks as { Stop: { hooks: ((i: unknown) => Promise<unknown>)[] }[] };
@@ -537,7 +538,9 @@ describe("Claude context breakdown", () => {
     sdk.calls.length = 0;
     sdk.attempts.length = 0;
     const message = { type: "assistant", parent_tool_use_id: null, message: { id: "m1", model: "claude-x", content } };
-    sdk.attempts.push({ messages: [initMessage, message, successResult] });
+    const results = content.filter((b): b is { type: "tool_use"; id: string; name: string } => Boolean(b && typeof b === "object" && "name" in b && b.name === `mcp__${TOOL_SERVER}__todowrite`))
+      .map((b) => ({ type: "tool_result", tool_use_id: b.id, content: "ok" }));
+    sdk.attempts.push({ messages: [initMessage, message, ...(results.length ? [{ type: "user", parent_tool_use_id: null, message: { role: "user", content: results } }] : []), successResult] });
     const { input } = turnInput();
     input.prompt = prompt;
     await createClaudeDriver({ pluginDir: () => null }).runTurn(input);
@@ -804,6 +807,17 @@ describe("Claude stream mapping", () => {
     expect(turn.openPlan).toBe(false);
     expect(events.filter((e) => e.kind === "plan")).toHaveLength(2);
     expect(events.some((e) => e.kind === "tool-use" || e.kind === "tool-result")).toBe(false);
+  });
+
+  it.each(["denied", "invalid", "subagent"])("a %s managed todo cannot publish a plan", (kind) => {
+    const { input, events } = recorder(), turn = newTurnState();
+    const parent = kind === "subagent" ? "parent" : null;
+    feed(input, turn, { type: "assistant", parent_tool_use_id: parent, message: { id: "m-todo", model: "claude-x", content: [{ type: "tool_use", id: "todo", name: `mcp__${TOOL_SERVER}__todowrite`, input: { todos: [{ content: "a", status: kind === "invalid" ? "invalid" : "pending" }] } }] } });
+    expect(events.some((e) => e.kind === "plan")).toBe(false);
+    feed(input, turn, { type: "user", parent_tool_use_id: parent, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "todo", content: "result", is_error: kind !== "subagent" }] } });
+    expect(events.some((e) => e.kind === "plan")).toBe(false);
+    expect(turn.planMade).toBe(false);
+    expect(turn.managedPlans.size).toBe(0);
   });
 
   it("drops the main thread's text once asked to bring the list up to date: its reply already stands", () => {
@@ -1219,6 +1233,13 @@ describe("harnessToolOptions", () => {
     const registered = (opts.mcpServers?.[TOOL_SERVER] as unknown as { instance: { _registeredTools: Record<string, { _meta?: Record<string, unknown> }> } }).instance._registeredTools;
     expect(registered["design_tokens_apply"]!._meta?.["anthropic/alwaysLoad"]).toBe(true);
     expect(registered["design_screenshot"]!._meta?.["anthropic/alwaysLoad"]).toBe(true);
+    expect(registered["browser_snapshot"]!._meta?.["anthropic/alwaysLoad"]).toBeUndefined();
+  });
+
+  it("keeps a Creator thread's own tools out of tool search too", () => {
+    const opts = harnessToolOptions([tool("creator_inspect"), tool("creator_propose"), tool("creator_app_preview"), tool("browser_snapshot")]);
+    const registered = (opts.mcpServers?.[TOOL_SERVER] as unknown as { instance: { _registeredTools: Record<string, { _meta?: Record<string, unknown> }> } }).instance._registeredTools;
+    for (const name of ["creator_inspect", "creator_propose", "creator_app_preview"]) expect(registered[name]!._meta?.["anthropic/alwaysLoad"]).toBe(true);
     expect(registered["browser_snapshot"]!._meta?.["anthropic/alwaysLoad"]).toBeUndefined();
   });
 

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { FORMER_SECTIONS, SETTINGS_GROUPS, SettingsGroupContent, richRepliesOf, richRepliesPatch } from "../src/renderer/src/components/SettingsSheet";
+import { describe, expect, it, vi } from "vitest";
+import { FORMER_SECTIONS, SETTINGS_GROUPS, SettingsGroupContent, restoreSettingsFocus, richRepliesOf, richRepliesPatch } from "../src/renderer/src/components/SettingsSheet";
 import { SPLASH_IDS, type SettingsView } from "../src/shared/types";
 import { SPLASHES } from "../src/renderer/src/components/Splash";
 import { DEFAULT_LAYOUT } from "../src/shared/layout";
@@ -24,6 +24,24 @@ const groupIds = SETTINGS_GROUPS.map((g) => g.id);
 const html = Object.fromEntries(groupIds.map((id) => [id, renderToStaticMarkup(<SettingsGroupContent group={id} settings={settings} />)]));
 
 describe("Settings IA", () => {
+  it.each(["trigger", "body", "removed", "disabled"])("restores Settings focus safely from %s", (kind) => {
+    const previous = { isConnected: kind !== "removed", matches: vi.fn(() => kind === "disabled"), focus: vi.fn() };
+    const trigger = { focus: vi.fn() };
+    const doc = { body: kind === "body" ? previous : {}, querySelector: vi.fn(() => trigger) };
+    restoreSettingsFocus(previous as unknown as HTMLElement, doc as unknown as Document);
+    expect(previous.focus).toHaveBeenCalledTimes(kind === "trigger" ? 1 : 0);
+    expect(trigger.focus).toHaveBeenCalledTimes(kind === "trigger" ? 0 : 1);
+  });
+
+  it("falls back to the composer when no Settings trigger remains", () => {
+    const composer = { focus: vi.fn() };
+    const doc = { body: {}, querySelector: vi.fn().mockReturnValueOnce(null).mockReturnValueOnce(composer) };
+    restoreSettingsFocus(null, doc as unknown as Document);
+    expect(composer.focus).toHaveBeenCalledOnce();
+    expect(doc.querySelector).toHaveBeenNthCalledWith(1, 'button[aria-label^="Settings"], button[title^="Settings"]');
+    expect(doc.querySelector).toHaveBeenLastCalledWith(".composer textarea");
+  });
+
   it("has the eight groups in order", () => {
     expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual(["Appearance", "Threads", "Agents & Providers", "Skills & MCP", "Design", "Data & Security", "Updates", "Experiments"]);
   });

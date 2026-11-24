@@ -5,7 +5,7 @@ import type { JsonSchemaType } from "@modelcontextprotocol/sdk/validation";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { z } from "zod";
 import type { McpServerEntry, McpServerSpec } from "../../shared/types";
-import type { HarnessTool } from "../agents/types";
+import type { HarnessTool, ToolContext } from "../agents/types";
 import { stableStringify } from "../cache-policy";
 import { bm25Rank } from "../search/bm25";
 import { killPidTree } from "../winspawn";
@@ -67,14 +67,49 @@ export class McpClientPool {
   private readonly idleMs: number;
   private readonly now: () => number;
   private readonly onToolsChanged?: (spec: McpServerSpec) => void;
+  private readonly transportFor: (spec: McpServerSpec) => Transport;
 
   /** `onToolsChanged`: a connected server said its tool list changed (notifications/tools/list_changed). */
-  constructor(opts: { connectTimeoutMs?: number; callTimeoutMs?: number; idleMs?: number; now?: () => number; onToolsChanged?: (spec: McpServerSpec) => void } = {}) {
+  constructor(opts: { connectTimeoutMs?: number; callTimeoutMs?: number; idleMs?: number; now?: () => number; onToolsChanged?: (spec: McpServerSpec) => void; transport?: (spec: McpServerSpec) => Transport } = {}) {
     this.connectTimeoutMs = opts.connectTimeoutMs ?? 10_000;
     this.callTimeoutMs = opts.callTimeoutMs ?? 60_000;
     this.idleMs = opts.idleMs ?? 600_000;
     this.now = opts.now ?? (() => Date.now());
     this.onToolsChanged = opts.onToolsChanged;
+    this.transportFor = opts.transport ?? clientTransport;
+  }
+
+  /** List through the same main-owned connection used for calls (including mediated stdio). */
+  async listTools(spec: McpServerSpec, signal?: AbortSignal): Promise<{ ok: boolean; tools: McpToolInfo[]; error?: string }> {
+    if (signal?.aborted) return { ok: false, tools: [], error: INTERRUPTED };
+    this.startSweeper();
+    const key = stableStringify(spec);
+    let entry = this.entries.get(key);
+    if (!entry) { entry = this.createEntry(spec); this.entries.set(key, entry); }
+    entry.inFlight++; entry.lastUsed = this.now();
+    try {
+      if (!entry.connecting) {
+        entry.connecting = this.race(entry.client.connect(entry.transport), this.connectTimeoutMs);
+        entry.connecting.catch(() => {});
+      }
+      await this.raceAbort(entry.connecting, signal);
+      const tools: McpToolInfo[] = [];
+      let cursor: string | undefined;
+      const seen = new Set<string>();
+      do {
+        const result = await entry.client.listTools(cursor ? { cursor } : undefined, { signal, timeout: this.callTimeoutMs });
+        tools.push(...result.tools.map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema, ...(t.outputSchema ? { outputSchema: t.outputSchema } : {}), ...(t.annotations?.readOnlyHint === true ? { readOnly: true as const } : {}) })));
+        cursor = result.nextCursor;
+        if (cursor && seen.has(cursor)) throw new Error("The MCP server repeated a tool-list cursor.");
+        if (cursor) seen.add(cursor);
+        if (tools.length > 10_000 || seen.size > 100) throw new Error("The MCP server's tool list is too large.");
+      } while (cursor);
+      return { ok: true, tools };
+    } catch (e) {
+      if (signal?.aborted) return { ok: false, tools: [], error: INTERRUPTED };
+      await this.drop(key, entry);
+      return { ok: false, tools: [], error: e instanceof Error ? e.message : String(e) };
+    } finally { entry.inFlight--; entry.lastUsed = this.now(); }
   }
 
   /**
@@ -118,6 +153,28 @@ export class McpClientPool {
     }
   }
 
+  /** Main-mediated native MCP keeps the complete upstream reply, including binary content,
+   * prompts and resources. This primitive has no permission shortcut; callers gate execution. */
+  async request<S extends z.ZodTypeAny>(spec: McpServerSpec, method: string, params: Record<string, unknown> | undefined, schema: S, signal?: AbortSignal): Promise<z.output<S>> {
+    if (signal?.aborted) throw new Error(INTERRUPTED);
+    this.startSweeper();
+    const key = stableStringify(spec);
+    let entry = this.entries.get(key);
+    if (!entry) { entry = this.createEntry(spec); this.entries.set(key, entry); }
+    entry.inFlight++; entry.lastUsed = this.now();
+    try {
+      if (!entry.connecting) {
+        entry.connecting = this.race(entry.client.connect(entry.transport), this.connectTimeoutMs);
+        entry.connecting.catch(() => {});
+      }
+      await this.raceAbort(entry.connecting, signal);
+      return await this.raceAbort(this.race(entry.client.request({ method, ...(params && { params }) }, schema, { signal, timeout: this.callTimeoutMs }), this.callTimeoutMs), signal);
+    } catch (e) {
+      if (!signal?.aborted) await this.drop(key, entry);
+      throw e;
+    } finally { entry.inFlight--; entry.lastUsed = this.now(); }
+  }
+
   /** Close entries idle for at least `idleMs`, leaving alone any with a call in flight. */
   async sweep(): Promise<void> {
     const now = this.now();
@@ -142,7 +199,7 @@ export class McpClientPool {
   }
 
   private createEntry(spec: McpServerSpec): PoolEntry {
-    const transport: Transport = clientTransport(spec);
+    const transport: Transport = this.transportFor(spec);
     const client = new Client({ name: "cubiq", version: "1.0.0" });
     client.setNotificationHandler(ToolListChangedNotificationSchema, () => this.onToolsChanged?.(spec));
     return { client, transport, lastUsed: this.now(), inFlight: 0 };
@@ -310,6 +367,10 @@ export function routerTools(
     servers: (projectId: string | undefined) => McpServerEntry[];
     listings: Pick<McpToolsCache, "refresh" | "peek"> & Partial<Pick<McpToolsCache, "peekStale">>;
     pool: Pick<McpClientPool, "callTool">;
+    /** Main mediation/mandatory permissions, shared by direct router and code-mode calls. */
+    call?: (ctx: ToolContext | undefined, server: string, tool: string, args: Record<string, unknown>) => Promise<{ text: string; isError: boolean; data?: unknown }>;
+    /** Main's combined outer/connector gate, after schema/Plan/grant validation. */
+    defer?: (ctx: ToolContext, args?: { server: string; tool: string; arguments: Record<string, unknown> }) => boolean;
   },
   projectId?: string,
 ): HarnessTool[] {
@@ -374,6 +435,14 @@ export function routerTools(
     name: "call_mcp_tool",
     description: callDescription,
     autoAllow: false,
+    ...(deps.defer ? {
+      pluginRulesHandled: true as const,
+      deferPermission: (args: Record<string, unknown> | undefined, ctx: ToolContext) => {
+        if (args === undefined) return deps.defer!(ctx);
+        if (typeof args.server !== "string" || typeof args.tool !== "string" || (args.arguments !== undefined && (!args.arguments || typeof args.arguments !== "object" || Array.isArray(args.arguments)))) return false;
+        return deps.defer!(ctx, { server: args.server, tool: args.tool, arguments: (args.arguments as Record<string, unknown> | undefined) ?? {} });
+      },
+    } : {}),
     input: {
       server: z.string(),
       tool: z.string(),
@@ -382,6 +451,7 @@ export function routerTools(
     effect: "mutate",
     returns: "unknown",
     run: async ({ server, tool, arguments: rawArgs }, ctx) => {
+      if (deps.call) return deps.call(ctx, server, tool, rawArgs ?? {});
       const { readOnly: _r, ...r } = await callServerTool(deps, ctx?.projectId, server, tool, rawArgs ?? {}, ctx?.signal);
       return r;
     },

@@ -1,8 +1,10 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { LiveUpdate, UnskilledApi } from "../shared/types";
 
 const api: UnskilledApi = {
   platform: process.platform,
+  appCardInfo: (key, card, threadId) => ipcRenderer.invoke("apps:card-info", key, card, threadId),
+  callAppCard: (key, threadId, server, tool, args) => ipcRenderer.invoke("apps:card-call", key, threadId, server, tool, args),
   opaqueSidebar: process.argv.includes("--opaque-sidebar"),
   smoke: process.argv.includes("--unskilled-smoke"),
   listProjects: () => ipcRenderer.invoke("projects:list"),
@@ -32,6 +34,15 @@ const api: UnskilledApi = {
   listSkills: (projectId) => ipcRenderer.invoke("skills:list", projectId),
   listAgents: () => ipcRenderer.invoke("agents:list"),
   send: (request) => ipcRenderer.invoke("turn:send", request),
+  saveAttachments: (threadId, sources) => ipcRenderer.invoke("attachments:save", threadId, sources),
+  pickAttachments: () => ipcRenderer.invoke("attachments:pick"),
+  pathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return "";
+    }
+  },
   interrupt: (threadId) => ipcRenderer.invoke("turn:interrupt", threadId),
   respondPermission: (requestId, decision) => ipcRenderer.invoke("permission:respond", requestId, decision),
   respondPlan: (requestId, decision) => ipcRenderer.invoke("plan:respond", requestId, decision),
@@ -107,8 +118,21 @@ const api: UnskilledApi = {
   rejectExtension: (id) => ipcRenderer.invoke("extensions:reject", id),
   listExtensionInstalls: (projectId) => ipcRenderer.invoke("extensions:installs", projectId),
   listApps: (projectId) => ipcRenderer.invoke("apps:list", projectId),
+  listPluginCommands: () => ipcRenderer.invoke("apps:commands"),
+  appThemeState: () => ipcRenderer.invoke("apps:theme-state"),
+  previewAppTheme: (source) => ipcRenderer.invoke("apps:theme-preview", source),
+  applyAppTheme: (handle, token) => ipcRenderer.invoke("apps:theme-apply", handle, token),
+  cancelAppThemePreview: (token) => ipcRenderer.invoke("apps:theme-cancel", token),
+  revertAppTheme: () => ipcRenderer.invoke("apps:theme-revert"),
+  listPluginConnectors: () => ipcRenderer.invoke("apps:connectors"),
+  savePluginConnector: (handle, values, clientSecret) => ipcRenderer.invoke("apps:connector-save", handle, values, clientSecret),
+  connectPluginConnector: (handle) => ipcRenderer.invoke("apps:connector-connect", handle),
+  cancelPluginConnectorSignIn: (handle) => ipcRenderer.invoke("apps:connector-cancel", handle),
+  disconnectPluginConnector: (handle) => ipcRenderer.invoke("apps:connector-disconnect", handle),
+  checkPluginConnector: (handle) => ipcRenderer.invoke("apps:connector-check", handle),
   appInfo: (key) => ipcRenderer.invoke("apps:info", key),
   setAppEnabled: (key, enabled) => ipcRenderer.invoke("apps:enable", key, enabled),
+  setAppFavorite: (key, on) => ipcRenderer.invoke("apps:favorite", key, on),
   prepareAppEdit: (key, threadId) => ipcRenderer.invoke("apps:edit", key, threadId),
   callApp: (key, projectId, server, tool, args, approval) => ipcRenderer.invoke("apps:call", key, projectId, server, tool, args, approval),
   appStoreGet: (key, name) => ipcRenderer.invoke("apps:store-get", key, name),

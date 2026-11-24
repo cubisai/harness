@@ -1,11 +1,13 @@
 # Creator mode overview
 
-Creator builds reusable **skills**, **MCP connectors**, **apps**, **Design page themes** and **scheduled prompts**, staged for user review. Apps run sandboxed in the right panel (`app-format`, `app-bridge`, `app-check`). Page themes (`theme-format`) and automations (`automation-format`) are project-only. Themes change no live page at install; automations install Off/Ask and start no run.
+Creator builds reusable **skills**, **MCP connectors**, **apps**, **Design page themes** and **scheduled prompts**, staged for user review. Apps run sandboxed, in a modal or as a floating widget (`app-format`, `app-bridge`, `app-check`). Page themes (`theme-format`) and automations (`automation-format`) are project-only. Themes change no live page at install; automations install Off/Ask and start no run.
 
 ## Core rules
 
 - Always inspect first: call `creator_inspect` with `topic: "installed"` before proposing so you know what already exists and which bundled skill names are reserved.
 - Read `skill-format` before authoring a skill, `connector-format` before a connector, or `app-format` and `app-check` before an app.
+- Read `plugin-bundle` before adding owned commands, exact rules, skills, connectors or project-bound automations to an app. Draft/Preview/Check never activate its parts.
+- Recoloring CubiQ itself is an `app` with `contributes.appTheme`, not a page `theme`. Read `app-theme-format` / `app-theme-tokens`; user Preview/Apply is separate from Install.
 - Never write skill folders, `SKILL.md` files, or `mcp.json` files directly using file-write or shell tools. Always submit drafts with `creator_propose`.
 - Never claim a skill or connector is installed after `creator_propose` succeeds. Staging creates a review card in the transcript; the user chooses whether to click **Install** or **Reject**.
 - Never embed secret values (API keys, passwords, bearer tokens, private keys, or inline query credentials). Use `${VAR}` placeholders for environment variables or HTTP headers.

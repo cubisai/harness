@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cacheReport, defaultDb, formatReport, type ReportRow } from "../scripts/cache-report";
+import { cacheReport, defaultDb, formatReport, type ReportRow } from "../scripts/dev/cache-report";
 import type { ThreadEvent, Usage } from "../src/shared/types";
 
 const usage = (read: number | null, write: number, input: number, extra: Partial<Usage> = {}): Usage => ({

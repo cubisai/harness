@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { McpToolInfo } from "../src/main/mcp/servers";
 import { McpClientPool, MCP_ROUTER_INDEX_MAX_NAMES, rankTools, routerIndex, routerTools } from "../src/main/mcp/router";
 import type { McpServerEntry, McpServerSpec } from "../src/shared/types";
-import { makeTools } from "../scripts/mock-extensions-lib.mjs";
+import { makeTools } from "../scripts/dev/mock-extensions-lib.mjs";
 import { tempDir } from "./helpers";
 
 const MANY = join(__dirname, "fixtures", "mock-mcp-many.mjs");
