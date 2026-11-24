@@ -1,7 +1,7 @@
 import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
-  esbuild: { jsx: "automatic" },
+  oxc: { jsx: { runtime: "automatic" } },
   test: {
     include: ["test/**/*.test.{ts,tsx}"],
     // Specs that need a real third-party account (Antigravity) live in manual/
