@@ -134,6 +134,8 @@ readline.createInterface({ input: process.stdin }).on("line", async (line) => {
     if (text === "log-stream") {
       process.stderr.write(${JSON.stringify(STREAM_LOG)} + "\\n");
       process.stderr.write(${JSON.stringify(STREAM_LOG)} + "\\n");
+      // A beat, so the parent reads stderr before the turn's reply (separate pipes, no ordering).
+      await new Promise((r) => setTimeout(r, 50));
     } else if (text === "log-ask-stall") {
       process.stderr.write(${JSON.stringify(ASKING_LOG)} + "\\n");
       await new Promise((r) => setTimeout(r, 300));

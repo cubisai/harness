@@ -78,7 +78,7 @@ describe("strict chrome palettes", () => {
     expect(contributionViews(name, app.manifest.contributes)).toEqual([expect.objectContaining({ kind: "app-theme", detail: expect.stringContaining("primary"), description: expect.stringContaining("Apply separately") })]);
   });
   it("checks a deterministic generated cache with CRLF support", () => {
-    const css = readFileSync("src/renderer/src/styles/app.css", "utf8"), generated = readFileSync("src/shared/chrome-theme-tokens.generated.ts", "utf8");
+    const css = readFileSync("src/renderer/src/styles/app.css", "utf8").replace(/\r\n?/g, "\n"), generated = readFileSync("src/shared/chrome-theme-tokens.generated.ts", "utf8").replace(/\r\n?/g, "\n");
     expect(generateChromeThemeTokens(css)).toBe(generated);
     expect(generateChromeThemeTokens(css.replace(/\n/g, "\r\n"))).toBe(generated);
     const files = [{ path: "src/renderer/src/styles/app.css", text: css }, { path: "src/shared/chrome-theme-tokens.generated.ts", text: generated }];
