@@ -49,6 +49,10 @@ describe("zonedParts", () => {
 });
 
 describe("zonedToUtc", () => {
+  it("uses the first valid minute and first occurrence in Berlin", () => {
+    expect(zonedToUtc(2026, 3, 29, 2, 30, "Europe/Berlin")).toBe(Date.UTC(2026, 2, 29, 1));
+    expect(zonedToUtc(2026, 10, 25, 2, 30, "Europe/Berlin")).toBe(Date.UTC(2026, 9, 25, 0, 30));
+  });
   it("resolves a spring-forward gap to the first valid minute after it", () => {
     expect(zonedToUtc(2026, 3, 8, 2, 30, NY)).toBe(Date.UTC(2026, 2, 8, 7, 0));
   });
@@ -109,6 +113,10 @@ describe("nextDue", () => {
 });
 
 describe("dueTimes", () => {
+  it.each(["skip", "coalesce"] as const)("finds the latest minute after an eight-day sleep (%s)", (policy) => {
+    const start = Date.UTC(2026, 0, 1), wake = Date.UTC(2026, 0, 9);
+    expect(dueTimes({ kind: "interval", everyMinutes: 1 }, start, wake, policy, start)).toEqual([wake]);
+  });
   it("coalesces missed runs into the latest instant", () => {
     const s: Schedule = { kind: "daily", at: "09:00", timeZone: BANGKOK };
     const last = Date.UTC(2026, 0, 5, 2, 0); // Mon 09:00 Bangkok

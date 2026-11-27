@@ -21,6 +21,7 @@ export interface MockOAuthConfig {
   issParameterSupported?: boolean;
   /** Answer refresh_token grants with 400 invalid_grant. */
   refreshFails?: boolean;
+  refreshUnavailable?: boolean;
 }
 
 export interface MockOAuthServer {
@@ -91,6 +92,7 @@ export async function startMockOAuthServer(config: MockOAuthConfig = {}): Promis
       }
       if (method === "POST" && url.pathname === "/token") {
         const grant = request.form.grant_type;
+        if (grant === "refresh_token" && config.refreshUnavailable) return json(res, 503, { error: "temporarily_unavailable" });
         if (grant === "refresh_token" && config.refreshFails) return json(res, 400, { error: "invalid_grant" });
         if (grant === "refresh_token") {
           return json(res, 200, { access_token: "at-2", token_type: "Bearer", expires_in: 3600, refresh_token: request.form.refresh_token ?? "rt-1", scope: "read" });

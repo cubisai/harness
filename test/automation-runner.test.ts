@@ -45,6 +45,7 @@ function fakeDestination(check: (key: string) => Promise<DeliveryCheck> = MISSIN
   const payloads: DeliveryPayload[] = [];
   return {
     id: "dest",
+    repeatable: true,
     payloads,
     async publish(p) {
       payloads.push(p);
@@ -77,6 +78,28 @@ function makeDeps(store: AutomationStore, over: Partial<RunnerDeps> = {}): Runne
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("AutomationRunner.tick", () => {
+  it("keeps manual runs out of the scheduled cursor", () => {
+    let now = 0;
+    const { db } = open(() => now);
+    db.create(base());
+    const runner = new AutomationRunner(makeDeps(db, { now: () => now }));
+    now = 310_000;
+    runner.runNow("a1");
+    expect(runner.tick(330_000)).toBe(1);
+    expect(runner.tick(330_000)).toBe(0);
+    expect(db.lastScheduled("a1")).toBe(300_000);
+  });
+
+  it("cancels outdated claims recovered after a settings edit", async () => {
+    const { db } = open(() => 1_000);
+    db.create(base());
+    const run = new AutomationRunner(makeDeps(db)).runNow("a1")!;
+    db.update("a1", { prompt: "changed", budgetUsd: 5, permissions: "ask" });
+    const runner = new AutomationRunner(makeDeps(db));
+    await runner.recover();
+    await runner.drain();
+    expect(db.run(run.id)).toMatchObject({ threadId: null, status: "cancelled", error: expect.stringMatching(/settings/i) });
+  });
   it("blocks scheduled/manual/recovered admission while a plugin owner is Off", async () => {
     let now = 1_000;
     const { db } = open(() => now);
@@ -527,6 +550,114 @@ describe("AutomationRunner disabled automations", () => {
 });
 
 describe("AutomationRunner.recover", () => {
+  const checkpoint = { text: "saved brief", title: "Original title", advances: [{ source: "git", expected: "f000", next: "e000" }], final: { status: "succeeded", inputTokens: 11, outputTokens: 6, costUsd: 0.4 } };
+  function pending(db: AutomationStore, cp: unknown = checkpoint) {
+    db.create(base());
+    db.confirmSource("a1", "git", "f000");
+    const run = db.claimRun("a1", "brief", 1)!;
+    db.startRun(run.id, "t", 60_000);
+    db.checkpoint(run.id, cp);
+    db.deliveryIntent("brief:dest", run.id, "dest");
+    return run.id;
+  }
+
+  it.each(["check", "publish"])("fences a revoked owner during %s, even after a second startup", async (stage) => {
+    const { db } = open(() => 1_000);
+    const owner = { key: "g~brief", title: "Brief", revision: "r1", enabled: true };
+    const id = pending(db, { ...checkpoint, owner });
+    const revoke = () => { owner.revision = "r2"; }; // Off/On while the promise was outstanding
+    const destination = fakeDestination(async () => {
+      if (stage === "check") { revoke(); return "confirmed"; }
+      return "missing";
+    });
+    const publish = destination.publish;
+    destination.publish = async (p) => { const receipt = await publish(p); revoke(); return receipt; };
+    const deps = makeDeps(db, { destination, owner: () => owner });
+    for (let boot = 0; boot < 2; boot++) {
+      await new AutomationRunner(deps).recover();
+      expect(db.run(id)).toMatchObject({ status: "cancelled", error: expect.stringMatching(/owning plugin/), result: "saved brief" });
+      expect(db.delivery("brief:dest")?.state).not.toBe("confirmed");
+      expect(db.cursor("a1", "git").bookmark).toBe("f000");
+      expect(destination.payloads).toHaveLength(stage === "publish" ? 1 : 0);
+    }
+  });
+
+  it("does not revive a run cancelled by someone else during receipt lookup", async () => {
+    const { db } = open(() => 1_000);
+    const id = pending(db);
+    const destination = fakeDestination(async () => { db.finishRun(id, { status: "cancelled", error: "Cancelled elsewhere" }); return "confirmed"; });
+    await new AutomationRunner(makeDeps(db, { destination })).recover();
+    expect(db.run(id)).toMatchObject({ status: "cancelled", error: "Cancelled elsewhere" });
+    expect(db.cursor("a1", "git").bookmark).toBe("f000");
+    expect(destination.payloads).toEqual([]);
+  });
+
+  it.each(["unknown", "exception", "not repeatable"])("keeps %s delivery uncertainty visible, then accepts positive proof without reposting", async (failure) => {
+    let now = 1_000;
+    const { db } = open(() => now++);
+    const id = pending(db, { ...checkpoint, final: { ...checkpoint.final, status: "paused-budget" } });
+    let check: DeliveryCheck = failure === "not repeatable" ? "missing" : "unknown";
+    let offline = failure === "exception";
+    const destination = fakeDestination(async () => { if (offline) throw Error("offline"); return check; });
+    destination.repeatable = failure !== "not repeatable";
+    const deps = makeDeps(db, { destination });
+    await new AutomationRunner(deps).recover();
+    const uncertain = db.run(id);
+    expect(uncertain).toMatchObject({ status: "paused-budget", result: "saved brief", inputTokens: 11, error: expect.stringMatching(/could not be confirmed/) });
+    expect(db.delivery("brief:dest")?.state).toBe("unknown");
+    expect(db.cursor("a1", "git").bookmark).toBe("f000");
+    offline = false; check = "missing";
+    await new AutomationRunner(deps).recover();
+    expect(db.run(id)).toEqual(uncertain);
+    db.confirmSource("a1", "git", "0100"); // A newer commit can sort before both earlier SHAs.
+    check = { state: "confirmed", receipt: "receipt-9" };
+    await new AutomationRunner(deps).recover();
+    expect(db.cursor("a1", "git").bookmark).toBe("0100");
+    expect(db.run(id)).toMatchObject({ status: "paused-budget", result: "saved brief", costUsd: 0.4, outputTokens: 6, error: null });
+    expect(db.delivery("brief:dest")).toMatchObject({ state: "confirmed", receipt: "receipt-9" });
+    expect(destination.payloads).toEqual([]);
+  });
+
+  it("settles a legacy confirmed receipt once without guessing its outcome or bookmark", async () => {
+    let now = 1_000;
+    const { db } = open(() => now++);
+    const id = pending(db, { text: "legacy brief", advances: [{ source: "git", next: "e000" }] });
+    db.confirmDelivery("brief:dest", "old-receipt");
+    db.finishRun(id, { status: "partial", costUsd: 0.7, inputTokens: 30 });
+    const destination = fakeDestination(async () => { throw Error("already confirmed"); });
+    const runner = new AutomationRunner(makeDeps(db, { destination }));
+    expect((await runner.recover()).confirmed).toBe(1);
+    const first = db.run(id);
+    expect(first).toMatchObject({ status: "partial", result: "legacy brief", inputTokens: 30, costUsd: 0.7, error: expect.stringMatching(/confirmed.*uncertain/i) });
+    expect(db.cursor("a1", "git").bookmark).toBe("f000");
+    expect(db.delivery("brief:dest")?.receipt).toBe("old-receipt");
+    expect((await runner.recover()).confirmed).toBe(0);
+    expect(db.run(id)).toEqual(first);
+    expect(destination.payloads).toEqual([]);
+  });
+
+  it("uses the original payload on a safe retry; a newer bookmark survives the delivery", async () => {
+    const { db } = open(() => 1_000);
+    const id = pending(db);
+    db.update("a1", { name: "Renamed" });
+    db.confirmSource("a1", "git", "0100");
+    const destination = fakeDestination();
+    await new AutomationRunner(makeDeps(db, { destination })).recover();
+    expect(destination.payloads).toEqual([{ key: "brief:dest", runId: id, automationId: "a1", threadId: "t", title: "Original title", text: "saved brief" }]);
+    expect(db.run(id)).toMatchObject({ status: "succeeded", error: null });
+    expect(db.cursor("a1", "git").bookmark).toBe("0100");
+  });
+
+  it("keeps an incomplete checkpoint readable without sending an unproven result", async () => {
+    const { db } = open(() => 1_000);
+    const id = pending(db, { ...checkpoint, advances: [null] });
+    const destination = fakeDestination();
+    await new AutomationRunner(makeDeps(db, { destination })).recover();
+    expect(db.run(id)).toMatchObject({ status: "partial", result: "saved brief", error: expect.stringMatching(/could not be confirmed/) });
+    expect(db.cursor("a1", "git").bookmark).toBe("f000");
+    expect(destination.payloads).toEqual([]);
+  });
+
   it("interrupts stale runs and reconciles deliveries without blind reposting", async () => {
     let now = 1_000;
     const { db } = open(() => now);
@@ -550,6 +681,7 @@ describe("AutomationRunner.recover", () => {
         published.push(p.key);
         return "receipt";
       },
+      repeatable: true,
       async check(key) {
         return key === "key-confirmed" ? "confirmed" : "missing";
       },
@@ -590,7 +722,7 @@ describe("AutomationRunner.recover", () => {
     db.create(base({ id: "a1" }));
     const cut = db.claimRun("a1", "cut", 1)!;
     db.startRun(cut.id, "t-cut", 60_000); // lease still live: a quick restart
-    db.checkpoint(cut.id, { text: "the brief", advances: [{ source: "git", next: "sha2" }] });
+    db.checkpoint(cut.id, { text: "the brief", advances: [{ source: "git", expected: null, next: "sha2" }], final: { status: "succeeded", costUsd: null, inputTokens: 1, outputTokens: 2 } });
     db.deliveryIntent("k", cut.id, "dest");
 
     const dest = fakeDestination();
@@ -598,7 +730,7 @@ describe("AutomationRunner.recover", () => {
     const counts = await runner.recover();
 
     expect(counts).toMatchObject({ interrupted: 1, republished: 1 });
-    expect(db.run(cut.id)!.status).toBe("interrupted");
+    expect(db.run(cut.id)!.status).toBe("succeeded");
     expect(dest.payloads[0]).toMatchObject({ key: "k", text: "the brief" });
     expect(db.cursor("a1", "git").bookmark).toBe("sha2");
   });

@@ -1,18 +1,19 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { useStore as useDraftStore } from "zustand";
 import { AtSign, Blocks, BriefcaseBusiness, Check, CircleDot, File, Folder, ImagePlus, Paperclip, Puzzle, Slash, Sparkles } from "lucide-react";
 import type { PermissionMode, SkillEntry } from "../../../shared/types";
 import { IconArrowUp, IconStop } from "../icons";
 import { api } from "../api";
 import { chipLabel, commandQuery, composeMessage, skillQueryAt, toggleSkill } from "../composer";
+import { composerDrafts } from "../composer-drafts";
 import { MAX_REFS, imageFiles, refLabel, refThumb, withRefs } from "../design/refs";
 import { MAX_ATTACHMENTS, type PendingAttachment, pendingFrom, pendingFromPicked, shortName, sizeLabel } from "../attachments";
 import { FileIcon } from "./FileIcon";
 import { designChipLabel, designIntent, designPlaceholder, systemChips } from "../design/intent";
 import { elementLabel, withScope } from "../../../shared/selection";
 import { designDirName } from "../../../shared/design";
-import { exactCommand, isCommandSkill, issueCommand, matchCommands, pluginSkillSelections, selectedPluginCommand, type ComposerCommand, type PluginSelections } from "../commands";
-import type { PluginCommandInvocation } from "../../../shared/plugin-parts";
+import { composerSelections, exactCommand, isCommandSkill, issueCommand, matchCommands, type ComposerCommand, type PluginSelections } from "../commands";
 import { folderPaths, mentionQueryAt, mentionsIn, rankMentions } from "../mentions";
 import { nextMode } from "../modes";
 import { findThread, useStore } from "../store";
@@ -36,10 +37,10 @@ import { SkillsSubmenu } from "./SkillsSubmenu";
  * One bar under the text (DESIGN.md §7.3): + and the permission chip on the
  * left; the model control, the context ring and send on the right.
  */
-/** Skill entries for names, in order: from the loaded catalog, else from `extra`; unknown names are dropped. */
-function entriesOf(names: string[], extra: SkillEntry[] = []): SkillEntry[] {
+/** Keep identities already picked; resolve only new names against the live catalog. */
+function entriesOf(names: string[], picked: SkillEntry[] = []): SkillEntry[] {
   const all = useStore.getState().skills;
-  return names.flatMap((n) => all.find((s) => s.name === n) ?? extra.find((s) => s.name === n) ?? []);
+  return names.flatMap((n) => picked.find((s) => s.name === n) ?? all.find((s) => s.name === n) ?? []);
 }
 
 /** The studio's one chip: `Selection: StatCard`, or `Selection: 3 elements`. */
@@ -73,36 +74,39 @@ export function Composer({
 }) {
   const allSkills = useStore((s) => s.skills);
   // Design-only skills are offered in design threads (and a design draft) only; threadKind follows the open thread.
-  const designKind = useStore((s) => s.threadKind) === "design";
+  const kind = useStore((s) => s.threadKind);
+  const designKind = kind === "design";
   // The issue skills run as "/" commands, so "$" leaves them out.
   const skills = useMemo(() => allSkills.filter((s) => s.enabled !== false && !isCommandSkill(s) && s.mode !== "creator" && (designKind || s.mode !== "design")), [allSkills, designKind]);
   const pluginCommands = useStore((s) => s.pluginCommands);
   const pluginCommandsError = useStore((s) => s.pluginCommandsError);
   const pluginCommandsLoading = useStore((s) => s.pluginCommandsLoading);
-  const [pluginCommand, setPluginCommand] = useState<PluginCommandInvocation | null>(null);
   useEffect(() => { void useStore.getState().loadPluginCommands(); }, []);
   const running = useStore((s) => (threadId ? Boolean(s.running[threadId]) : false));
   const insert = useStore((s) => s.composerInsert);
-  const { send, interrupt, enqueue, startThread, sendInBackground } = useStore.getState();
+  const admitting = useStore((s) => Boolean(threadId && s.admitting[threadId]));
+  const { send, interruptThread, enqueue, startThread, sendInBackground } = useStore.getState();
   const projectId = useStore((s) => s.selectedProjectId);
+  const drafts = composerDrafts(projectId, threadId ?? `new:${kind}`);
+  const { input, waiting } = useDraftStore(drafts.store);
+  const { text, chips, refs, files, picked, pluginCommand } = input;
+  const setText = (value: string) => drafts.edit("text", value);
+  const setPicked = (value: SkillEntry[] | ((list: SkillEntry[]) => SkillEntry[])) => drafts.edit("picked", value);
+  const setChips = (update: (list: string[]) => string[]) => drafts.edit("chips", update);
+  const setFiles = (update: (list: PendingAttachment[]) => PendingAttachment[]) => drafts.edit("files", update);
+  const setRefs = (update: (list: typeof refs) => typeof refs) => drafts.edit("refs", update);
   // The thread's issue, or the one picked for the thread this draft starts.
   const issue = useStore((s) =>
     threadId ? (findThread(s.threads, threadId)?.issue ?? null) : s.draft.issue?.projectId === s.selectedProjectId ? s.draft.issue.issue : null,
   );
   const issueRequest = useStore((s) => s.issuePickerRequest);
-  const [text, setText] = useState("");
-  const [chips, setChips] = useState<string[]>([]);
-  const [picked, setPicked] = useState<SkillEntry[]>([]);
   const [skillDismissed, setSkillDismissed] = useState(false);
   const [menuIndex, setMenuIndex] = useState(0);
   const [caret, setCaret] = useState(0);
   const [knownFiles, setKnownFiles] = useState<string[]>([]);
   const [mentionDismissed, setMentionDismissed] = useState(false);
   // Reference images pasted or dropped into a design thread: saved in its design folder, sent as mentions.
-  const [refs, setRefs] = useState<{ path: string; thumb: string }[]>([]);
   const [addingRefs, setAddingRefs] = useState(false);
-  // Files pasted, dropped or picked in a chat or Creator thread: copied into the thread's folder when the message is sent.
-  const [files, setFiles] = useState<PendingAttachment[]>([]);
   // Files are being dragged over the window: the box shows it takes them.
   const [dropping, setDropping] = useState(false);
   // Images handed over by the canvas (Draw → Attach) join the reference chips, up to the cap.
@@ -202,13 +206,8 @@ export function Composer({
   useEffect(() => setMentionDismissed(false), [mentionQuery?.start, mentionQuery?.query]);
   useEffect(() => {
     area.current?.focus();
-    setText("");
-    setCaret(0);
-    setChips([]);
-    setRefs([]);
-    setFiles([]);
-    setPicked(entriesOf(useStore.getState().takePendingSkills()));
-  }, [threadId]);
+    setCaret(area.current?.selectionStart ?? 0);
+  }, [drafts]);
 
   /** Save pasted or dropped images as the design's references; true when the event was ours to handle. */
   const takeImages = (files: ArrayLike<File> | null | undefined): boolean => {
@@ -318,7 +317,7 @@ export function Composer({
   useEffect(() => {
     if (!draft) return;
     setText(draft.text);
-    setPluginCommand(draft.pluginCommand ?? null);
+    drafts.edit("pluginCommand", draft.pluginCommand ?? null);
     setCaret(draft.text.length);
     pendingCaret.current = draft.text.length;
     useStore.setState({ composerDraft: null });
@@ -375,7 +374,7 @@ export function Composer({
       // Picking/completing a saved prompt only prepares it. The next ordinary
       // Send/Enter is the explicit action that may start a turn.
       const next = `/${c.name} `;
-      setPluginCommand({ ...c.plugin });
+      drafts.edit("pluginCommand", { ...c.plugin });
       setText(next); setCaret(next.length); pendingCaret.current = next.length;
       area.current?.focus(); return;
     }
@@ -404,8 +403,7 @@ export function Composer({
   const submit = () => {
     let selections: PluginSelections;
     try {
-      const command = selectedPluginCommand(text, pluginCommands, pluginCommand);
-      selections = { ...pluginSkillSelections(picked), ...(command ? { pluginCommand: command } : {}) };
+      selections = composerSelections(text, picked, pluginCommands, pluginCommand);
     } catch (e) { useStore.getState().showNotice(e instanceof Error ? e.message : String(e)); return; }
     // "/issue <description>", "/triage 12", "/pr 12" run their bundled skill with the argument.
     const issueRun = !picked.length && issueCommand(text);
@@ -458,31 +456,20 @@ export function Composer({
     const mentions = [...mentionsIn(text, knownSet), ...refPaths];
     const names = picked.map((p) => p.name);
     if (selection && threadId) useStore.getState().setDesignSelection(threadId, null);
-    const pending = files;
-    const sources = pending.map((f) => f.source);
+    const sources = files.map((f) => f.source);
+    const submitted = drafts.take();
     const go = () => {
-      if (!threadId) void startThread(body, names, mentions, sources, selections);
+      if (!threadId) void startThread(body, names, mentions, sources, selections).then((created) => {
+        if (!created) drafts.recover({ ...submitted, pluginCommand: selections.pluginCommand ?? null });
+      });
       else if (running) enqueue(threadId, body, names, mentions, sources, selections);
-      else
-        void send(body, names, undefined, mentions, { ...selections, ...(sources.length ? { files: sources } : {}) }).then((ok) => {
-          if (ok) return;
-          setText((cur) => cur || text);
-          setFiles((cur) => (cur.length ? cur : pending));
-          setPicked((cur) => (cur.length ? cur : picked));
-          setPluginCommand((cur) => cur ?? selections.pluginCommand ?? null);
-        });
+      else void send(body, names, threadId, mentions, { ...selections, files: sources, keepOnRefusal: true });
     };
     // The intent reaches the main process before the message, which takes it into the turn.
     const intent = threadId ? designIntent(designChip, system) : null;
     if (threadId && designChip) useStore.getState().setDesignChip(threadId, null);
     if (threadId && intent) void api().designSetIntent(threadId, intent).catch(() => {}).then(go);
     else go();
-    setText("");
-    setChips([]);
-    setRefs([]);
-    setFiles([]);
-    setPicked([]);
-    setPluginCommand(null);
     setCaret(0);
   };
 
@@ -490,8 +477,7 @@ export function Composer({
   const submitInBackground = () => {
     let selections: PluginSelections;
     try {
-      const command = selectedPluginCommand(text, pluginCommands, pluginCommand);
-      selections = { ...pluginSkillSelections(picked), ...(command ? { pluginCommand: command } : {}) };
+      selections = composerSelections(text, picked, pluginCommands, pluginCommand);
     } catch (e) { useStore.getState().showNotice(e instanceof Error ? e.message : String(e)); return; }
     // "/codemode [on|off]" sets code mode for new threads (no argument flips it); it never goes to the agent.
     const codeMatch = !picked.length && /^\/codemode(?:\s+(on|off))?$/i.exec(text.trim());
@@ -513,13 +499,10 @@ export function Composer({
     const body = withRefs(composeMessage(text, chips), refPaths);
     if (!body && !picked.length && !files.length) return;
     const mentions = [...mentionsIn(text, knownSet), ...refPaths];
-    void sendInBackground(body, picked.map((p) => p.name), selections, mentions, files.map((f) => f.source));
-    setText("");
-    setChips([]);
-    setRefs([]);
-    setFiles([]);
-    setPicked([]);
-    setPluginCommand(null);
+    const submitted = drafts.take();
+    void sendInBackground(body, picked.map((p) => p.name), selections, mentions, files.map((f) => f.source)).then((created) => {
+      if (!created) drafts.recover({ ...submitted, pluginCommand: selections.pluginCommand ?? null });
+    });
     setCaret(0);
   };
 
@@ -579,7 +562,7 @@ export function Composer({
         e.preventDefault();
         const c = commandMatches[menuIndex];
         if (c) {
-          if (c.plugin) setPluginCommand({ ...c.plugin });
+          if (c.plugin) drafts.edit("pluginCommand", { ...c.plugin });
           const next = `/${c.name} `;
           pendingCaret.current = next.length;
           setText(next);
@@ -735,6 +718,7 @@ export function Composer({
       <div className={`composer${running ? " running" : ""}${dropping ? " dropping" : ""}`}>
         {running && <Beam />}
         {lip}
+        {waiting.length > 0 && <button className="button ghost" onClick={() => { drafts.switchDraft(); area.current?.focus(); }}>Switch unsent draft ({waiting.length + 1})</button>}
         {menuOpen && (
           <div className="skill-menu" role="listbox">
             {matches.length === 0 && <div className="empty-line">No skill matches “{query}”</div>}
@@ -955,13 +939,13 @@ export function Composer({
             {beforeModel}
             {model}
             {meters}
-            {running && (
-              <button className="send stop" title="Stop (clears queued messages)" onClick={() => void interrupt()}>
+            {(running || admitting) && (
+              <button className="send stop" title="Stop (clears queued messages)" onClick={() => threadId && void interruptThread(threadId)}>
                 <Beam />
                 <IconStop />
               </button>
             )}
-            {(!running || text.trim() || chips.length > 0 || files.length > 0) && (
+            {((!running && !admitting) || canSend) && (
               <button className="send" title={running ? "Queue for the next turn" : "Send"} disabled={!canSend} onClick={submit}>
                 {/* Ready to send: the beam invites the click. */}
                 {canSend && <Beam />}

@@ -20,7 +20,7 @@ import { runLoop, type Authorization, type LoopTool } from "./loop";
 import { decide, refusal } from "./permissions";
 import { createProposePlanTool, PLAN_MODE_NOTE } from "./plan";
 import { systemPrompt } from "./prompt";
-import { SessionStore, repairHistory } from "./session";
+import { SessionStore } from "./session";
 import { createTaskTool } from "./subagent";
 import { prefixKey, unbindThinking } from "./context/binding";
 import { compactedHistory, splitForCompaction, summaryPrompt } from "./context/compact";
@@ -225,17 +225,17 @@ async function runTurn(
   let messages: LlmMessage[];
   let createdNew = false;
   if (input.compact) {
-    const loaded = input.sessionId ? deps.sessions.load(input.sessionId) : null;
+    const loaded = input.sessionId ? deps.sessions.resume(input.sessionId) : null;
     if (!input.sessionId || !loaded || loaded.length === 0) {
       input.onEvent({ kind: "notice", text: "Nothing to compact yet." });
       input.onEvent({ kind: "turn-end", costUsd: null, inputTokens: 0, outputTokens: 0, durationMs: Date.now() - started });
       return;
     }
     sid = input.sessionId;
-    messages = repairHistory(loaded);
+    messages = loaded;
   } else {
     let sessionId = input.sessionId;
-    let history = sessionId ? deps.sessions.load(sessionId) : null;
+    let history = sessionId ? deps.sessions.resume(sessionId) : null;
     let prompt = input.prompt;
     if (!sessionId || !history) {
       const lostReason = sessionId ? "The session's history file is gone." : null;
@@ -249,7 +249,7 @@ async function runTurn(
       input.onSession(sessionId);
     }
     sid = sessionId;
-    messages = repairHistory(history);
+    messages = history;
     // Attached images go as image parts to a model that sees images; the prompt lists their paths either way.
     const images = entry.capabilities.vision ? (input.images ?? []).flatMap((img) => {
       try {
@@ -423,7 +423,7 @@ async function runTurn(
           tools: () => scriptable,
           outputDir: deps.outputDir,
           state: codeState,
-          broker: createCodeBroker({ tools: () => scriptable, emit: (e) => input.onEvent(e), authorize: (tool, args, summary) => authorize(tool, args, summary), outputDir: deps.outputDir }),
+          broker: createCodeBroker({ tools: () => scriptable, emit: (e) => input.onEvent(e), authorize: (tool, args, summary, signal) => authorize(tool, args, summary, signal), outputDir: deps.outputDir }),
           ...(deps.uiBlocks?.() ? { show: (widgets: ShownWidget[], callId: string) => widgets.forEach((w, i) => input.onEvent({ kind: "widget", envelope: scriptEnvelope(w.spec, callId, i, w.complete) })) } : {}),
         }), input)
       : null;
@@ -448,7 +448,7 @@ async function runTurn(
     input.onEvent({ kind: "context-breakdown", rows, total: rows.reduce((n, r) => n + r.tokens, 0), estimated: true });
   }
 
-  const authorize = async (tool: LoopTool, args: Record<string, unknown>, summary: string): Promise<Authorization> => {
+  const authorize = async (tool: LoopTool, args: Record<string, unknown>, summary: string, signal?: AbortSignal): Promise<Authorization> => {
     // A design thread's fence: writes outside its folder and destructive commands are denied, never asked.
     if (input.design) {
       const targets = tool.targets?.(args);
@@ -471,7 +471,7 @@ async function runTurn(
     // A design thread's own folder is its canvas: file edits there don't ask.
     if (tool.targets && designWriteAllowed(mode, input.cwd, input.design, tool.targets(args))) return { ok: true };
     if (tool.deferPermission?.(args)) return { ok: true };
-    const decision = await input.requestPermission({ toolName: tool.displayName, summary, canAlwaysAllow: true });
+    const decision = await input.requestPermission({ toolName: tool.displayName, summary, canAlwaysAllow: true, ...(signal ? { signal } : {}) });
     return decision === "deny" ? { ok: false, reason: refusal(mode, "denied-by-user") } : { ok: true };
   };
 

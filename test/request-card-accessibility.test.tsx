@@ -79,6 +79,12 @@ describe("baseline request-card accessibility", () => {
     for (const scheme of ["light", "dark"] as const) {
       const authored = appThemePalette(palette, scheme);
       for (const role of ["text", "text-secondary", "bg-elevated"] as const) expect(authored[role]).not.toBe(CHROME_THEME_BASE[scheme][role]);
+      // Rebinding --text alone does not change an inherited, already-resolved color.
+      const ink = rule(".permission-ask").color!;
+      expect(ink).toBe("var(--text)");
+      for (const surface of [rule(".button").background!, rule(".button:hover").background!]) {
+        expect(contrast(color(ink, CHROME_THEME_BASE[scheme]), color(surface, CHROME_THEME_BASE[scheme]))).toBeGreaterThanOrEqual(4.5);
+      }
     }
     for (const html of [permission, question]) {
       for (const role of ["text", "text-secondary", "bg-elevated", "bg-hover", "focus"] as const) {

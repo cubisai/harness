@@ -162,6 +162,22 @@ describe("MessageCenterView", () => {
     expect(html).toContain("Repo health");
   });
 
+  it("shows one durable outcome after duplicate and older notifications", () => {
+    const current = notice({ threadId: "A", runId: 2, endedAt: 90, status: "partial", error: "Delivery confirmed; the original outcome or source bookmark is uncertain." });
+    useStore.setState({ automationNotices: [] });
+    const { apply } = useStore.getState();
+    apply({ type: "automation-run", notice: current });
+    apply({ type: "automation-delivered", runId: 2, automationId: "a1", threadId: "A", title: "Brief" });
+    apply({ type: "automation-run", notice: current });
+    apply({ type: "automation-run", notice: { ...current, runId: 1, status: "succeeded" } });
+    expect(useStore.getState().automationNotices).toEqual([current]);
+    const rows = inboxRows({ threads, permissions: [], selectedThreadId: null, automations: [current], finished: [{ threadId: "A", endedAt: 89, durationMs: 900 }] });
+    expect(rows.finished).toEqual([]);
+    const html = renderToStaticMarkup(<MessageCenterView {...rows} agents={agents} onOpen={() => {}} onClose={() => {}} />);
+    expect(html).toContain(current.error);
+    expect(html.match(/class="inbox-row"/g)).toHaveLength(1);
+  });
+
   it("says so when nothing is waiting", () => {
     const html = renderToStaticMarkup(<MessageCenterView needsYou={[]} finished={[]} agents={[]} onOpen={() => {}} onClose={() => {}} />);
     expect(html).toContain("Nothing waiting");

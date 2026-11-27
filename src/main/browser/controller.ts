@@ -72,6 +72,8 @@ export class BrowserController {
   private shots: string[] = [];
   /** The emulated viewport. */
   device: DevicePreset = "desktop";
+  /** Preset changes on this guest, including restoration when a new webview attaches. */
+  private deviceChanges = Promise.resolve();
   /** True once the renderer's <webview> has attached this session. */
   enabled = false;
   /** The user took the pointer: acting tools refuse until they resume. Reads (snapshot, logs, screenshot) stay allowed. */
@@ -131,6 +133,13 @@ export class BrowserController {
     // Typing needs a focused page; the pane may be behind another window, or hidden.
     void wc.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => {});
     void wc.debugger.sendCommand("Runtime.addBinding", { name: PICK_BINDING }).catch(() => {});
+    this.deviceChanges = this.device === "desktop" ? Promise.resolve() : this.applyDevice(wc, this.device).catch(() => {
+      if (this.wc !== wc) return;
+      // A fresh guest starts at desktop metrics if Chromium refused the override.
+      this.device = "desktop";
+      this.events.onDevice?.(this.device);
+      this.push({ level: "warning", text: "Could not restore the emulated viewport. The browser is using Desktop." });
+    });
     wc.setWindowOpenHandler(({ url }) => {
       // Popups open in the pane itself, so the agent never loses the page.
       if (isAllowedUrl(url)) void wc.loadURL(url);
@@ -203,8 +212,16 @@ export class BrowserController {
   /** Emulate a viewport in the pane; "desktop" clears any override. */
   async setDevice(preset: DevicePreset): Promise<void> {
     const wc = await this.page();
+    const change = this.deviceChanges.then(() => this.applyDevice(wc, preset));
+    this.deviceChanges = change.catch(() => {});
+    await change;
+  }
+
+  private async applyDevice(wc: WebContents, preset: DevicePreset): Promise<void> {
+    if (this.wc !== wc) throw new Error("The browser pane was replaced.");
     if (preset === "desktop") await wc.debugger.sendCommand("Emulation.clearDeviceMetricsOverride");
     else await wc.debugger.sendCommand("Emulation.setDeviceMetricsOverride", DEVICE_PRESETS[preset]);
+    if (this.wc !== wc) throw new Error("The browser pane was replaced.");
     this.device = preset;
     this.events.onDevice?.(preset);
   }

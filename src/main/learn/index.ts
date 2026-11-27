@@ -583,9 +583,11 @@ export function createLearner(deps: LearnerDeps): Learner {
       const verifyLesson = deps.verifyLesson;
       if (!verifyLesson) return null;
       const lesson = deps.db.getLesson(id);
-      if (!lesson) return null;
+      if (!lesson || lesson.status === "retired" || lesson.status === "dropped") return null;
       const result = await verifyLesson(lesson);
       if (!result) return null;
+      const current = deps.db.getLesson(id);
+      if (!current || current.updatedAt !== lesson.updatedAt || current.status !== lesson.status || current.tries !== lesson.tries) return current;
       const updated = deps.db.updateLesson(id, {
         tries: lesson.tries + 1,
         verified: result.verification ?? lesson.verified,

@@ -74,7 +74,6 @@ async function harness(options: { boxAvailable?: boolean; iss?: string | null; s
 describe("McpAuth sign-in", () => {
   it("signs in, stores the tokens encrypted, and hands them back", async () => {
     const h = await harness();
-    const before = Date.now();
     expect(await h.auth.connect(h.key, h.spec)).toEqual({ ok: true });
 
     const url = h.opened[0]!;
@@ -85,8 +84,7 @@ describe("McpAuth sign-in", () => {
 
     const status = h.auth.status(h.key);
     expect(status.signedIn).toBe(true);
-    expect(status.expiresAt).toBeGreaterThanOrEqual(before + 3_600_000);
-    expect(status.expiresAt).toBeLessThanOrEqual(Date.now() + 3_600_000);
+    expect(status.expiresAt).toBe(h.state.now + 3_600_000);
     expect(await h.auth.accessToken(h.key, h.spec)).toBe("at-1");
     expect(readFileSync(h.file, "utf-8")).not.toContain("at-1");
   });
@@ -190,6 +188,16 @@ describe("guardedFetch", () => {
 });
 
 describe("McpAuth refresh", () => {
+  it("retains refresh credentials through an outage without returning an expired access token", async () => {
+    const h = await harness();
+    await h.auth.connect(h.key, h.spec);
+    h.server.config.refreshUnavailable = true;
+    h.state.now = h.vault.get(h.key)!.oauth!.tokens!.obtained_at + 3_601_000;
+    expect(await h.auth.accessToken(h.key, h.spec)).toBeNull();
+    expect(h.vault.get(h.key)!.oauth!.tokens!.refresh_token).toBe("rt-1");
+    h.server.config.refreshUnavailable = false;
+    expect(await h.auth.accessToken(h.key, h.spec)).toBe("at-2");
+  });
   it("refreshes once past 80% of the lifetime, and only once for concurrent calls", async () => {
     const h = await harness();
     expect(await h.auth.connect(h.key, h.spec)).toEqual({ ok: true });
@@ -214,7 +222,7 @@ describe("McpAuth refresh", () => {
     expect(await h.auth.connect(h.key, h.spec)).toEqual({ ok: true });
     h.server.config.refreshFails = true;
     h.state.now = h.vault.get(h.key)!.oauth!.tokens!.obtained_at + 3_600 * 1000 * 0.8 + 1;
-    expect(await h.auth.refresh(h.key, h.spec)).toBeNull();
+    expect(await h.auth.accessToken(h.key, h.spec)).toBeNull();
     expect(h.auth.status(h.key).signedIn).toBe(false);
   });
 });

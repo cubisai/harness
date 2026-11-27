@@ -1,0 +1,6 @@
+{
+  "id": "release-facts", "suite": "behaviour", "fixture": "changelog",
+  "about": "Combine a package entry point with release metadata from its changelog.",
+  "prompt": "Read the manifest and changelog. Return a JSON object with exactly these keys in order: bin (the tally executable's path), date (latest released version's date), fixed (the issue number fixed in it, as an integer).",
+  "expect": {}, "graders": [{ "type": "answer", "matches": "\\{\\s*\"bin\"\\s*:\\s*\"src/cli\\.js\"\\s*,\\s*\"date\"\\s*:\\s*\"2026-09-30\"\\s*,\\s*\"fixed\"\\s*:\\s*38\\s*\\}" }]
+}

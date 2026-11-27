@@ -6,6 +6,7 @@
 // script's row in the thread, through the same broker as the native agent's.
 
 import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { z } from "zod";
 import type { CodeMode, ThreadEvent } from "../shared/types";
 import type { HarnessTool } from "./agents/types";
@@ -37,11 +38,11 @@ export const CODE_MODE_DESCRIPTION = `${CODE_DESCRIPTION} Scripts here only read
 const PARENT_WAIT_MS = 2000;
 
 /** Per-thread code mode: read from settings the first time a thread asks, then fixed for this app run, so a session's tool list never changes. */
-export function codeModes(read: () => CodeMode | undefined): ((threadId: string) => CodeMode) & { forget(threadId: string): void } {
+export function codeModes(read: (id: string) => CodeMode | undefined): ((threadId: string) => CodeMode) & { forget(threadId: string): void } {
   const fixed = new Map<string, CodeMode>();
   const modeOf = (threadId: string): CodeMode => {
     let mode = fixed.get(threadId);
-    if (!mode) fixed.set(threadId, (mode = read() ?? "off"));
+    if (!mode) fixed.set(threadId, (mode = read(threadId) ?? "off"));
     return mode;
   };
   return Object.assign(modeOf, { forget: (threadId: string) => void fixed.delete(threadId) });
@@ -95,7 +96,10 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
     let seen = reads.get(threadId);
     if (!seen) reads.set(threadId, (seen = new Map()));
     const fileReads = seen;
-    const ctxFor = (callId: string, signal: AbortSignal): ToolContext => ({ cwd, signal, outputDir: deps.outputDir, callId, reads: fileReads, guardScript: deps.guardScript });
+    const ctxFor = (callId: string, signal: AbortSignal): ToolContext => {
+      const root = realpathSync(cwd);
+      return { cwd: root, readRoot: root, signal, outputDir: deps.outputDir, callId, reads: fileReads, guardScript: deps.guardScript };
+    };
     const projectId = deps.projectOf(threadId);
     const ids = { threadId, ...(projectId ? { projectId } : {}) };
     return [

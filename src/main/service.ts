@@ -24,6 +24,8 @@ import type {
   Question,
   QuestionAnswer,
   SendRequest,
+  TurnAdmission,
+  TurnOutcome,
   SkillEntry,
   StoredEvent,
   HandoffCheckpoint,
@@ -301,6 +303,7 @@ export class Service {
     expertId: string | null = null,
     preset: "creator" | null = null,
   ): Thread {
+    if (this.deletingProjects.has(projectId)) throw new Error("This project is being deleted.");
     if (preset === "creator" && kind === "design") throw new Error("A Creator thread is a chat thread.");
     const project = this.store.getProject(projectId);
     const d = this.defaults();
@@ -361,11 +364,32 @@ export class Service {
 
   /** Delete a thread; its worktree goes too when it has nothing uncommitted (the branch always stays), and a chat's own folder always. */
   async deleteThread(id: string): Promise<void> {
-    this.interrupt(id);
     const thread = this.store.getThread(id);
+    this.deleting.add(id);
+    try {
+      await this.settleForDeletion(id);
+      await this.removeThreadFiles(thread);
+      this.store.deleteThread(id);
+    } finally {
+      this.deleting.delete(id);
+    }
+  }
+
+  private async removeThreadFiles(thread: Thread): Promise<void> {
     if (thread.worktreePath && isChatDir(thread.worktreePath, this.chatsRoot)) rmSync(thread.worktreePath, { recursive: true, force: true });
     else if (thread.worktreePath) await removeWorktree(this.store.getProject(thread.projectId).path, thread.worktreePath);
-    this.store.deleteThread(id);
+  }
+
+  private settleForDeletion(id: string): Promise<void> | undefined {
+    this.interrupt(id);
+    this.afterTurn.delete(id);
+    for (const [requestId, q] of this.pendingQuestions) {
+      if (q.threadId !== id) continue;
+      this.pendingQuestions.delete(requestId);
+      q.resolve("dismiss");
+      this.broadcast({ type: "question-done", requestId });
+    }
+    return this.completions.get(id);
   }
 
   /** Delete a project, stopping its running threads and removing any associated worktrees. */
@@ -378,19 +402,18 @@ export class Service {
     }
     if (projectPath && isChatsRoot(projectPath, this.chatsRoot)) throw new Error("Chats can't be removed. Delete the chats themselves instead.");
     const threads = this.store.listThreads(id);
-    for (const thread of threads) {
-      this.interrupt(thread.id);
-      if (thread.worktreePath && projectPath) {
-        try {
-          await removeWorktree(projectPath, thread.worktreePath);
-        } catch {
-          // worktree removal failure shouldn't block project deletion
-        }
-      }
+    this.deletingProjects.add(id);
+    for (const thread of threads) this.deleting.add(thread.id);
+    try {
+      await Promise.all(threads.map((thread) => this.settleForDeletion(thread.id)));
+      for (const thread of threads) await this.removeThreadFiles(thread).catch(() => {});
+      this.approvals.delete(id);
+      this.scopeChecked.delete(id);
+      this.store.deleteProject(id);
+    } finally {
+      for (const thread of threads) this.deleting.delete(thread.id);
+      this.deletingProjects.delete(id);
     }
-    this.approvals.delete(id);
-    this.scopeChecked.delete(id);
-    this.store.deleteProject(id);
   }
 
   /** Where a thread's tools run: its own worktree, or the project folder. */
@@ -481,7 +504,7 @@ export class Service {
     // A stored mode the UI doesn't know blanks the whole window, so an unknown one never gets in.
     if (patch.permissionMode !== undefined && !PERMISSION_MODES.includes(patch.permissionMode)) throw new Error(`Unknown permission mode: ${String(patch.permissionMode)}`);
     if (patch.agent && patch.agent !== current.agent) {
-      if (this.running.has(id)) throw new Error("Stop the running turn before switching agents.");
+      if (this.completions.has(id) || this.deleting.has(id)) throw new Error("Stop the running turn before switching agents.");
       const { agent, ...rest } = patch;
       return this.applySwitch(current, agent, current.bindings[bindingKey(agent)]?.resumeCursor ? "back" : "fresh", rest.model);
     }
@@ -507,7 +530,7 @@ export class Service {
    */
   /** `model`: the new agent's model to land on (a provider model picked from its list), else its default. */
   async switchAgent(threadId: string, agent: string, mode: SwitchMode, model?: string): Promise<SwitchResult> {
-    if (this.running.has(threadId)) return { ok: false, reason: "Stop the running turn before switching agents." };
+    if (this.completions.has(threadId) || this.deleting.has(threadId)) return { ok: false, reason: "Stop the running turn before switching agents." };
     const thread = this.store.getThread(threadId);
     if (agent === thread.agent) return { ok: false, reason: "This thread already runs that agent." };
     const driver = this.drivers.get(agent);
@@ -526,7 +549,25 @@ export class Service {
     if (channel === "none" || (channel === "inject-items" && !driver.seed)) {
       return { ok: false, reason: `${driver.label} has no way to receive a handoff here. Start fresh instead.` };
     }
-    // Everything that can refuse runs before anything changes.
+    const controller = new AbortController();
+    const release = this.reserve(threadId);
+    this.running.set(threadId, controller);
+    this.broadcast({ type: "running", threadId, running: true });
+    try {
+      return await this.prepareHandoff(thread, driver, channel, controller, model);
+    } catch (err) {
+      if (controller.signal.aborted) return { ok: false, reason: "Handoff stopped." };
+      throw err;
+    } finally {
+      this.running.delete(threadId);
+      release();
+      this.broadcast({ type: "running", threadId, running: false });
+      this.admitWaiting();
+    }
+  }
+
+  private async prepareHandoff(thread: Thread, driver: AgentDriver, channel: "inject-items" | "first-message", controller: AbortController, model?: string): Promise<SwitchResult> {
+    const threadId = thread.id, agent = driver.id, mode = "handoff";
     const events = this.store.listEvents(threadId);
     const cp = await buildCheckpoint(this.store, threadId);
     const count = driver.countTokens;
@@ -535,9 +576,12 @@ export class Service {
       contextWindow: null,
       replacedTokens: replacedTokens(events),
       commandsAsItems: channel === "inject-items",
+      signal: controller.signal,
     });
+    controller.signal.throwIfAborted();
     if (!fit.ok) return { ok: false, reason: fit.reason };
-    const git = await checkpointGit(this.cwdOf(thread), cp.lastSeq);
+    const git = await checkpointGit(this.cwdOf(thread), cp.lastSeq, controller.signal);
+    controller.signal.throwIfAborted();
     if (!git.ok && git.kind === "dirty") return { ok: false, reason: git.reason };
 
     const switched = this.applySwitch(thread, agent, "handoff", model);
@@ -552,10 +596,12 @@ export class Service {
       instanceId: null,
     });
     try {
-      const sent = await this.seedHandoff(switched, driver, cp, fit.text, fit.tier, this.cwdOf(thread));
+      const sent = await this.seedHandoff(switched, driver, cp, fit.text, fit.tier, this.cwdOf(thread), controller);
+      controller.signal.throwIfAborted();
       return { ok: true, mode, thread: this.store.getThread(threadId), seeded: { ...seeded, sent }, gitRef: git.ok ? git.ref : null };
     } catch (err) {
-      const warning = `The handoff didn't reach ${driver.label}: ${err instanceof Error ? err.message : String(err)}. It starts without the earlier messages.`;
+      const warning = controller.signal.aborted ? `Switched to ${driver.label}. The handoff was stopped before it finished.`
+        : `The handoff didn't reach ${driver.label}: ${err instanceof Error ? err.message : String(err)}. It starts without the earlier messages.`;
       this.emit(threadId, { kind: "error", message: warning });
       return { ok: true, mode, thread: this.store.getThread(threadId), gitRef: git.ok ? git.ref : null, warning };
     }
@@ -610,11 +656,14 @@ export class Service {
    * history as items without a turn; Claude and ACP agents get one synthetic
    * first message, and their reply is stored as a handoff event, not a turn.
    */
-  private async seedHandoff(thread: Thread, driver: AgentDriver, cp: HandoffCheckpoint, text: string, tier: 0 | 1 | 2, cwd: string): Promise<number> {
+  private async seedHandoff(thread: Thread, driver: AgentDriver, cp: HandoffCheckpoint, text: string, tier: 0 | 1 | 2, cwd: string, controller: AbortController): Promise<number> {
     const checkpointId = `${thread.id}:${cp.lastSeq}:${driver.id}`;
     const provenance: Provenance = { agent: driver.id, model: thread.model, provider: null, instanceId: null };
+    const ownsSeed = () => !controller.signal.aborted && this.running.get(thread.id) === controller;
     const onSession = (sessionId: string) => {
-      if (sessionId !== this.store.getThread(thread.id).sessionId) {
+      if (!ownsSeed()) return;
+      const current = this.store.getThread(thread.id);
+      if (current.agent === driver.id && sessionId !== current.sessionId) {
         this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, { sessionId }) });
       }
     };
@@ -634,16 +683,14 @@ export class Service {
         mcpServers: this.mcpServers(thread.projectId, thread.id),
         items,
         onSession,
-        inject: (sessionId, send) =>
-          injectWithLedger(this.store, { threadId: thread.id, provider: driver.id, sessionId, checkpointId }, items, `${driver.id}/inject_items`, send),
+        inject: async (sessionId, send) => {
+          if (!ownsSeed()) throw new Error("The handoff is no longer active.");
+          return injectWithLedger(this.store, { threadId: thread.id, provider: driver.id, sessionId, checkpointId }, items, `${driver.id}/inject_items`, send);
+        },
       });
       return res.sent ?? 0;
     }
     const prompt = `${text}\n---\nThat is context for continuing this thread. Reply with one short sentence saying you have it; don't run any tools yet.`;
-    const controller = new AbortController();
-    this.running.set(thread.id, controller);
-    this.broadcast({ type: "running", threadId: thread.id, running: true });
-    try {
       // The session doesn't exist until the prompt goes out, so the ledger keys this checkpoint's new session.
       const target = { threadId: thread.id, provider: driver.id, sessionId: `new:${checkpointId}`, checkpointId };
       const { sent } = await injectWithLedger(this.store, target, [prompt], `${driver.id}/first-message`, async () => {
@@ -665,6 +712,7 @@ export class Service {
           mcpServers: this.mcpServers(thread.projectId, thread.id),
           provenance,
           onEvent: (event) => {
+            if (!ownsSeed()) return;
             if (event.kind === "assistant-text") {
               this.emit(thread.id, { kind: "handoff", phase: "reply", text: event.text, to: driver.id }, provenance);
             } else if (event.kind === "error") {
@@ -682,10 +730,6 @@ export class Service {
         if (failed) throw new Error(failed);
       });
       return sent;
-    } finally {
-      this.running.delete(thread.id);
-      this.broadcast({ type: "running", threadId: thread.id, running: false });
-    }
   }
 
   /** The first turn-end after a switch: did the new session reuse the cache or re-seed it (Ch. 10 §10.5)? */
@@ -850,8 +894,15 @@ export class Service {
   private runLimit: () => number = () => 0;
   /** Background sends waiting for a slot, oldest first; resolve(false) means it was stopped while waiting. */
   private waiting: { threadId: string; resolve: (go: boolean) => void }[] = [];
-  /** Slots handed to waiting sends that haven't marked themselves running yet. */
-  private admitting = 0;
+  private completions = new Map<string, Promise<void>>();
+  private deleting = new Set<string>();
+  private deletingProjects = new Set<string>();
+
+  private reserve(id: string): () => void {
+    let finish!: () => void;
+    this.completions.set(id, new Promise<void>((resolve) => { finish = resolve; }));
+    return () => { this.completions.delete(id); finish(); };
+  }
 
   /** Settings › Run at once: background sends over the limit wait for a free slot. */
   setRunLimit(limit: () => number): void {
@@ -861,34 +912,84 @@ export class Service {
   /** Start waiting background sends while there's room under the limit. */
   private admitWaiting(): void {
     const limit = this.runLimit();
-    while (this.waiting.length && (limit <= 0 || this.running.size + this.admitting < limit)) {
-      this.admitting++;
+    while (this.waiting.length && (limit <= 0 || this.running.size < limit)) {
       this.waiting.shift()!.resolve(true);
     }
   }
 
-  /**
-   * A background send waits here while the limit is reached. False when it
-   * was stopped before a slot came free.
-   */
-  private async waitForSlot(req: SendRequest): Promise<boolean> {
-    const limit = this.runLimit();
-    if (!req.background || limit <= 0 || this.running.size + this.admitting < limit) return true;
-    this.emit(req.threadId, { kind: "notice", text: `Queued: ${limit} threads are already running. This one starts when one of them finishes.` });
-    this.broadcast({ type: "queued", threadId: req.threadId, queued: true });
-    const go = await new Promise<boolean>((resolve) => this.waiting.push({ threadId: req.threadId, resolve }));
-    this.broadcast({ type: "queued", threadId: req.threadId, queued: false });
-    if (go) this.admitting--;
-    return go;
+  /** Admission is reported once. Completion covers the same send and its automatic fix rounds. */
+  async send(req: SendRequest, onAdmission?: (admission: TurnAdmission) => void): Promise<TurnOutcome> {
+    const id = req.threadId;
+    if (this.deleting.has(id)) throw new Error("This thread is being deleted.");
+    if (this.completions.has(id) || this.running.has(id)) throw new Error("This thread is already running.");
+    const controller = new AbortController();
+    const release = this.reserve(id);
+    let announced = false;
+    const admit = (value: TurnAdmission) => {
+      if (!announced) onAdmission?.(value);
+      announced = true;
+    };
+    try {
+      const limit = this.runLimit();
+      if (req.background && limit > 0 && this.running.size >= limit) {
+        const thread = this.store.getThread(id);
+        this.pluginSelections(req, this.catalogFor(this.cwdOf(thread), id));
+        const slot = new Promise<boolean>((resolve) => this.waiting.push({ threadId: id, resolve: (go) => {
+          if (go) this.running.set(id, controller);
+          resolve(go);
+        } }));
+        this.emit(id, { kind: "notice", text: `Queued: ${limit} threads are already running. This one starts when one of them finishes.` });
+        this.broadcast({ type: "queued", threadId: id, queued: true });
+        admit({ status: "queued" });
+        const go = await slot;
+        this.broadcast({ type: "queued", threadId: id, queued: false });
+        if (!go || controller.signal.aborted) {
+          this.emit(id, { kind: "notice", text: "Stopped before it started." });
+          return { status: "cancelled", text: "" };
+        }
+      } else {
+        this.running.set(id, controller);
+      }
+      let round: SendRequest | null = req;
+      let outcome: TurnOutcome = { status: "succeeded", text: "" };
+      while (round && !controller.signal.aborted) {
+        const result = await this.runRound(round, controller, admit);
+        outcome = result.outcome;
+        round = outcome.status === "succeeded" ? result.next : null;
+      }
+      return controller.signal.aborted && outcome.status !== "failed" ? { status: "cancelled", text: outcome.text } : outcome;
+    } catch (err) {
+      if (controller.signal.aborted) return { status: "cancelled", text: "" };
+      if (announced && !this.deleting.has(id)) this.emit(id, { kind: "error", message: err instanceof Error ? err.message : String(err) });
+      throw err;
+    } finally {
+      if (this.running.get(id) === controller) this.running.delete(id);
+      release();
+      this.afterTurn.delete(id);
+      if (announced) this.broadcast({ type: "running", threadId: id, running: false });
+      this.admitWaiting();
+    }
   }
 
-  async send(req: SendRequest): Promise<void> {
-    if (this.running.has(req.threadId) || this.waiting.some((w) => w.threadId === req.threadId)) throw new Error("This thread is already running.");
-    if (!(await this.waitForSlot(req))) {
-      this.emit(req.threadId, { kind: "notice", text: "Stopped before it started." });
-      this.broadcast({ type: "running", threadId: req.threadId, running: false });
-      return;
+  private pluginSelections(req: SendRequest, catalog: Catalog) {
+    if (req.compact && (req.pluginCommand || req.pluginSkills?.length)) throw new Error("Plugin commands and skills cannot compact a session.");
+    const command = req.pluginCommand ? this.pluginDelivery?.command(req.pluginCommand) : undefined;
+    if (req.pluginCommand && !command) throw new Error("Plugin command delivery is unavailable.");
+    const skills = skillsOf(req), pluginSkills = req.pluginSkills ?? [];
+    if (new Set(pluginSkills.map((s) => s.name)).size !== pluginSkills.length) throw new Error("Duplicate plugin skill invocation.");
+    for (const name of skills) {
+      const entry = catalog.byName.get(name);
+      const invocation = pluginSkills.find((s) => s.name === name);
+      if (entry?.origin === "plugin" || invocation) {
+        if (!entry || entry.origin !== "plugin" || !invocation || invocation.key !== entry.owner?.key || invocation.revision !== entry.owner.revision || !this.pluginDelivery) throw new Error("This plugin skill is Off, removed or changed. Pick its current skill again.");
+        this.pluginDelivery.assertSkill(entry);
+      }
     }
+    if (pluginSkills.some((s) => !skills.includes(s.name))) throw new Error("A plugin skill identity needs a selected skill.");
+    return { skills, pluginSkills, command };
+  }
+
+  private async runRound(req: SendRequest, controller: AbortController, admit: (a: TurnAdmission) => void): Promise<{ outcome: TurnOutcome; next: SendRequest | null }> {
     let thread = this.store.getThread(req.threadId);
     const project = this.store.getProject(thread.projectId);
     const cwd = this.cwdOf(thread);
@@ -902,10 +1003,9 @@ export class Service {
         : `Project folder not found: ${cwd}. It was moved or deleted. Use Locate folder… in the project menu, or remove the project.`;
       this.emit(thread.id, { kind: "error", message });
       // The renderer marks the thread running as it sends; settle that too.
-      this.broadcast({ type: "running", threadId: thread.id, running: false });
       this.broadcast({ type: "projects-changed" });
-      this.admitWaiting();
-      return;
+      admit({ status: "rejected", reason: message });
+      return { outcome: { status: "failed", reason: message, text: "" }, next: null };
     }
     const driver = this.driverFor(thread.agent);
     // A saved provider is its own agent now: a thread still pinned to one of its
@@ -927,9 +1027,8 @@ export class Service {
         ? `${driver.label} can't compact on request.`
         : `Nothing to compact yet: this thread has no ${driver.label} session.`;
       this.emit(thread.id, { kind: "notice", text });
-      this.broadcast({ type: "running", threadId: thread.id, running: false });
-      this.admitWaiting();
-      return;
+      admit({ status: "rejected", reason: text });
+      return { outcome: { status: "failed", reason: text, text: "" }, next: null };
     }
     // The project's verification gate: off when there's no command; `round` counts the automatic fixes.
     const checkCommand = project.checkCommand?.trim() || null;
@@ -937,22 +1036,8 @@ export class Service {
     // Fix turns are the gate's only token cost; the project caps them (default 1, 0 = none).
     const maxRounds = project.checkFixRounds ?? 1;
     const provenance: Provenance = { agent: thread.agent, model: thread.model, provider: null, instanceId: null };
-    const skills = skillsOf(req);
     const catalog = this.catalogFor(cwd, thread.id);
-    if (compact && (req.pluginCommand || req.pluginSkills?.length)) throw new Error("Plugin commands and skills cannot compact a session.");
-    const command = req.pluginCommand ? this.pluginDelivery?.command(req.pluginCommand) : undefined;
-    if (req.pluginCommand && !command) throw new Error("Plugin command delivery is unavailable.");
-    const pluginSkills = req.pluginSkills ?? [];
-    if (new Set(pluginSkills.map((s) => s.name)).size !== pluginSkills.length) throw new Error("Duplicate plugin skill invocation.");
-    for (const name of skills) {
-      const entry = catalog.byName.get(name);
-      const invocation = pluginSkills.find((s) => s.name === name);
-      if (entry?.origin === "plugin" || invocation) {
-        if (!entry || entry.origin !== "plugin" || !invocation || invocation.key !== entry.owner?.key || invocation.revision !== entry.owner.revision || !this.pluginDelivery) throw new Error("This plugin skill is Off, removed or changed. Pick its current skill again.");
-        this.pluginDelivery.assertSkill(entry);
-      }
-    }
-    if (pluginSkills.some((s) => !skills.includes(s.name))) throw new Error("A plugin skill identity needs a selected skill.");
+    const { skills, command, pluginSkills } = this.pluginSelections(req, catalog);
     // Only files this thread really holds; a compact carries none.
     const attachments = compact ? [] : checkedAttachments(cwd, req.attachments);
     const images = inlineImages(cwd, attachments);
@@ -975,11 +1060,12 @@ export class Service {
     const rootSeq = this.rootSeqs.get(thread.id) ?? userEvent.seq;
     if (learner && round === 0) learner.onUserMessage({ thread, seq: userEvent.seq, text: req.text });
 
-    const controller = new AbortController();
+    let failure: string | null = null;
+    let answer = "";
     // Ends a turn whose agent goes silent (a provider that hangs or retries forever).
     let watchdog: TurnWatchdog | null = null;
-    this.running.set(thread.id, controller);
     this.broadcast({ type: "running", threadId: thread.id, running: true });
+    admit({ status: "started" });
     // Set when a failed check schedules the next automatic fix; fired after this send's finally.
     let followUp: SendRequest | null = null;
     // Set once the agent starts: the pages written since are linted after the turn, however it ends (a stopped turn too).
@@ -1042,6 +1128,7 @@ export class Service {
         onNotice: () =>
           this.emit(thread.id, { kind: "notice", text: `No activity from ${driver.label} for ${STALL_NOTICE_MS / 60_000} minutes. The model or a team member may be stuck: keep waiting, or Stop the turn and try again or pick another model.` }, provenance),
         onStop: () => {
+          failure = "The agent stopped responding.";
           this.emit(thread.id, { kind: "error", message: `Stopped this turn: no activity from ${driver.label} for ${STALL_STOP_MS / 60_000} minutes. Send again to retry, or pick another model.` }, provenance);
           controller.abort();
         },
@@ -1084,6 +1171,7 @@ export class Service {
       // Preparation above can await I/O. Recheck revocable plugin selections at actual dispatch.
       if (req.pluginCommand) this.pluginDelivery!.command(req.pluginCommand);
       for (const selected of pluginSkills) this.pluginDelivery!.assertSkill(catalog.byName.get(selected.name)!);
+      if (controller.signal.aborted) return { outcome: { status: "cancelled", text: "" }, next: null };
       await driver.runTurn({
         threadId: thread.id,
         cwd,
@@ -1209,6 +1297,10 @@ export class Service {
             };
           }
           const stored = this.emit(thread.id, event, provenance);
+          if (!stored.event.parentId) {
+            if (stored.event.kind === "error") failure = stored.event.message;
+            if (stored.event.kind === "assistant-text") answer = stored.event.text;
+          }
           if (event.kind === "turn-end") {
             this.emitSignal(thread.id, event.usage);
             this.recordArtifacts(thread.id, cwd, stored.seq, turnStartedAt, beforeDeliverables);
@@ -1229,6 +1321,7 @@ export class Service {
           }
         },
         requestPermission: ({ signal, ...p }) => {
+          if (controller.signal.aborted || signal?.aborted || this.turnWatchdogs.get(thread.id) !== dog) return Promise.resolve<PermissionDecision>("deny");
           const approvals = this.approvalsFor(project.id);
           // The drivers run the git guard before calling requestPermission, so
           // a remembered approval never skips a guardrail block. Answer
@@ -1236,7 +1329,15 @@ export class Service {
           if (approvals.get(thread.agent, p.toolName, p.summary)) return Promise.resolve<PermissionDecision>("allow-once");
           return dog.waitOn(new Promise<PermissionDecision>((resolve) => {
             const requestId = randomUUID();
+            const cancelled = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
+            const withdraw = () => {
+              if (!this.pendingPermissions.delete(requestId)) return;
+              this.permissionRequests.delete(requestId);
+              this.broadcast({ type: "permission-withdrawn", requestId });
+              resolve("deny");
+            };
             const done = (d: PermissionDecision) => {
+              cancelled.removeEventListener("abort", withdraw);
               if (d === "deny" && !controller.signal.aborted) denied++;
               this.pendingPermissions.delete(requestId);
               this.permissionRequests.delete(requestId);
@@ -1244,19 +1345,7 @@ export class Service {
               resolve(d);
             };
             this.pendingPermissions.set(requestId, done);
-            controller.signal.addEventListener("abort", () => done("deny"), { once: true });
-            // The asker went away (a dropped plugin request): take the card down; nobody denied it.
-            signal?.addEventListener(
-              "abort",
-              () => {
-                if (!this.pendingPermissions.has(requestId)) return;
-                this.pendingPermissions.delete(requestId);
-                this.permissionRequests.delete(requestId);
-                this.broadcast({ type: "permission-withdrawn", requestId });
-                resolve("deny");
-              },
-              { once: true },
-            );
+            cancelled.addEventListener("abort", withdraw, { once: true });
             const request = { requestId, threadId: thread.id, ...p };
             this.permissionRequests.set(requestId, request);
             this.broadcast({ type: "permission", request });
@@ -1264,13 +1353,16 @@ export class Service {
         },
         requestPlanDecision: (p) =>
           dog.waitOn(new Promise<PlanDecision>((resolve) => {
+            if (controller.signal.aborted || this.turnWatchdogs.get(thread.id) !== dog) return resolve({ keep: "" });
             const requestId = randomUUID();
             this.pendingPlans.set(requestId, { threadId: thread.id, resolve });
             controller.signal.addEventListener(
               "abort",
               () => {
+                if (!this.pendingPlans.delete(requestId)) return;
                 this.planRequests.delete(requestId);
-                if (this.pendingPlans.delete(requestId)) resolve({ keep: "" });
+                this.broadcast({ type: "plan-approval-done", requestId });
+                resolve({ keep: "" });
               },
               { once: true },
             );
@@ -1292,8 +1384,11 @@ export class Service {
             }
             return decision;
           }),
-        // An async question doesn't hold the turn, so Stop doesn't take its card away.
-        requestUserInput: (questions, opts) => dog.waitOn(this.ask(thread.id, questions, opts?.async ? [] : [controller.signal], opts?.async === true)),
+        // Only the current round may open a card. Once open, an async card can outlive the round.
+        requestUserInput: (questions, opts) => {
+          if (controller.signal.aborted || this.turnWatchdogs.get(thread.id) !== dog) return Promise.resolve("dismiss");
+          return dog.waitOn(this.ask(thread.id, questions, opts?.async ? [] : [controller.signal], opts?.async === true));
+        },
       });
       // The turn finished cleanly: hand it to the memory extractor. A listener
       // failure is its own concern and never touches the thread. An automatic
@@ -1348,8 +1443,9 @@ export class Service {
                   text: `The project check ${r.timedOut ? "timed out" : `failed (exit ${r.exitCode})`}. Fix it, then stop; the app re-runs the check.\n\nOutput (last lines):\n\`\`\`\n${tailOf(tail, 40, 3000)}\n\`\`\``,
                   checkRound: round + 1,
                 };
-              } else if (maxRounds > 0) {
-                this.emit(thread.id, { kind: "notice", text: `The check still fails after ${maxRounds} fix ${maxRounds === 1 ? "attempt" : "attempts"}, so it stopped. Run it yourself or ask again.` });
+              } else {
+                failure ??= `The project check failed: ${checkCommand}`;
+                if (maxRounds > 0) this.emit(thread.id, { kind: "notice", text: `The check still fails after ${maxRounds} fix ${maxRounds === 1 ? "attempt" : "attempts"}, so it stopped. Run it yourself or ask again.` });
               }
             }
           }
@@ -1440,11 +1536,13 @@ export class Service {
       const lintRun = lintSince !== null ? this.queueAutoLint(thread.id, lintSince) : null;
       // A design turn that ends with new contrast or target findings gets one fix round now (the thread stays running while it's linted).
       const fix = lintRun && turnEnded && !followUp && !req.designFixRound && !controller.signal.aborted ? await this.designFixNote(lintRun, controller.signal) : null;
-      this.running.delete(thread.id);
       // An async answer that missed the turn goes out as the next message (unless a check fix round is next).
       const late = this.afterTurn.get(thread.id);
       this.afterTurn.delete(thread.id);
-      if (!followUp && late?.length) followUp = { threadId: thread.id, text: late.join("\n\n") };
+      if (late?.length && !this.deleting.has(thread.id)) {
+        if (followUp) this.afterTurn.set(thread.id, late);
+        else followUp = { threadId: thread.id, text: late.join("\n\n") };
+      }
       // A turn that saved a new kit but built no page gets one round to build it (journey D stopped at the save).
       const savedKit = this.kits.takeSaved(thread.id);
       if (!followUp && savedKit && turnEnded && !req.designFixRound && !controller.signal.aborted) {
@@ -1457,18 +1555,9 @@ export class Service {
         this.lintSaid.set(thread.id, fix.said);
         followUp = { threadId: thread.id, text: autoFixPrompt(fix.text), designFixRound: true };
       }
-      if (followUp) {
-        // Re-add `running` before the renderer can drain its queued message: no
-        // `running: false` between rounds, so the fix and the user's queue can't race.
-        const next = followUp;
-        void this.send(next).catch((e) => this.emit(thread.id, { kind: "error", message: e instanceof Error ? e.message : String(e) }));
-      } else {
-        this.broadcast({ type: "running", threadId: thread.id, running: false });
-        // A slot came free (a fix round keeps it): the oldest waiting background send starts.
-        this.admitWaiting();
-      }
       this.broadcast({ type: "thread", thread: this.store.updateThread(thread.id, {}) });
     }
+    return { outcome: failure !== null ? { status: "failed", reason: failure, text: answer } : { status: "succeeded", text: answer }, next: followUp };
   }
 
   interrupt(threadId: string): void {
@@ -1478,7 +1567,11 @@ export class Service {
   }
 
   respondPermission(requestId: string, decision: PermissionDecision): void {
-    this.pendingPermissions.get(requestId)?.(decision);
+    const done = this.pendingPermissions.get(requestId);
+    if (done) {
+      done(decision);
+      this.broadcast({ type: "permission-withdrawn", requestId });
+    }
   }
 
   /**
@@ -1486,6 +1579,7 @@ export class Service {
    * signal aborts (Stop, or a tool call the agent gave up on) before an answer.
    */
   private ask(threadId: string, questions: Question[], signals: AbortSignal[], async = false): Promise<QuestionAnswer> {
+    if (this.deleting.has(threadId)) return Promise.resolve("dismiss");
     return new Promise<QuestionAnswer>((resolve) => {
       const requestId = randomUUID();
       const cancel = () => {
@@ -1602,22 +1696,27 @@ export class Service {
   private async deliverAsync(threadId: string, questions: Question[], answer: QuestionAnswer): Promise<void> {
     const text = answersMessage(questions, answer);
     const thread = this.store.getThread(threadId);
-    if (this.running.has(threadId)) {
+    const canDeliver = () => !this.deleting.has(threadId) && this.store.hasThread(threadId);
+    const origin = this.running.get(threadId);
+    if (origin) {
       const steered = await this.drivers.get(thread.agent)?.steer?.(threadId, text).catch(() => false);
-      if (steered) return;
+      if (steered || origin.signal.aborted || !canDeliver()) return;
       if (this.running.has(threadId)) {
         this.afterTurn.set(threadId, [...(this.afterTurn.get(threadId) ?? []), text]);
         return;
       }
     }
     if (answer === "dismiss") return;
-    await this.send({ threadId, text }).catch((e) => this.emit(threadId, { kind: "error", message: e instanceof Error ? e.message : String(e) }));
+    await this.send({ threadId, text }).catch((e) => {
+      if (canDeliver()) this.emit(threadId, { kind: "error", message: e instanceof Error ? e.message : String(e) });
+    });
   }
 
   /** Everything open right now, so a reloaded window shows running threads and their cards again. */
   pendingState(): PendingState {
     return {
       running: [...this.running.keys()],
+      queued: this.waiting.map((w) => w.threadId),
       permissions: [...this.permissionRequests.values()],
       plans: [...this.planRequests.values()],
       questions: [...this.pendingQuestions.entries()].map(([requestId, q]) => ({ requestId, threadId: q.threadId, questions: q.questions, ...(q.async ? { async: true } : {}) })),
@@ -2378,8 +2477,10 @@ export class Service {
     const line = `\n\n(CubiQ: ${issueLine(issue)})`;
     if (issue.briefed && thread.sessionId !== null) return line;
     const detail = await getIssue(this.store.getProject(thread.projectId).path, issue.number);
+    const current = this.store.getThread(thread.id).issue;
+    if (current?.number !== issue.number || current.source !== issue.source) return "";
     if (!detail.ok) return line;
-    if (!issue.briefed) this.broadcast({ type: "thread", thread: this.store.setIssue(thread.id, { ...issue, briefed: true }) });
+    if (!current.briefed) this.broadcast({ type: "thread", thread: this.store.setIssue(thread.id, { ...current, briefed: true }) });
     return `\n\n(CubiQ: the user picked this issue for the thread.)\n<issue>\n${issueNote(detail.value)}\n</issue>`;
   }
 

@@ -1,9 +1,10 @@
 // The Creator build loop for apps: write the draft with your own file tools, preview it where it will open (it hot
 // reloads), check it off screen, look at a connector's real data first. Installing goes through creator_propose.
 
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { z } from "zod";
+import { SAMPLE_MODES } from "../../shared/app-sample";
 import type { HarnessTool, ToolOutput } from "../agents/types";
 import type { AppCheckReport, CheckOptions } from "../apps/check";
 import { CHECK_THEME_URL } from "../apps/check";
@@ -52,6 +53,11 @@ const error = (text: string): ToolOutput => ({ text, isError: true });
 
 export const draftKey = (threadId: string, name: string): string => `d~${threadId}~${name}`;
 
+export function listAppDrafts(root: string | null): string[] {
+  if (!root || !existsSync(root)) return [];
+  return readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory() && NAME_RE.test(e.name)).map((e) => e.name).sort();
+}
+
 /** Keys, types and lengths of a value, a few levels deep: enough to write an app against, small enough to read. */
 export function shapeOf(v: unknown, depth = 0): unknown {
   if (v === null) return "null";
@@ -98,7 +104,7 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
         "Open your draft app for the user the way it will show once installed, by its app.json placement: a modal, a floating widget, a page in the main area, a strip docked above the composer, or a sidebar panel (it reloads by itself on every file change). The draft lives in the folder this returns; write it with your file tools. Pass template to start a new draft from one (dashboard: a data modal; widget: a small floating widget; page: a full-page workspace; dock: a composer strip; tool: agent tools and a chat card; bundle: owned command and skill).",
       input: {
         name: z.string().describe("The app's name: lowercase letters, digits and dashes"),
-        template: z.enum(APP_TEMPLATES).optional().describe("Seed a new draft from this template (only when the folder doesn't exist yet)"),
+        template: z.enum(APP_TEMPLATES).optional().describe("Seed a new or still-empty draft from this template"),
       },
       autoAllow: true,
       effect: "mutate",
@@ -110,7 +116,7 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
         const dir = draftDir(args.name);
         if (!dir) return error("This thread has no folder for drafts.");
         let seeded = false;
-        if (!existsSync(dir)) {
+        if (!existsSync(dir) || (args.template && readdirSync(dir).length === 0)) {
           if (thread.permissionMode === "plan") return error("Plan mode can't create files. Switch to Ask or Auto-edit first.");
           // A first call without a template makes the empty draft folder and says where to write: a normal step, not a failure.
           if (!args.template) {
@@ -126,17 +132,24 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
           }
           const from = join(deps.templatesDir, args.template);
           if (!existsSync(from)) return error(`Template "${args.template}" is missing.`);
-          mkdirSync(dir, { recursive: true });
-          cpSync(from, dir, { recursive: true });
-          const manifestPath = join(dir, APP_MANIFEST);
+          mkdirSync(dirname(dir), { recursive: true });
+          const staged = mkdtempSync(join(dirname(dir), ".seed-"));
           try {
+            cpSync(from, staged, { recursive: true });
+            const manifestPath = join(staged, APP_MANIFEST);
             const m = JSON.parse(readFileSync(manifestPath, "utf-8")) as Record<string, unknown>;
             m.name = args.name;
             writeFileSync(manifestPath, `${JSON.stringify(m, null, 2)}\n`, "utf-8");
-          } catch {
-            // The template's own app.json is valid JSON; validation below reports anything else.
+            // Windows cannot rename over an empty directory. rmdir is non-recursive:
+            // a concurrent writer that populated the folder wins on either platform.
+            if (process.platform === "win32" && existsSync(dir)) rmdirSync(dir);
+            renameSync(staged, dir);
+            seeded = true;
+          } catch (err) {
+            return error(`Couldn't seed ${args.name}: ${err instanceof Error ? err.message : String(err)}`);
+          } finally {
+            rmSync(staged, { recursive: true, force: true });
           }
-          seeded = true;
         }
         const { files, errors: readErrors } = readAppFiles(dir);
         const check = validateApp(args.name, files);
@@ -164,9 +177,10 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
     define({
       name: CREATOR_APP_CHECK_TOOL,
       description:
-        "Render your draft app off screen at the size it shows at (a floating widget's size, a dock's or panel's height at a typical width, else 900x700) with real read-only connector data and report console errors, failed calls, whether it shows anything, its text, and a screenshot. Calls that can change data are not run. Run it before creator_propose.",
+        "Check the draft at its placement size with sample data, an empty or offline scenario and disposable storage. Choose real explicitly for a real read-only connector check. Returns errors, calls, displayed text and a screenshot.",
       input: {
         name: z.string(),
+        scenario: z.enum([...SAMPLE_MODES, "real"]).optional(),
         scheme: z.enum(["light", "dark"]).optional().describe("Theme to render in (default light)"),
         screenshot: z.boolean().optional().describe("Include a screenshot at the app's size (default true)"),
         card: z.string().optional().describe("Check this declared chat card instead of the main UI"),
@@ -194,7 +208,9 @@ export function creatorAppTools(deps: CreatorAppToolsDeps, threadId: string): Ha
           if (!card || Buffer.byteLength(args.cardData) > 64 * 1024) return error("cardData needs a declared card and at most 64 KB of JSON.");
           try { cardData = JSON.parse(args.cardData); } catch { return error("cardData is not valid JSON."); }
         }
-        const r = await deps.check(key, card ? appUrl(key, card.entry) : info.url, { scheme: args.scheme ?? "light", screenshot: image, size: card ? { width: 680, height: card.height } : appSize(valid.manifest), ...(card ? { cardData } : isSmallPlacement(valid.manifest.placement) ? { minChars: 1 } : {}) });
+        const scenario = args.scenario ?? "data";
+        const sample = scenario === "real" ? {} : { sample: { mode: scenario, grants: valid.manifest.grants } };
+        const r = await deps.check(key, card ? appUrl(key, card.entry) : info.url, { ...sample, disposableStore: true, scheme: args.scheme ?? "light", screenshot: image, size: card ? { width: 680, height: card.height } : appSize(valid.manifest), ...(card ? { cardData } : isSmallPlacement(valid.manifest.placement) ? { minChars: 1 } : {}) });
         if (!card && valid.manifest.tools?.length) {
           const registered = await deps.check(key, appUrl(key, valid.manifest.toolEntry ?? valid.manifest.entry), { scheme: args.scheme ?? "light", screenshot: false, minChars: 0, expectedTools: valid.manifest.tools.map((t) => t.name) });
           r.errors.push(...registered.errors);

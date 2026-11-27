@@ -111,6 +111,7 @@ function finalAnswerEvents(events: BenchEvent[]): CompactEvent[] {
 }
 
 interface Ctx {
+  codeMode: "on" | "off";
   cdp: Cdp;
   userDataDir: string;
   date: string;
@@ -156,9 +157,10 @@ async function newThread(ctx: Ctx, agent: BenchAgent, projectId: string): Promis
   return thread.id;
 }
 
-const send = (ctx: Ctx, threadId: string, text: string) =>
-  // Not awaited: send can resolve late; the turn's end is read from the database.
-  ctx.cdp.evaluate(`(window.unskilled.send(${JSON.stringify({ threadId, text })}).catch((e) => console.error("bench send", e)), true)`);
+const send = async (ctx: Ctx, threadId: string, text: string) => {
+  const admission = await ctx.cdp.call<import("../src/shared/types").TurnAdmission>("send", { threadId, text });
+  if (admission.status === "rejected") throw new Error(admission.reason);
+};
 
 const projectNotes = async (ctx: Ctx, projectId: string): Promise<MemoryOverview> => ctx.cdp.call<MemoryOverview>("memoryOverview", projectId);
 
@@ -242,6 +244,7 @@ async function runOnce(ctx: Ctx, agent: BenchAgent, task: BenchTask, trial: numb
   const ended = end === "ended";
   return {
     date: ctx.date,
+    codeMode: ctx.codeMode,
     startedAt,
     task: task.id,
     suite: task.suite,
@@ -356,10 +359,14 @@ async function main(): Promise<void> {
   const attach = flag("attach");
   const port = Number(attach ?? flag("port") ?? 9488);
   const userDataDir = flag("user-data-dir") ?? join(STATE, "ud");
-  const parallel = has("serial") ? 1 : Number(flag("parallel") ?? 3);
+  const mode = flag("code-mode") ?? "on";
+  if (mode !== "on" && mode !== "off" && mode !== "paired") throw new Error("--code-mode expects on, off or paired");
+  // The creation preference is global. Paired trials change it between fresh threads.
+  const parallel = has("serial") || mode === "paired" ? 1 : Number(flag("parallel") ?? 3);
   if (attach && !flag("user-data-dir")) throw new Error("--attach needs --user-data-dir <that app's profile folder>");
 
-  log(`${date}: ${tasks.length} tasks × ${agents.length} agents × k=${k} = ${tasks.length * agents.length * k} runs, ${parallel} agents at a time`);
+  const modes = mode === "paired" ? 2 : 1;
+  log(`${date}: ${tasks.length} tasks × ${agents.length} agents × ${modes} mode(s) × k=${k} = ${tasks.length * agents.length * modes * k} runs, ${parallel} agents at a time`);
   if (has("dry")) {
     for (const t of tasks) log(`  ${t.suite}${t.tier ? `/${t.tier}` : ""} · ${t.id}`);
     for (const a of agents) log(`  ${a.id} (${a.agent} ${a.model})`);
@@ -386,9 +393,10 @@ async function main(): Promise<void> {
   const out = join(STATE, has("scratch") ? "scratch-runs" : "runs", date);
   mkdirSync(out, { recursive: true });
   try {
-    await cdp.call("updateSettings", { codeMode: "on" });
+    const firstMode = mode === "off" ? "off" : "on";
+    await cdp.call("updateSettings", { codeMode: firstMode });
     agents = await ensureProviders(cdp, agents);
-    const ctx: Ctx = { cdp, userDataDir, date, harness: harnessInfo(), projects, learnFor: await learnSwitch(cdp, agents) };
+    const ctx: Ctx = { cdp, userDataDir, date, codeMode: firstMode, harness: harnessInfo(), projects, learnFor: await learnSwitch(cdp, agents) };
 
     // Learn tasks' records wait for the learner: it drafts lessons only once no turn runs.
     const held: { result: RunResult; file: string; projectId: string }[] = [];
@@ -401,23 +409,28 @@ async function main(): Promise<void> {
     // One chain per agent (each has its own project folders); at most `parallel` chains at once.
     const chain = (agent: BenchAgent) => async () => {
       let lastRun = 0;
+      let pair = 0;
       for (let trial = 1; trial <= k; trial++) {
         for (const task of tasks) {
+          const order: ("off" | "on")[] = mode === "paired" ? (pair++ % 2 ? ["on", "off"] : ["off", "on"]) : [mode];
+          for (const codeMode of order) {
+          if (mode === "paired") await cdp.call("updateSettings", { codeMode });
           if (agent.spaced) await sleep(Math.max(0, lastRun + SPACING_MS - Date.now()));
           log(`${agent.id} · ${task.id} · t${trial}: start`);
           let result: RunResult;
           try {
-            result = await runWithRetry(ctx, agent, task, trial);
+            result = await runWithRetry({ ...ctx, codeMode }, agent, task, trial);
           } catch (err) {
             log(`${agent.id} · ${task.id}: harness error ${err instanceof Error ? err.message : err}`);
             continue;
           }
           lastRun = lastEnd = Date.now();
-          const file = join(out, `${agent.id}--${task.id}--t${trial}.json`);
+          const file = join(out, `${agent.id}--${task.id}--${codeMode}--t${trial}.json`);
           if (result.learn) held.push({ result, file, projectId: ctx.projects.get(projectKey(task, agent))!.id });
           else record(result, file);
           const m = result.metrics;
           log(`${agent.id} · ${task.id} · t${trial}: ${result.status} in ${Math.round(m.durationMs / 1000)} s, score ${result.score.toFixed(2)}, run_code ${m.tools.runCode}, todo ${m.todo.updates}, checks ${JSON.stringify(result.checks)}`);
+          }
         }
       }
     };

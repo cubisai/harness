@@ -70,6 +70,7 @@ export interface BenchAgent {
 export type RunStatus = "passed" | "failed" | "timeout" | "stalled" | "error";
 
 export interface RunResult {
+  codeMode?: "on" | "off";
   date: string;
   startedAt: string;
   task: string;

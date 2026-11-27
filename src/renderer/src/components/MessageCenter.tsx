@@ -6,11 +6,13 @@ import { useStore } from "../store";
 
 function useInbox() {
   const permissions = useStore((s) => s.permissions);
+  const questions = useStore((s) => s.questions);
+  const plans = useStore((s) => s.plans);
   const finished = useStore((s) => s.finished);
   const automations = useStore((s) => s.automationNotices);
   const threads = useStore((s) => s.threads);
   const selectedThreadId = useStore((s) => s.selectedThreadId);
-  return inboxRows({ permissions, finished, automations, threads, selectedThreadId });
+  return inboxRows({ permissions, questions, plans, finished, automations, threads, selectedThreadId });
 }
 
 /** The sidebar-footer bell; its badge counts what's waiting. */
@@ -21,8 +23,8 @@ export function InboxBell() {
   return (
     <button
       className={`icon-button inbox-bell${rows.needsYou.length ? " urgent" : ""}`}
-      title={count ? `Message Center: ${count} waiting` : "Message Center"}
-      aria-label={count ? `Message Center, ${count} waiting` : "Message Center"}
+      title={count ? `Message Center: ${count} ${count === 1 ? "item" : "items"}` : "Message Center"}
+      aria-label={count ? `Message Center, ${count} ${count === 1 ? "item" : "items"}` : "Message Center"}
       onClick={() => setOpen(true)}
     >
       <IconBell />
@@ -53,16 +55,22 @@ export function MessageCenter() {
   }, [open, setOpen]);
 
   if (!open) return null;
-  const openRow = (row: InboxRow) => {
+  const openRow = async (row: InboxRow) => {
     const s = useStore.getState();
     // A run that never delivered into a thread has nothing to open.
     if (row.kind === "automation" && row.threadId === null) {
       setOpen(false);
       return;
     }
-    if (row.thread) void s.selectProject(row.thread.projectId);
-    void s.selectThread(row.threadId);
     setOpen(false);
+    if (row.thread) await s.selectProject(row.thread.projectId);
+    if ("requestId" in row) useStore.setState({ inboxTarget: { threadId: row.threadId, requestId: row.requestId, kind: row.kind } });
+    await s.selectThread(row.threadId);
+    if ("requestId" in row) {
+      const state = useStore.getState();
+      const requests = row.kind === "permission" ? state.permissions : row.kind === "plan" ? state.plans : state.questions;
+      if (!requests.some((r) => r.threadId === row.threadId && r.requestId === row.requestId)) state.showNotice("That request has already been resolved.");
+    }
   };
   return (
     <div className="sheet-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
@@ -88,7 +96,7 @@ export function MessageCenterView({
 }) {
   const agentLabel = (row: InboxRow) => (row.thread ? (agents.find((a) => a.id === row.thread!.agent)?.label ?? row.thread.agent) : "");
   const item = (row: InboxRow) => (
-    <li key={row.kind === "permission" ? row.requestId : row.kind === "automation" ? `${row.notice.automationId}:${row.notice.runId}` : row.threadId}>
+    <li key={"requestId" in row ? `${row.kind}:${row.threadId}:${row.requestId}` : row.kind === "automation" ? `${row.notice.automationId}:${row.notice.runId}` : row.threadId}>
       <button className="inbox-row" onClick={() => onOpen(row)}>
         <span className="inbox-title">{row.thread?.title ?? (row.kind === "automation" ? row.notice.name : "A thread")}</span>
         <span className="inbox-meta">
@@ -98,7 +106,7 @@ export function MessageCenterView({
             <>
               {row.kind === "finished" && row.automation ? "Automation · " : ""}
               {agentLabel(row)}
-              {row.kind === "permission" ? <> · wants to run {row.summary}</> : <> · finished in {formatDuration(row.durationMs)}</>}
+              {row.kind === "finished" ? <> · finished in {formatDuration(row.durationMs)}</> : <> · {row.kind === "permission" ? "wants to run" : row.kind === "question" ? "asks" : "plan approval:"} {row.summary}</>}
             </>
           )}
         </span>

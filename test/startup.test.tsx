@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Project, Thread } from "../src/shared/types";
+import type { LiveUpdate, PendingState, Project, SkillEntry, Thread } from "../src/shared/types";
+import { deferred } from "./helpers";
 
 /** A project fixture with the fields the store reads. */
 const project = (id: string): Project => ({ id, path: `/tmp/${id}`, name: id, createdAt: 0 });
@@ -56,6 +57,42 @@ return {
 describe("init startup", () => {
   beforeEach(() => vi.resetModules());
   afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps the newest project's skills through A → B → A with reversed replies", async () => {
+    const oldA = deferred<SkillEntry[]>(), b = deferred<SkillEntry[]>(), newA = deferred<SkillEntry[]>();
+    const listSkills = vi.fn().mockReturnValueOnce(oldA.promise).mockReturnValueOnce(b.promise).mockReturnValueOnce(newA.promise);
+    vi.stubGlobal("window", { unskilled: { listSkills, projectBranch: async () => null } });
+    const { useStore } = await import("../src/renderer/src/store");
+    useStore.setState({ threads: { a: [], b: [] } });
+    for (const id of ["a", "b", "a"]) await useStore.getState().selectProject(id);
+    const skill: SkillEntry = { name: "current", description: "", invocation: "model", sha256: "current", files: [], calls: [] };
+    for (const [reply, name] of [[newA, "current"], [b, "other"], [oldA, "obsolete"]] as const) {
+      reply.resolve([{ ...skill, name }]);
+      await reply.promise;
+      expect(useStore.getState().skills).toEqual([skill]);
+    }
+    expect(listSkills.mock.calls).toEqual([["a"], ["b"], ["a"]]);
+  });
+
+  it("replays only newer card and queue transitions over a delayed snapshot", async () => {
+    const snapshot = deferred<PendingState>();
+    let push!: (update: LiveUpdate) => void;
+    const api = { ...fakeApi([], {}, []), pendingState: () => snapshot.promise, onUpdate: (listener: typeof push) => { push = listener; } };
+    vi.stubGlobal("window", { unskilled: api, dispatchEvent: vi.fn() });
+    vi.stubGlobal("document", { documentElement: { dataset: {}, style: { setProperty: vi.fn() } } });
+    const { useStore } = await import("../src/renderer/src/store");
+    const init = useStore.getState().init();
+    const permission = { threadId: "a", requestId: "withdrawn", toolName: "Edit", summary: "before", canAlwaysAllow: false };
+    const question = { threadId: "a", requestId: "new", questions: [] };
+    push({ type: "question", request: { ...question, requestId: "already-gone" }, pendingSequence: 1 });
+    push({ type: "permission-withdrawn", requestId: permission.requestId, pendingSequence: 4 });
+    push({ type: "question", request: question, pendingSequence: 5 });
+    push({ type: "queued", threadId: "c", queued: true, pendingSequence: 6 });
+    snapshot.resolve({ sequence: 3, running: ["a"], queued: ["b"], permissions: [permission], questions: [], plans: [] });
+    await init;
+    push({ type: "permission", request: permission, pendingSequence: 3 });
+    expect(useStore.getState()).toMatchObject({ initError: null, running: { a: true, b: true, c: true }, queued: { b: true, c: true }, permissions: [], questions: [question] });
+  });
 
   it("opens the first project's most recent thread after one all-threads call", async () => {
     const projects = [project("p1"), project("p2")];

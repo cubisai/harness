@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { Store } from "../db";
 import type { Service } from "../service";
 import type { AutomationInput, AutomationNotice, AutomationPermissions, AutomationsOverview, AutomationView } from "../../shared/automations";
+import { newestNoticeFirst } from "../../shared/automations";
 import type { LiveUpdate } from "../../shared/types";
 import { messageCenterDestination } from "./destinations";
 import type { Source } from "./io";
@@ -16,8 +17,6 @@ import type { PluginOwner } from "../../shared/plugin-parts";
 
 const TICK_MS = 60_000;
 const LEASE_MS = 10 * 60_000;
-/** How long a finished send must stay idle before the run counts as done (a check fix round restarts it). */
-const SETTLE_MS = 1500;
 
 /** The sources a template reads; templates without one only run their prompt. */
 export function sourcesForTemplate(template: string): string[] {
@@ -41,6 +40,7 @@ export function viewOf(a: Automation, store: Pick<AutomationStore, "runs" | "las
   const last = store.runs(a.id, 1)[0];
   return {
     id: a.id,
+    anchor: a.anchor,
     projectId: a.projectId,
     name: a.name,
     template: a.template,
@@ -58,27 +58,6 @@ export function viewOf(a: Automation, store: Pick<AutomationStore, "runs" | "las
   };
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/**
- * Send one message and wait for the thread to go idle, follow-up fix rounds
- * included. Resolves with the last answer; rejects when the turn ended on an error.
- */
-export async function sendAndWait(service: Pick<Service, "send" | "isRunning">, store: Pick<Store, "listEvents">, threadId: string, text: string, settleMs = SETTLE_MS): Promise<{ text: string }> {
-  await service.send({ threadId, text });
-  for (let idle = 0; idle < 2; ) {
-    await sleep(settleMs / 2);
-    idle = service.isRunning(threadId) ? 0 : idle + 1;
-  }
-  const events = store.listEvents(threadId);
-  const userAt = events.reduce((at, e) => (e.event.kind === "user" ? e.seq : at), -1);
-  const after = events.filter((e) => e.seq > userAt);
-  const answer = [...after].reverse().find((e) => e.event.kind === "assistant-text");
-  const error = [...after].reverse().find((e) => e.event.kind === "error");
-  if (!answer && error && error.event.kind === "error") throw new Error(error.event.message);
-  return { text: answer && answer.event.kind === "assistant-text" ? answer.event.text : "" };
-}
-
 export interface AutomationsApp {
   store: AutomationStore;
   runner: AutomationRunner;
@@ -91,6 +70,7 @@ export interface AutomationsApp {
   runNow(id: string): AutomationNotice | null;
   /** The newest runs first. */
   runs(id: string): AutomationNotice[];
+  recentNotices(): AutomationNotice[];
   /** Check what's due and run it (timer, wake from sleep, startup). */
   tick(): void;
   dispose(): void;
@@ -111,7 +91,7 @@ export function startAutomations(o: { store: Store; service: Service; broadcast:
       o.broadcast({ type: "thread", thread });
       return t.id;
     },
-    send: (threadId, text) => sendAndWait(o.service, o.store, threadId, text),
+    send: (threadId, text) => o.service.send({ threadId, text, background: true }),
     interrupt: (threadId) => o.service.interrupt(threadId),
     totals: (threadId) => {
       const t = o.store.threadTotals(threadId);
@@ -126,7 +106,7 @@ export function startAutomations(o: { store: Store; service: Service; broadcast:
     sourcesFor: (a) => sourcesForTemplate(a.template),
     sources: o.sources ?? defaultSources(),
     cwdOf: (projectId) => o.store.getProject(projectId).path,
-    destination: messageCenterDestination((p) => o.broadcast({ type: "automation-delivered", automationId: p.automationId, runId: p.runId, threadId: p.threadId, title: p.title })),
+    destination: messageCenterDestination(automations, (p) => o.broadcast({ type: "automation-delivered", automationId: p.automationId, runId: p.runId, threadId: p.threadId, title: p.title })),
     notify: (run, a) => o.broadcast({ type: "automation-run", notice: noticeOf(run, a) }),
     now: () => Date.now(),
     leaseMs: LEASE_MS,
@@ -167,6 +147,10 @@ export function startAutomations(o: { store: Store; service: Service; broadcast:
   };
   return {
     store: automations,
+    recentNotices: () => automations.list().flatMap((a) => {
+      const run = automations.latestFinished(a.id);
+      return run ? [noticeOf(run, a)] : [];
+    }).sort(newestNoticeFirst).slice(0, 20),
     runner,
     overview,
     save,

@@ -209,7 +209,7 @@ export class LearnDb {
         l.verified ? JSON.stringify(l.verified) : null,
         l.note,
         l.createdAt,
-        this.now(),
+        Math.max(this.now(), (this.getLesson(l.id)?.updatedAt ?? -1) + 1),
       );
   }
 

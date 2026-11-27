@@ -51,6 +51,18 @@ function fakeDeps(over: Partial<SwapDeps> = {}) {
 }
 
 describe("MacSwapBackend", () => {
+  it("keeps the staged update available when the first Restart cannot write its helper", async () => {
+    const { deps, calls } = fakeDeps();
+    const backend = new MacSwapBackend(deps), write = deps.writeFile;
+    await backend.checkForUpdates();
+    deps.writeFile = () => { throw new Error("disk full"); };
+    expect(() => backend.quitAndInstall()).toThrow("disk full");
+    deps.writeFile = write;
+    backend.quitAndInstall();
+    backend.quitAndInstall();
+    expect(calls.spawned).toHaveLength(1);
+    expect(calls.quits).toBe(1);
+  });
   it("downloads, verifies and stages the zip, then swaps and relaunches on Restart", async () => {
     const { deps, calls } = fakeDeps();
     const backend = new MacSwapBackend(deps);

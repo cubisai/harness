@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { webContents } from "electron";
 import { formatSnapshot } from "../src/main/browser/snapshot";
 import { browserTools } from "../src/main/browser/tools";
 import { isAllowedUrl, normalizeUrl } from "../src/main/browser/url";
@@ -8,7 +9,7 @@ import type { ToolContext } from "../src/main/agents/types";
 import { tempDir } from "./helpers";
 
 // The controller imports electron at module load; there is no real one under vitest.
-vi.mock("electron", () => ({ webContents: { fromId: () => null } }));
+vi.mock("electron", () => ({ webContents: { fromId: vi.fn() } }));
 
 describe("browser urls", () => {
   it("adds a scheme the way an address bar does", () => {
@@ -191,6 +192,22 @@ describe("BrowserController", () => {
     expect(seen.devices).toContain("mobile");
     await controller.setDevice("desktop");
     expect(sent).toContainEqual(["Emulation.clearDeviceMetricsOverride", undefined]);
+  });
+
+  it.each([true, false])("restores tablet emulation on the new guest and reports the actual device (accepted: %s)", async (accepted) => {
+    const { controller, seen } = make();
+    await controller.setDevice("tablet");
+    seen.devices.length = 0;
+    const sendCommand = vi.fn(async (method: string) => {
+      if (!accepted && method === "Emulation.setDeviceMetricsOverride") throw new Error("guest refused emulation");
+    });
+    vi.mocked(webContents.fromId).mockReturnValueOnce({
+      debugger: { attach: vi.fn(), on: vi.fn(), sendCommand }, setWindowOpenHandler: vi.fn(), once: vi.fn(),
+    } as unknown as Electron.WebContents);
+    controller.attach(2);
+    await vi.waitFor(() => expect(seen.devices).toEqual([accepted ? "tablet" : "desktop"]));
+    expect(sendCommand).toHaveBeenCalledWith("Emulation.setDeviceMetricsOverride", { width: 768, height: 1024, deviceScaleFactor: 2, mobile: true });
+    expect(controller.device).toBe(accepted ? "tablet" : "desktop");
   });
 
   it("buffers logs for the renderer without clearing them", async () => {

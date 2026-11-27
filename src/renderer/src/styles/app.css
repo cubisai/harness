@@ -1806,7 +1806,7 @@ details.tool > summary::-webkit-details-marker { display: none; }
 .permission-card .actions .button { white-space: nowrap; }
 .request-dock .permission-card { margin: 0 auto; }
 /* A tool approval: a title line, the command or file in full width, then the guard note and the buttons. */
-.permission-ask { padding: 10px 12px 12px; }
+.permission-ask { padding: 10px 12px 12px; color: var(--text); }
 .permission-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 8px; }
 .permission-icon { display: inline-flex; flex: none; color: var(--warning); }
 .permission-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1870,7 +1870,7 @@ details.tool > summary::-webkit-details-marker { display: none; }
 .qc-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .qc-body.with-preview { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 @media (max-width: 720px) { .qc-body.with-preview { grid-template-columns: minmax(0, 1fr); } }
-.qc-options { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.qc-answers, .qc-options { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .qc-option {
   display: flex;
   align-items: flex-start;
@@ -4532,3 +4532,13 @@ th[aria-sort="descending"] .smart-th::after { content: " ↓"; color: var(--text
 .proposal-scope .segmented { min-width: 0; max-width: 100%; }
 .proposal-scope .segmented button { min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .proposal-scope .segmented button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.design-review-panel {
+  min-width: 0;
+  max-height: 35vh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-subtle);
+}
+.design-review-panel details .button { display: block; max-width: 100%; white-space: normal; height: auto; text-align: left; }

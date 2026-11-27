@@ -9,6 +9,7 @@ import type { RunResult } from "./types";
 
 /** One run, flat: what the summaries and day-to-day deltas need. */
 export interface RunRow {
+  codeMode?: string;
   date: string;
   task: string;
   /** Rows written before suites existed read as "behaviour". */
@@ -66,7 +67,7 @@ const COLUMNS: (keyof RunRow)[] = [
   "date", "suite", "tier", "task", "agent", "model", "trial", "status", "pass", "score", "todoOk", "runCodeOk", "skillsOk", "memoryOk",
   "todoUpdates", "todoBeforeEdit", "todoClosed", "tools", "runCode", "runCodeFailed", "look", "shell", "edit", "tokensIn", "cacheRead", "cacheWrite",
   "tokensOut", "costUsd", "durationMs", "skills", "memReads", "memWrites", "checkFirstOk", "fixRounds", "checkFinalOk", "evidence", "verifyRuns",
-  "health", "lessons", "commit", "dirty", "versions", "why",
+  "health", "lessons", "commit", "dirty", "versions", "why", "codeMode",
 ];
 const BOOLS = new Set<keyof RunRow>(["pass", "todoOk", "runCodeOk", "skillsOk", "memoryOk", "todoBeforeEdit", "todoClosed", "checkFirstOk", "checkFinalOk", "dirty"]);
 const NUMS = new Set<keyof RunRow>(["trial", "score", "todoUpdates", "tools", "runCode", "runCodeFailed", "look", "shell", "edit", "tokensIn", "cacheRead", "cacheWrite", "tokensOut", "costUsd", "durationMs", "memReads", "memWrites", "fixRounds", "evidence", "verifyRuns", "lessons"]);
@@ -77,6 +78,7 @@ export function toRow(r: RunResult): RunRow {
   const m = r.metrics;
   return {
     date: r.date,
+    codeMode: r.codeMode ?? "",
     task: r.task,
     suite: r.suite,
     tier: r.tier ?? "",
@@ -189,7 +191,7 @@ export function readHistory(resultsDir: string): RunRow[] {
   return existsSync(file) ? fromCsv(readFileSync(file, "utf8")) : [];
 }
 
-const runKey = (r: RunRow) => `${r.date}|${r.task}|${r.agent}|${r.model}|${r.trial}`;
+const runKey = (r: RunRow) => `${r.date}|${r.task}|${r.agent}|${r.model}|${r.trial}|${r.codeMode ?? ""}`;
 
 /** Adds the runs to history.csv; a rerun of the same date, task, agent, model and trial replaces the old row. */
 export function appendHistory(resultsDir: string, rows: RunRow[]): void {

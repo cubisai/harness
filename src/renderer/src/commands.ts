@@ -22,6 +22,12 @@ export function selectedPluginCommand(text: string, commands: readonly PluginCom
   return { key: command.key, name: command.name, revision: command.revision };
 }
 
+/** Even an empty ownership list is a selection: never replace a picked local skill with a later plugin of the same name. */
+export function composerSelections(text: string, picked: SkillEntry[], commands: PluginCommandView[], pinned: PluginCommandInvocation | null): PluginSelections {
+  const command = selectedPluginCommand(text, commands, pinned);
+  return { pluginSkills: pluginSkillSelections(picked).pluginSkills ?? [], ...(command ? { pluginCommand: command } : {}) };
+}
+
 /** One command the message box can run when the text starts with "/name". */
 export interface ComposerCommand {
   name: string;

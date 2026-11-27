@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AgentDriver, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { Store } from "../src/main/db";
@@ -45,6 +45,35 @@ function setup(limit: number) {
 const tick = () => new Promise((r) => setTimeout(r, 30));
 
 describe("Run at once", () => {
+  it("settles the running and queued owners before deleting a project", async () => {
+    const { service, threads, store, started } = setup(1);
+    const a = threads[0]!, b = threads[1]!;
+    const first = service.send({ threadId: a.id, text: "run" });
+    const queued = service.send({ threadId: b.id, text: "wait", background: true });
+    await vi.waitFor(() => expect(started).toEqual([a.id]));
+    const deletion = service.deleteProject(a.projectId);
+    await expect(service.send({ threadId: a.id, text: "late" })).rejects.toThrow(/delet/);
+    expect((await Promise.all([first, queued])).map((o) => o.status)).toEqual(["cancelled", "cancelled"]);
+    await deletion;
+    expect(started).toEqual([a.id]);
+    expect(store.listThreads(a.projectId)).toEqual([]);
+    expect(service.pendingState()).toMatchObject({ running: [], queued: [] });
+  });
+  it("reserves one owner and one slot even for same-tick requests", async () => {
+    const { service, threads, started, release } = setup(1);
+    const a = threads[0]!.id, b = threads[1]!.id;
+    const first = service.send({ threadId: a, text: "first", background: true });
+    const duplicate = service.send({ threadId: a, text: "duplicate" }).then(() => false, () => true);
+    const second = service.send({ threadId: b, text: "second", background: true });
+    await vi.waitFor(() => expect(started).toContain(a));
+    expect(started).toEqual([a]);
+    expect(await duplicate).toBe(true);
+    release.get(a)!();
+    await first;
+    await vi.waitFor(() => expect(started).toEqual([a, b]));
+    release.get(b)!();
+    await second;
+  });
   it("queues a background send past the limit and starts it when a slot frees, oldest first", async () => {
     const { service, threads, started, release, updates } = setup(1);
     const [a, b, c] = threads as unknown as [{ id: string }, { id: string }, { id: string }];

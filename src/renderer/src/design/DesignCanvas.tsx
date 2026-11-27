@@ -31,6 +31,8 @@ import { RETAG_TAGS, type Breakpoint, type InsertPosition } from "../../../share
 import { optionLabel, scaleChanges, scaleStepOf, textVariantProp, tokenNames, typeScale, inlineStyle } from "./text-styles";
 import { useDesignEditing } from "./useDesignEditing";
 import { StudioBar, viewportMenu, type StudioMenuItem, type StudioView } from "./StudioBar";
+import { ReviewPanel } from "./ReviewPanel";
+import { FlowPanel } from "./FlowPanel";
 import { CodeView } from "./CodeView";
 import { SystemMode } from "./SystemMode";
 import { MOD_KEY, siblingUrl } from "./system-mode";
@@ -248,6 +250,7 @@ export default function DesignCanvas({
   const pinsRef = useRef<{ n: number; target: DesignComment["target"] }[]>([]);
   // Detect: the open page's lint findings as clickable pins (null = off). A reload of the page runs it again.
   const [detect, setDetect] = useState<DesignDetect | "busy" | null>(null);
+  const [reviewMode, setReviewMode] = useState<"sizes" | "build" | "flows" | null>(null);
   const detectRef = useRef<{ run: number; rel: string | null; result: DesignDetect | null }>({ run: 0, rel: null, result: null });
   const setSelection = useStore((s) => s.setDesignSelection);
   const selected = selection?.elements ?? [];
@@ -976,7 +979,8 @@ export default function DesignCanvas({
     if (hasHandoff) {
       // The "handoff first" notice is done with; the store's own toast confirms the build.
       setNotice(null);
-      return void useStore.getState().buildDesignInCode(threadId);
+      setReviewMode("build");
+      return;
     }
     const ok = await useStore.getState().send("Write the developer handoff for this design.", ["design-review"], threadId);
     if (ok) setNotice({ text: "Writing the handoff first. Choose Build in codebase again once handoff.md is there." });
@@ -2069,6 +2073,8 @@ export default function DesignCanvas({
           { kind: "item" as const, id: "styles", label: "Compare 3 other styles", disabled: agentRunning, onSelect: startMoreStyles },
           ...(cells.length > 0 ? [{ kind: "item" as const, id: "options", label: "Compare options", checked: comparing, onSelect: toggleCompare }] : []),
           { kind: "item" as const, id: "lint", label: "Check design quality", sub: detect === "busy" ? "Checking…" : detect ? `${detect.pins.length} marked` : undefined, checked: detect !== null, disabled: !onPage || detect === "busy", onSelect: toggleDetect },
+          { kind: "item" as const, id: "sizes", label: "Review sizes", disabled: !onPage, onSelect: () => setReviewMode("sizes") },
+          { kind: "item" as const, id: "flows", label: "Prototype flows", onSelect: () => setReviewMode("flows") },
           ...(versions.length > 0 ? [{ kind: "item" as const, id: "versions", label: "Version history", onSelect: () => setVersionPill(true) }] : []),
           { kind: "sep" as const, id: "s1" },
         ]
@@ -2158,6 +2164,12 @@ export default function DesignCanvas({
       <div className="design-workspace">
       {rail}
       <div className="design-column">
+      {reviewMode === "flows" && entry && <FlowPanel key={threadId} id={threadId} entry={entry} close={() => setReviewMode(null)} />}
+      {reviewMode && reviewMode !== "flows" && onPage && entry && <ReviewPanel key={`${threadId}:${entry.rel}:${reviewMode}`} threadId={threadId} page={entry.rel} revision={`${reload}:${revision}:${edits.status?.save}`} mode={reviewMode} close={() => setReviewMode(null)} pick={(width, selector) => {
+        setViewport(width === 390 ? "mobile" : width === 768 ? "tablet" : "desktop");
+        if (!picking) togglePick();
+        post({ type: "set-selection", targets: [{ selector, tag: "", text: "" }] });
+      }} />}
       {pickersBelow && (viewportPicker || zoomPicker || versionPicker) && (
         <div className="design-canvas-pickers">
           {viewportPicker}

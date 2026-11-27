@@ -13,6 +13,12 @@ export const mockSkillsRoot = resolve(fixturesDir, "mock-skills");
 export const catalog = () => loadCatalog(findSkillsRoot([mockSkillsRoot]));
 export const emptyCatalog = () => createEmptyCatalog();
 
+export function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
 /** Whether a CLI actually runs here (a bare command name resolves on every machine, installed or not). */
 export function runs(command: string | null | undefined): boolean {
   if (!command) return false;

@@ -1,10 +1,11 @@
 // The automation runner: claims due runs, runs them one at a time behind
 // interactive turns, and reconciles in-flight deliveries before any retry.
 
-import type { RunStatus } from "../../shared/automations";
+import { z } from "zod";
+import type { TurnOutcome } from "../../shared/types";
 import type { DeliveryCheck, Destination, Source } from "./io";
 import { dueTimes, runKey } from "./schedule";
-import type { Automation, AutomationRun, AutomationStore } from "./store";
+import type { Automation, AutomationRun, AutomationStore, Delivery } from "./store";
 import type { PluginOwner } from "../../shared/plugin-parts";
 
 export interface RunnerDeps {
@@ -12,7 +13,7 @@ export interface RunnerDeps {
   /** Start a fresh thread for the run; resolves with its id. */
   createThread(a: Automation): Promise<string>;
   /** Start a turn; resolves with the final answer at turn end, rejects on turn error. */
-  send(threadId: string, text: string): Promise<{ text: string }>;
+  send(threadId: string, text: string): Promise<TurnOutcome | { status?: "succeeded"; text: string }>;
   /** Stop an in-flight turn when a mid-run budget check trips. */
   interrupt?(threadId: string): void;
   totals(threadId: string): { costUsd: number | null; inputTokens: number; outputTokens: number };
@@ -43,14 +44,30 @@ export interface RecoverCounts {
 }
 
 /** What a run keeps before delivering, so a restart can finish the delivery and the cursor advance. */
-interface Checkpoint {
-  text: string;
-  advances: { source: string; next: string }[];
+const checkpointSchema = z.object({
+  text: z.string(),
+  advances: z.array(z.object({ source: z.string(), expected: z.string().nullable().optional(), next: z.string() })),
+  final: z.object({ status: z.enum(["succeeded", "paused-budget"]), inputTokens: z.number(), outputTokens: z.number(), costUsd: z.number().nullable() }).optional(),
+  owner: z.object({ key: z.string(), revision: z.string().optional() }).nullable().optional(),
+  title: z.string().optional(),
+});
+type Checkpoint = z.infer<typeof checkpointSchema>;
+
+function ownerMatches(expected: Checkpoint["owner"], live: PluginOwner | null | undefined): boolean {
+  return live?.enabled !== false && live?.key === expected?.key && live?.revision === expected?.revision;
 }
 
-function checkpointOf(run: AutomationRun): Checkpoint {
-  const c = run.checkpoint as Partial<Checkpoint> | null;
-  return { text: run.result ?? (typeof c?.text === "string" ? c.text : ""), advances: Array.isArray(c?.advances) ? c.advances : [] };
+function outcome(run: AutomationRun, cp: Checkpoint | null) {
+  return cp?.final?.status ?? (run.status === "succeeded" || run.status === "paused-budget" ? run.status : null);
+}
+
+function savedResult(run: AutomationRun, cp: Checkpoint | null) {
+  const { inputTokens, outputTokens, costUsd } = cp?.final ?? run;
+  // Even an incomplete legacy checkpoint may have readable text. Keep it for display;
+  // it is not evidence of a successful turn or permission to retry a publish.
+  const saved = run.checkpoint;
+  const text = saved && typeof saved === "object" && "text" in saved && typeof saved.text === "string" ? saved.text : null;
+  return { inputTokens, outputTokens, costUsd, result: cp?.text ?? run.result ?? text };
 }
 
 /** A reason string safe to show a user. */
@@ -100,54 +117,58 @@ export class AutomationRunner {
       this.queue.push(r.id);
       counts.requeued++;
     }
-    for (const d of store.pendingDeliveries()) {
-      const pending = store.run(d.runId);
-      // Off does not retry or publish a crash's queued delivery.
-      if (pending && !this.allowed(pending.automationId)) { counts.unknown++; continue; }
-      const key = d.idempotencyKey;
-      let check: DeliveryCheck;
-      try {
-        check = await this.deps.destination.check(key);
-      } catch {
-        counts.unknown++;
-        continue;
-      }
-      if (check === "confirmed") {
-        store.confirmDelivery(key);
-        this.advance(d.runId);
-        counts.confirmed++;
-        continue;
-      }
-      if (check === "missing" && (d.state === "intent" || d.state === "published")) {
-        const run = store.run(d.runId);
-        const a = run ? store.get(run.automationId) : null;
-        if (!run || !a) {
-          counts.unknown++;
-          continue;
-        }
-        if (!this.allowed(a.id)) { counts.unknown++; continue; }
-        try {
-          const receipt = await this.deps.destination.publish({
-            key,
-            automationId: a.id,
-            runId: run.id,
-            threadId: run.threadId ?? "",
-            title: a.name,
-            text: checkpointOf(run).text,
-          });
-          store.markPublished(key, receipt);
-          store.confirmDelivery(key, receipt);
-          this.advance(run.id);
-          counts.republished++;
-        } catch {
-          store.markUnknown(key);
-          counts.unknown++;
-        }
-        continue;
-      }
-      counts.unknown++;
-    }
+    for (const delivery of store.pendingDeliveries(true)) counts[await this.reconcile(delivery)]++;
     return counts;
+  }
+
+  private async reconcile(d: Delivery): Promise<"confirmed" | "republished" | "unknown"> {
+    const { store, destination } = this.deps;
+    const run = store.run(d.runId);
+    const a = run && store.get(run.automationId);
+    if (!run || !a) return "unknown";
+    const parsed = checkpointSchema.safeParse(run.checkpoint);
+    const cp = parsed.success ? parsed.data : null;
+    const key = d.idempotencyKey;
+    // Recovery spans external awaits. Off/On changes the owner's revision even if the run
+    // was already interrupted at startup and the plugin no longer lists it as active work.
+    const permitted = () => {
+      const live = store.run(run.id);
+      if (!live || live.status === "failed" || live.status === "cancelled") return false;
+      if (ownerMatches(cp?.owner, this.deps.owner?.(a.id))) return true;
+      this.notify(store.finishRun(run.id, { ...savedResult(live, cp), status: "cancelled", error: "Delivery recovery stopped: the owning plugin is Off or changed." }), a);
+      return false;
+    };
+    if (!permitted()) return "unknown";
+
+    let check: DeliveryCheck = "unknown";
+    if (d.state === "confirmed") check = "confirmed";
+    else if (destination.id === d.destination) {
+      try { check = await destination.check(key); } catch { /* No proof of delivery or absence. */ }
+      if (!permitted()) return "unknown";
+    }
+    if (check === "confirmed" || typeof check === "object") {
+      const receipt = typeof check === "object" ? check.receipt : undefined;
+      this.notify(store.atomic(() => this.completeDelivery(run, cp, key, receipt)), a);
+      return "confirmed";
+    }
+    const text = cp?.text ?? run.result;
+    if (check === "missing" && destination.repeatable && d.state !== "unknown" && text !== null && outcome(run, cp)) {
+      const payload = { key, automationId: a.id, runId: run.id, threadId: run.threadId ?? "", title: cp?.title ?? a.name, text };
+      let receipt: string | undefined = key;
+      if (!destination.afterCommit) {
+        try { receipt = await destination.publish(payload); } catch {
+          if (permitted()) this.unconfirmed(run, cp, key, a);
+          return "unknown";
+        }
+        if (!permitted()) return "unknown";
+      }
+      const finished = store.atomic(() => this.completeDelivery(run, cp, key, receipt));
+      try { destination.afterCommit?.(payload); } catch { /* Reload reads the committed row. */ }
+      this.notify(finished, a);
+      return "republished";
+    }
+    this.unconfirmed(run, cp, key, a);
+    return "unknown";
   }
 
   /** Claim every instant due now onto the queue; one bad automation never stops the tick. */
@@ -215,6 +236,10 @@ export class AutomationRunner {
     const a = store.get(run.automationId);
     // Disabled only stops the schedule: a manual run still goes.
     const manual = run.runKey.startsWith(`${run.automationId}@manual-`);
+    if (a && a.configVersion !== run.configVersion) {
+      this.notify(store.finishRun(id, { status: "cancelled", error: "Automation settings changed after this run was queued." }), a);
+      return;
+    }
     if (!a || (!a.enabled && !manual)) {
       store.finishRun(id, { status: "cancelled" });
       return;
@@ -222,7 +247,7 @@ export class AutomationRunner {
     const owner = this.deps.owner?.(a.id);
     const current = () => {
       const live = this.deps.owner?.(a.id);
-      return (!owner || (live?.key === owner.key && live.revision === owner.revision)) && live?.enabled !== false && ["queued", "running", "waiting-input"].includes(store.run(id)?.status ?? "");
+      return ownerMatches(owner, live) && ["queued", "running", "waiting-input"].includes(store.run(id)?.status ?? "");
     };
     if (!current()) { this.cancel(run, a); return; }
     if (!manual && budgetPaused(store, a, id)) {
@@ -232,7 +257,7 @@ export class AutomationRunner {
     let threadId: string | null = null;
     try {
       const sections: string[] = [];
-      const advances: { source: string; next: string }[] = [];
+      const advances: Checkpoint["advances"] = [];
       for (const sourceId of this.deps.sourcesFor(a)) {
         if (!current()) { this.cancel(run, a); return; }
         const src = this.deps.sources.get(sourceId);
@@ -245,7 +270,7 @@ export class AutomationRunner {
         try {
           const read = await src.read(cur.bookmark, { projectId: a.projectId, cwd: this.deps.cwdOf(a.projectId) });
           sections.push(`### ${sourceId}\n${read.items.length === 0 ? "no new items" : read.items.join("\n")}`);
-          if (read.next !== null) advances.push({ source: sourceId, next: read.next });
+          if (read.next !== null) advances.push({ source: sourceId, expected: cur.bookmark, next: read.next });
         } catch (err) {
           // A failed read is never "no new items": say so and keep the bookmark.
           const msg = reason(err);
@@ -261,6 +286,10 @@ export class AutomationRunner {
       const tid = await this.deps.createThread(a);
       threadId = tid;
       if (!current()) { this.deps.interrupt?.(tid); this.cancel(run, a); return; }
+      if (store.get(a.id)?.configVersion !== run.configVersion) {
+        this.notify(store.finishRun(id, { status: "cancelled", error: "Automation settings changed before dispatch." }), a);
+        return;
+      }
       store.startRun(run.id, tid, this.deps.leaseMs);
 
       let budgetStopped = false;
@@ -284,7 +313,16 @@ export class AutomationRunner {
 
       let text = "";
       try {
-        text = (await this.deps.send(tid, prompt)).text;
+        const outcome = await this.deps.send(tid, prompt);
+        text = outcome.text;
+        if (!budgetStopped && current()) {
+          if (outcome.status === "failed") throw new Error(outcome.reason);
+          if (outcome.status === "cancelled") {
+            const totals = this.totalsOrNull(tid);
+            this.notify(store.finishRun(id, { ...totals, status: "cancelled", error: "Turn stopped." }), a);
+            return;
+          }
+        }
       } catch (err) {
         if (!budgetStopped) throw err;
       } finally {
@@ -296,7 +334,7 @@ export class AutomationRunner {
 
       const totals = this.deps.totals(tid);
       const overBudget = budgetStopped || (a.budgetUsd !== null && totals.costUsd !== null && totals.costUsd > a.budgetUsd);
-      let status: RunStatus = overBudget ? "paused-budget" : "succeeded";
+      const status = overBudget ? "paused-budget" : "succeeded";
 
       if (budgetStopped && !text.trim()) {
         const finished = store.finishRun(run.id, { status: "paused-budget", costUsd: totals.costUsd, inputTokens: totals.inputTokens, outputTokens: totals.outputTokens, result: "" });
@@ -305,22 +343,35 @@ export class AutomationRunner {
       }
 
       const key = `${run.runKey}:${this.deps.destination.id}`;
-      store.checkpoint(run.id, { text, advances } satisfies Checkpoint);
-      store.deliveryIntent(key, run.id, this.deps.destination.id);
-      try {
-        const receipt = await this.deps.destination.publish({ key, automationId: a.id, runId: run.id, threadId: tid, title: a.name, text });
-        if (!current()) { store.markUnknown(key); this.cancel(run, a); return; }
-        store.markPublished(key, receipt);
-        store.confirmDelivery(key, receipt);
-        // The bookmark only moves once the delivery is confirmed.
-        this.advance(run.id);
-      } catch {
-        store.markUnknown(key);
-        if (status === "succeeded") status = "partial";
+      const dest = this.deps.destination;
+      const payload = { key, automationId: a.id, runId: run.id, threadId: tid, title: a.name, text };
+      const cp: Checkpoint = { text, title: a.name, advances, final: { status, ...totals }, owner: owner ? { key: owner.key, revision: owner.revision } : null };
+      const prepare = () => {
+        store.checkpoint(run.id, cp);
+        store.deliveryIntent(key, run.id, dest.id);
+      };
+      if (dest.afterCommit) {
+        const finished = store.atomic(() => { prepare(); return this.completeDelivery(run, cp, key, key); });
+        try { dest.afterCommit(payload); } catch { /* The receipt and result are already durable. */ }
+        this.notify(finished, a);
+        return;
       }
-
-      const finished = store.finishRun(run.id, { status, costUsd: totals.costUsd, inputTokens: totals.inputTokens, outputTokens: totals.outputTokens, result: text });
-      this.notify(finished, a);
+      store.atomic(prepare);
+      let receipt: string | undefined;
+      try {
+        receipt = await dest.publish(payload);
+      } catch {
+        if (!current()) { this.cancel(run, a); return; }
+        this.unconfirmed(run, cp, key, a);
+        return;
+      }
+      if (!current()) { store.markUnknown(key); this.cancel(run, a); return; }
+      try {
+        this.notify(store.atomic(() => this.completeDelivery(run, cp, key, receipt)), a);
+      } catch {
+        // The external write already happened. Keep the intent eligible for lookup on restart.
+        this.unconfirmed(run, cp, key, a);
+      }
     } catch (err) {
       if (!current()) { this.cancel(run, a); return; }
       const totals = threadId ? this.totalsOrNull(threadId) : null;
@@ -335,11 +386,35 @@ export class AutomationRunner {
     }
   }
 
-  /** Move the run's source cursors to what it read; only after its delivery is confirmed. */
-  private advance(runId: number): void {
-    const run = this.deps.store.run(runId);
-    if (!run) return;
-    for (const adv of checkpointOf(run).advances) this.deps.store.confirmSource(run.automationId, adv.source, adv.next);
+  private unconfirmed(run: AutomationRun, cp: Checkpoint | null, key: string, a: Automation): void {
+    const store = this.deps.store;
+    const status = outcome(run, cp) === "paused-budget" ? "paused-budget" : "partial";
+    const error = "Delivery could not be confirmed.";
+    const finished = store.atomic(() => {
+      store.markUnknown(key);
+      if (run.status === status && run.error === error) return null;
+      return store.finishRun(run.id, { ...savedResult(run, cp), status, error });
+    });
+    if (finished) this.notify(finished, a);
+  }
+
+  /** Called inside the receipt transaction, including when finalizing an older receipt. */
+  private completeDelivery(run: AutomationRun, cp: Checkpoint | null, key: string, receipt?: string): AutomationRun {
+    const store = this.deps.store;
+    store.confirmDelivery(key, receipt, true);
+    const status = outcome(run, cp);
+    let uncertain = !status || (!cp && run.checkpoint !== null);
+    if (status && cp) {
+      for (const adv of cp.advances) {
+        const previous = store.cursor(run.automationId, adv.source).bookmark;
+        if (adv.next === previous) continue;
+        if (adv.expected === undefined) uncertain = true;
+        else if (adv.expected === previous) store.confirmSource(run.automationId, adv.source, adv.next);
+      }
+    }
+    const finalStatus = status === "paused-budget" ? status : uncertain ? "partial" : "succeeded";
+    const error = uncertain ? "Delivery confirmed; the original outcome or source bookmark is uncertain." : undefined;
+    return store.finishRun(run.id, { ...savedResult(run, cp), status: finalStatus, error });
   }
 
   private totalsOrNull(threadId: string): { costUsd: number | null; inputTokens: number; outputTokens: number } | null {

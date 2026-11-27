@@ -1,3 +1,4 @@
+import { parseFragment, type DefaultTreeAdapterTypes } from "parse5";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { QuestionRequest } from "../src/shared/types";
@@ -16,6 +17,11 @@ const request: QuestionRequest = {
 function body(state: QuestionCardState = initialCardState, onRespond = vi.fn(), dispatch = vi.fn()) {
   return { el: QuestionCardBody({ request, state, waiting: 1, dispatch, onRespond }), onRespond, dispatch };
 }
+
+function elements(node: DefaultTreeAdapterTypes.ParentNode): DefaultTreeAdapterTypes.Element[] {
+  return node.childNodes.flatMap((child) => "tagName" in child ? [child, ...elements(child)] : []);
+}
+const attr = (el: DefaultTreeAdapterTypes.Element, name: string) => el.attrs.find((a) => a.name === name)?.value;
 
 /** Every button in a directly-called component's element tree, with its label and onClick. */
 function buttons(element: unknown): { text: string; disabled?: boolean; onClick?: () => void }[] {
@@ -47,13 +53,23 @@ describe("QuestionCard", () => {
     expect(html).toContain('role="option" aria-selected="false"');
   });
 
-  it("updates the listbox name when the current step changes to a free-text question", () => {
-    const first = renderToStaticMarkup(body().el);
-    const next = renderToStaticMarkup(body({ ...initialCardState, step: 1 }).el);
-    expect(first).toContain('role="listbox" aria-label="Which format?"');
-    expect(next).toContain('role="listbox" aria-label="What name?"');
-    expect(next).not.toContain('aria-label="Which format?"');
-    expect(next).toContain('placeholder="Type your answer"');
+  it.each([false, true])("keeps the Other control outside the preset listbox (editing: %s)", (editing) => {
+    const nodes = elements(parseFragment(renderToStaticMarkup(body({ ...initialCardState, otherOn: { q0: editing } }).el)));
+    const list = nodes.find((el) => attr(el, "role") === "listbox")!;
+    expect(list.childNodes.filter((el) => "tagName" in el).map((el) => attr(el, "role"))).toEqual(["option", "option"]);
+    const other = editing ? nodes.find((el) => el.tagName === "input" && attr(el, "aria-label") === "Your own answer: Which format?")
+      : nodes.find((el) => el.tagName === "button" && attr(el, "class")?.split(" ").includes("other"));
+    expect(other).toBeDefined();
+    expect(elements(list)).not.toContain(other);
+  });
+
+  it.each([false, true])("names the free-text field for its question without an empty listbox (secret: %s)", (secret) => {
+    const next = QuestionCardBody({ request: { ...request, questions: [request.questions[0]!, { ...request.questions[1]!, secret }] }, state: { ...initialCardState, step: 1 }, waiting: 0, dispatch: vi.fn(), onRespond: vi.fn() });
+    const nodes = elements(parseFragment(renderToStaticMarkup(next)));
+    expect(nodes.some((el) => attr(el, "role") === "listbox")).toBe(false);
+    const field = nodes.find((el) => el.tagName === "input")!;
+    expect(attr(field, "aria-label")).toBe("What name?");
+    expect(attr(field, "type")).toBe(secret ? "password" : "text");
   });
 
   it("shows the question, its options, Other, the step and the queue", () => {

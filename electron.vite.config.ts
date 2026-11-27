@@ -51,7 +51,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: { index: resolve("src/main/index.ts"), "preview-worker": resolve("src/main/preview/worker.ts") },
+        input: { index: resolve("src/main/index.ts"), "preview-worker": resolve("src/main/preview/worker.ts"), "code-worker": resolve("src/main/harness/tools/code-worker.ts") },
         output: { format: "es" },
       },
     },

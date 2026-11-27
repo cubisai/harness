@@ -1,7 +1,7 @@
 // Path handling shared by the file tools: resolve against the thread's folder,
 // report paths relative to it, and keep the read-before-write record.
 
-import { statSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { ToolError, type ToolContext } from "./types";
 
@@ -19,6 +19,19 @@ export function resolvePath(cwd: string, p: string): ResolvedPath {
   const rel = relative(cwd, abs);
   const outside = rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
   return { abs, shown: outside ? abs.split(sep).join("/") : rel.split(sep).join("/") || ".", outside };
+}
+
+export function scopedReadPath(ctx: ToolContext, path: ResolvedPath): ResolvedPath {
+  if (!ctx.readRoot) return path;
+  let real: string;
+  try { real = realpathSync(path.abs); }
+  catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new ToolError(`No such file: ${path.shown}`);
+    throw err;
+  }
+  const target = resolvePath(ctx.readRoot, real);
+  if (target.outside) throw new ToolError("This file is outside the thread's folder.");
+  return target;
 }
 
 /** Remember a file's state after reading or writing it. */

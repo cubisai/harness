@@ -7,6 +7,7 @@ import { getQuickJS, isFail, shouldInterruptAfterDeadline, type QuickJSContext, 
 import { bm25Rank } from "../../search/bm25";
 import type { LoopTool } from "../loop";
 import { bound } from "./bound";
+import { runCodeWorker } from "./code-worker-host";
 import { toTsDeclaration } from "./ts-decl";
 import { validateWidget, WIDGET_KINDS, WIDGET_SHAPES, WIDGETS_PER_RUN, widgetSummary, type WidgetKind, type WidgetSpec } from "../../../shared/genui/widget";
 
@@ -46,7 +47,7 @@ class LogBuffer {
 
 export interface CodeToolOptions {
   /** Every tool the loop offers; `run_code` and the agent-ish ones are hidden from a script. */
-  tools: () => LoopTool[];
+  tools: () => Pick<LoopTool, "definition" | "access" | "returns">[];
   /** Run one tool call for the sandbox; the driver authorizes and traces it. */
   /** `data`, when set, is what the script's `await` gets (read/glob/grep values); otherwise the text. */
   broker: (name: string, args: Record<string, unknown>, parentId: string, signal: AbortSignal) => Promise<{ text: string; isError: boolean; data?: unknown }>;
@@ -55,6 +56,7 @@ export interface CodeToolOptions {
   memoryBytes?: number;
   /** Values kept across scripts in one session, as JSON text; a script's writes commit only when it succeeds. */
   state?: Map<string, string>;
+  onCommit?: (writes: [string, string][]) => void;
   /** Draws what a successful script `show()`ed for the user (inline UI on); absent = scripts have no `show`. Called once per run, before it returns. */
   show?: (widgets: ShownWidget[], callId: string) => void | Promise<void>;
 }
@@ -69,7 +71,7 @@ export interface ShownWidget {
 export const SHOW_NOTE = `\`show(kind, props)\` draws your data for the user right in the chat (kind: ${WIDGET_KINDS.join(", ")}; table props: { title?, rows: object[] or array[], columns?: (string | { key, label?, type?: "text"|"number"|"currency"|"percent", unit? })[], complete?: false when partial }, up to 2000 rows): the user sees the real values, so don't retype them in your reply, say what they mean.`;
 
 /** A tool's one required string parameter, which a bare string argument fills; undefined when it has none or several. */
-function mainArg(tool: LoopTool): string | undefined {
+function mainArg(tool: Pick<LoopTool, "definition">): string | undefined {
   const { required, properties } = tool.definition.parameters as { required?: unknown; properties?: Record<string, { type?: unknown }> };
   if (!Array.isArray(required) || required.length !== 1 || typeof required[0] !== "string") return undefined;
   return properties?.[required[0]]?.type === "string" ? required[0] : undefined;
@@ -92,6 +94,19 @@ let modulePromise: Promise<QuickJSWASMModule> | null = null;
 /** The shared QuickJS module, loaded once. */
 const quickJS = (): Promise<QuickJSWASMModule> => (modulePromise ??= getQuickJS());
 
+let workerFile: string | undefined;
+/** Set in Electron main. The same evaluator runs locally inside the worker. */
+export function configureCodeWorker(file: string): void { workerFile = file; }
+
+export function commitScriptState(state: Map<string, string>, writes: [string, string][]): void {
+  const merged = new Map(state);
+  for (const [key, value] of writes) merged.set(key, value);
+  let total = 0;
+  for (const [key, value] of merged) total += key.length + value.length;
+  if (total > MAX_STATE_CHARS) throw new Error(`Session state may not exceed ${MAX_STATE_CHARS} characters.`);
+  for (const [key, value] of writes) state.set(key, value);
+}
+
 export function createCodeTool(o: CodeToolOptions): LoopTool {
   const timeoutMs = o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const memoryBytes = o.memoryBytes ?? DEFAULT_MEMORY_BYTES;
@@ -113,6 +128,7 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
     summarize: (args) => oneLine(String(args.code ?? "")),
     run: async (args, call) => {
       const code = typeof args.code === "string" ? args.code : "";
+      if (workerFile) return runCodeWorker(workerFile, o, code, call, timeoutMs, memoryBytes);
       const logs = new LogBuffer();
       const spill = { outputDir: o.outputDir, callId: call.id };
       // What the script show()s; drawn only when the run succeeds, like its store writes.
@@ -196,7 +212,12 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
             return { text: failed(`${why} The script returned with ${left} tool call${left === 1 ? "" : "s"} it never awaited still running; they were stopped. Await every tool call.`, logs, spill), isError: true };
           }
         }
-        if (o.state) for (const key of written) o.state.set(key, staged.get(key)!);
+        if (runAbort.signal.aborted) return { text: failed(STOPPED, logs, spill), isError: true };
+        if (o.state && written.size) {
+          const writes: [string, string][] = [...written].map((key) => [key, staged.get(key)!]);
+          commitScriptState(o.state, writes);
+          o.onCommit?.(writes);
+        }
         let text = [...logs.shown(), `=> ${rendered}`].join("\n");
         if (shown.length && o.show) {
           try {
@@ -272,7 +293,7 @@ function install(
   context.setProp(context.global, "console", console_);
   console_.dispose();
 
-  const exposed = (): LoopTool[] => o.tools().filter((t) => !EXCLUDED.has(t.definition.name));
+  const exposed = () => o.tools().filter((t) => !EXCLUDED.has(t.definition.name));
 
   const all = context.newArray();
   exposed().forEach((tool, i) => {

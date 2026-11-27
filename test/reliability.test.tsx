@@ -48,12 +48,15 @@ describe("store reliability (D1)", () => {
     const ok = await useStore.getState().send("hello");
 
     expect(ok).toBe(false);
-    expect(useStore.getState().running.t1).toBe(false);
+    expect(useStore.getState().running.t1).toBeFalsy();
     expect(useStore.getState().notice).toBe("Couldn't send: boom");
   });
 
   it("send returns true and keeps the spinner while the turn runs", async () => {
-    const send = vi.fn(() => Promise.resolve());
+    const send = vi.fn(async () => {
+      useStore.getState().apply({ type: "running", threadId: "t1", running: true });
+      return { status: "started" };
+    });
     vi.stubGlobal("window", { unskilled: fakeApi({ send }) });
     const { useStore } = await import("../src/renderer/src/store");
     useStore.setState({ selectedThreadId: "t1", running: {} });
@@ -82,7 +85,7 @@ describe("store reliability (D1)", () => {
 
     await useStore.getState().compact("t1", null);
 
-    expect(useStore.getState().running.t1).toBe(false);
+    expect(useStore.getState().running.t1).toBeFalsy();
     expect(useStore.getState().notice).toMatch(/^Couldn't compact/);
   });
 });

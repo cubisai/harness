@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { IDLE, takeOverReducer } from "../src/renderer/src/takeover";
+import { deferred } from "./helpers";
+import type { BrowserState } from "../src/shared/types";
 
 describe("takeOverReducer", () => {
   it("counts agent actions from idle", () => {
@@ -48,7 +50,29 @@ describe("takeOverReducer", () => {
 });
 
 describe("takeOver store actions", () => {
-  it("agent-action lands via apply; browserInput pauses; stopAgent interrupts and resumes", async () => {
+  it("shares a browser load, retries a failure, and keeps the live owner over the older reply", async () => {
+    const reply = deferred<BrowserState>();
+    const state: BrowserState = { owner: null, paused: false, logs: [{ level: "warning", text: "saved" }], device: "tablet", screenshots: [] };
+    const browserState = vi.fn(() => reply.promise).mockRejectedValueOnce(new Error("disconnected"));
+    vi.stubGlobal("window", { unskilled: { browserState } });
+    const { useStore } = await import("../src/renderer/src/store");
+    try {
+      const load = useStore.getState().loadBrowserState;
+      await Promise.all([load(), load()]);
+      expect(browserState).toHaveBeenCalledTimes(1);
+      expect(useStore.getState()).toMatchObject({ browserLoaded: false, notice: expect.stringContaining("disconnected") });
+      const retry = load();
+      const owner = { threadId: "a", turnId: "new" };
+      useStore.getState().apply({ type: "browser-control", owner, paused: true });
+      reply.resolve(state);
+      await retry;
+      expect(useStore.getState()).toMatchObject({ browserLoaded: true, browser: { ...state, owner, paused: true }, takeOver: { mode: "human-driving" } });
+      useStore.getState().apply({ type: "browser-control", owner: null, paused: false });
+      useStore.getState().apply({ type: "browser-action", owner, action: "open", url: "http://x.test" });
+      expect(useStore.getState().takeOver).toMatchObject({ mode: "idle", steps: 0 });
+    } finally { useStore.setState(useStore.getInitialState()); vi.unstubAllGlobals(); }
+  });
+  it("keeps the browser paused until main releases its owner, including when another thread is selected", async () => {
     const fakeApi = {
       browserTakeOver: vi.fn(() => Promise.resolve()),
       interrupt: vi.fn(() => Promise.resolve()),
@@ -58,16 +82,23 @@ describe("takeOver store actions", () => {
     const { useStore } = await import("../src/renderer/src/store");
     useStore.setState({ selectedThreadId: "t1", running: { t1: true }, takeOver: IDLE });
 
-    useStore.getState().apply({ type: "browser-action", action: "click", url: "https://x.test" });
+    const owner = { threadId: "t1", turnId: "turn-a" };
+    useStore.getState().apply({ type: "browser-control", owner, paused: false });
+    useStore.getState().apply({ type: "browser-action", action: "click", url: "https://x.test", owner });
     expect(useStore.getState().takeOver.mode).toBe("agent-driving");
 
     useStore.getState().browserInput();
     expect(useStore.getState().takeOver.mode).toBe("human-driving");
-    expect(fakeApi.browserTakeOver).toHaveBeenCalledWith(true);
+    expect(fakeApi.browserTakeOver).toHaveBeenCalledWith(true, owner);
+    useStore.setState({ selectedThreadId: "t2" });
+    useStore.getState().apply({ type: "running", threadId: "t2", running: false });
+    expect(useStore.getState().takeOver.mode).toBe("human-driving");
 
     await useStore.getState().stopAgent();
-    expect(fakeApi.interrupt).toHaveBeenCalledWith("t1");
-    expect(fakeApi.browserTakeOver).toHaveBeenCalledWith(false);
+    expect(fakeApi.interrupt).not.toHaveBeenCalled();
+    expect(fakeApi.browserTakeOver).toHaveBeenCalledWith(false, owner, true);
+    expect(useStore.getState().takeOver.mode).toBe("human-driving");
+    useStore.getState().apply({ type: "browser-control", owner: null, paused: false });
     expect(useStore.getState().takeOver.mode).toBe("idle");
     vi.unstubAllGlobals();
   });

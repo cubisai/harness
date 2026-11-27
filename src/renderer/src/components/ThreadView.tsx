@@ -54,7 +54,7 @@ function LiveReasoning({ text, newest }: { text: string; newest: boolean }) {
   const shown = useSmoothText(text, true);
   return <ReasoningBlock text={shown} opaque={false} live newest={newest} tokens={null} />;
 }
-const NO_QUEUE: { text: string; skills?: string[] }[] = [];
+const NO_QUEUE: never[] = [];
 
 /** The skills a message ran with, as chips before its text: "/issue" for the skills a "/" command runs, "$name" for the rest. */
 function SkillChips({ names }: { names: string[] }) {
@@ -90,6 +90,7 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
   const history = useStore((s) => s.history[threadId]);
   const live = useStore((s) => s.live[threadId]) ?? EMPTY_LIVE;
   const running = useStore((s) => Boolean(s.running[threadId]));
+  const admitting = useStore((s) => Boolean(s.admitting[threadId]));
   const outbox = useStore((s) => s.outbox[threadId]) ?? NO_QUEUE;
   const startedAt = useStore((s) => s.turnStartedAt[threadId]);
   const inner = useRef<HTMLDivElement>(null);
@@ -498,10 +499,12 @@ export function ThreadView({ threadId, expertId }: { threadId: string; expertId?
         ))}
         {outbox.map((m, i) => (
           <div className="msg-user" key={`queued-${i}`}>
-            <div className="bubble queued" title="Queued: sends when this turn ends">
+            <div className="bubble queued" title={m.retry ? "Message wasn't accepted" : "Queued: sends when this turn ends"}>
               <SkillChips names={m.skills ?? []} />
+              {[...(m.attachments ?? []), ...(m.files ?? [])].map((f, j) => <span className="skill-chip" title={f.name} key={j}>{shortName(f.name)}</span>)}
               {m.text}
             </div>
+            {m.retry && <button type="button" className="button ghost" disabled={running || admitting} onClick={() => void useStore.getState().deliverOutbox(threadId, m)}>Retry send</button>}
             <button
               className="icon-button queued-remove"
               aria-label="Remove queued message"

@@ -1,26 +1,29 @@
 // Where a finished run's result goes: the Message Center, one row per key.
 
 import type { DeliveryPayload, Destination } from "./io";
+import type { AutomationStore } from "./store";
 
 /**
- * Publish into the Message Center: `publish` broadcasts a row into the thread.
- * The key is remembered in-process so a retry within the same session is a
- * no-op; check() can only confirm what this session delivered, so an earlier
- * session's row reads "missing" — re-showing it is harmless, the row lives on.
+ * A confirmed receipt is the Message Center delivery. Window notifications
+ * happen after commit; receipt lookup also works in a fresh process.
  */
-export function messageCenterDestination(publish: (p: DeliveryPayload) => void): Destination {
-  const delivered = new Set<string>();
+export function messageCenterDestination(store: AutomationStore, notify: (p: DeliveryPayload) => void): Destination {
   return {
     id: "message-center",
+    repeatable: true,
+    afterCommit: notify,
     async publish(p) {
-      if (!delivered.has(p.key)) {
-        publish(p);
-        delivered.add(p.key);
+      if (store.delivery(p.key)?.state !== "confirmed") {
+        store.atomic(() => {
+          store.deliveryIntent(p.key, p.runId, "message-center");
+          store.confirmDelivery(p.key, p.key);
+        });
+        notify(p);
       }
       return p.key;
     },
     async check(key) {
-      return delivered.has(key) ? "confirmed" : "missing";
+      return store.delivery(key)?.state === "confirmed" ? "confirmed" : "missing";
     },
   };
 }

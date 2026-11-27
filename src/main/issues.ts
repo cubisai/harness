@@ -398,11 +398,18 @@ export async function createIssue(projectDir: string, issue: NewIssue, run: CliR
     if (tracker === "local") {
       const dir = join(projectDir, config.folder);
       await mkdir(dir, { recursive: true });
-      const number = (await localIssues(projectDir, config)).reduce((n, i) => Math.max(n, i.number), 0) + 1;
-      const id = String(number).padStart(4, "0");
+      let number = (await localIssues(projectDir, config)).reduce((n, i) => Math.max(n, i.number), 0) + 1;
+      const attachmentsDir = join(dir, "attachments");
+      await mkdir(attachmentsDir, { recursive: true });
+      let id: string;
+      for (;;) {
+        id = String(number).padStart(4, "0");
+        try { await mkdir(join(attachmentsDir, id)); break; }
+        catch (err) { if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err; }
+        number++;
+      }
       const links: string[] = [];
       if (sized.length) {
-        await mkdir(join(dir, "attachments", id), { recursive: true });
         for (const path of sized) {
           await copyFile(path, join(dir, "attachments", id, basename(path)));
           links.push(fileLink(basename(path), `attachments/${id}/${encodeURIComponent(basename(path))}`));

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { BrowserLogEntry, DevicePreset, ScreenshotInfo } from "../../../shared/types";
 import { api } from "../api";
 import { IconArrowLeft, IconArrowRight, IconGlobe, IconRefresh, IconTarget } from "../icons";
-import { useStore } from "../store";
+import { findThread, useStore } from "../store";
 import { ScreenshotStrip, ScreenshotViewer } from "./ScreenshotStrip";
 import { TakeOverBanner } from "./TakeOverBanner";
 
@@ -66,7 +66,7 @@ export function BrowserPanel() {
   const setWatch = useStore((s) => s.setWatch);
   /** The running agent's name, for the take-over banner. */
   const agentLabel = useStore((s) => {
-    const thread = s.threads[s.selectedProjectId ?? ""]?.find((t) => t.id === s.selectedThreadId);
+    const thread = s.browser.owner && findThread(s.threads, s.browser.owner.threadId);
     return s.agents.find((a) => a.id === thread?.agent)?.label ?? "this agent";
   });
   const device = useStore((s) => s.browser.device);
@@ -88,10 +88,11 @@ export function BrowserPanel() {
   /** What the page actually shows ("" = nothing yet); the address box can differ while the user types. */
   const [current, setCurrent] = useState("");
 
-  // The in-band state is fetched once, when the panel mounts.
+  // A failed load can be retried by reopening the tab, even when its webview stayed mounted.
+  const visible = useStore((s) => s.inspectorOpen && s.inspectorTab === "browser");
   useEffect(() => {
-    void useStore.getState().loadBrowserState();
-  }, []);
+    if (visible) void useStore.getState().loadBrowserState();
+  }, [visible]);
 
   useEffect(() => {
     const el = webView.current;
@@ -147,7 +148,12 @@ export function BrowserPanel() {
   }, [pendingUrl]);
 
   return (
-    <div className={`browser${takeOver.mode === "agent-driving" ? " agent-driving" : ""}`} onKeyDown={(e) => { if (e.key === "Escape") browserInput(); }}>
+    <div className={`browser${takeOver.mode === "agent-driving" ? " agent-driving" : ""}`} onKeyDown={(e) => {
+      if (e.key === "Escape" && takeOver.mode !== "idle") {
+        e.preventDefault(); // The browser owns this key, even when another running chat is selected.
+        browserInput();
+      }
+    }}>
       <form
         className="browser-bar"
         onSubmit={(e) => {

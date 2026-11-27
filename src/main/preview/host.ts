@@ -21,6 +21,7 @@ const MAX_CACHE_ENTRIES = 20;
 type StatInfo = { mtimeMs: number; size: number };
 
 type Pending = {
+  worker: WorkerLike;
   path: string;
   info: StatInfo;
   resolve: (value: PreviewResult) => void;
@@ -62,12 +63,13 @@ export class PreviewHost {
       const id = this.nextId++;
       return await new Promise<PreviewResult>((resolve) => {
         const timer = setTimeout(() => {
-          if (!this.pending.delete(id)) return;
-          resolve({ ok: false, error: "Preview timed out" });
+          if (this.worker !== worker || !this.pending.has(id)) return;
+          this.failPending("Preview timed out");
           this.killWorker();
         }, this.timeoutMs);
-        this.pending.set(id, { path, info, resolve, timer });
-        worker.postMessage({ id, path, maxBytes: this.maxBytes });
+        this.pending.set(id, { worker, path, info, resolve, timer });
+        try { worker.postMessage({ id, path, maxBytes: this.maxBytes }); }
+        catch (err) { clearTimeout(timer); this.pending.delete(id); throw err; }
       });
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -83,18 +85,18 @@ export class PreviewHost {
   private ensureWorker(): WorkerLike {
     if (!this.worker) {
       const worker = this.fork();
-      worker.on("message", (value) => this.onMessage(value));
+      worker.on("message", (value) => this.onMessage(worker, value));
       worker.on("exit", () => this.onExit(worker));
       this.worker = worker;
     }
     return this.worker;
   }
 
-  private onMessage(value: unknown): void {
+  private onMessage(worker: WorkerLike, value: unknown): void {
     const message = value as { id?: unknown; ok?: unknown; result?: OfficePreview; error?: unknown };
     if (typeof message.id !== "number") return;
     const entry = this.pending.get(message.id);
-    if (!entry) return;
+    if (entry?.worker !== worker) return;
     this.pending.delete(message.id);
     clearTimeout(entry.timer);
 

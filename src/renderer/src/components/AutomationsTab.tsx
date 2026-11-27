@@ -4,6 +4,7 @@ import type { AutomationInput, AutomationNotice, AutomationPermissions, Automati
 import { api } from "../api";
 import { useStore } from "../store";
 import { Select } from "./Select";
+import { SchedulePreview } from "./SchedulePreview";
 import { PluginOwnerNote } from "./PluginParts";
 import "../styles/automations.css";
 
@@ -29,6 +30,7 @@ const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /** The editor's draft: a saved automation carries its id; a new one does not. */
 interface Draft extends AutomationInput {
+  anchor?: number;
   id?: string;
 }
 
@@ -92,6 +94,7 @@ function draftOf(input: AutomationInput, id?: string): Draft {
 function draftOfView(view: AutomationView): Draft {
   return {
     id: view.id,
+    anchor: view.anchor,
     name: view.name,
     template: view.template,
     prompt: view.prompt,
@@ -369,6 +372,7 @@ export function AutomationsTab({ overview: initial }: { overview?: AutomationsOv
               <span className="label">Missed runs</span>
               <div className="automations-fields">
                 <Select className="block" value={draft.missed} options={MISSED} onChange={(missed) => setDraft({ ...draft, missed })} ariaLabel="Missed runs" />
+                <SchedulePreview key={draft.id ?? `new-${draft.template}`} {...draft} />
               </div>
             </div>
             <div className="automations-row">

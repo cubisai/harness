@@ -30,11 +30,11 @@ export function handoffPath(dir: string): string {
  * implement with the project's own components and tokens (not the prototype's HTML), keep the design's intent, run
  * the project's checks.
  */
-export function buildInCodePrompt(dir: string): string {
+export function buildInCodePrompt(dir: string, page = "index.html"): string {
   return [
     `Build the design in \`${dir}/\` into this codebase.`,
     "",
-    `1. Read \`${handoffPath(dir)}\` (tokens, components, states, breakpoints), then look at \`${dir}/index.html\` and its other pages.`,
+    `1. Read \`${handoffPath(dir)}\` (tokens, components, states, breakpoints), then look at \`${dir}/${page}\` and its other pages. Resolve design assets beside those files. Make your changes in the project checkout.`,
     "2. Find where it belongs in the app and implement it with the project's real components, styles and tokens. Don't copy the prototype's HTML or CSS wholesale, and don't add its `system/tokens.css`.",
     "   Add it beside what's there: a new page or screen gets its own file or route, linked from the existing navigation. Don't remove or rewrite existing pages or content unless the handoff says the design replaces them.",
     "3. Keep the design's layout, hierarchy, copy and states. Where the codebase's conventions disagree, follow the codebase and say what you changed.",

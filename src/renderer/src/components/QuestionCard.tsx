@@ -99,26 +99,30 @@ export function QuestionCardBody({
       </div>
       <div className="qc-question">{q.question}</div>
       <div className={`qc-body${hasPreview ? " with-preview" : ""}`}>
-        <div className="qc-options" role="listbox" aria-label={q.question} aria-multiselectable={q.multiSelect || undefined}>
-          {q.options.map((o, i) => {
-            const picked = picks.includes(o.label);
-            return (
-              <button
-                key={o.label}
-                type="button"
-                role="option"
-                aria-selected={picked}
-                className={`qc-option${picked ? " picked" : ""}${state.cursor === i ? " cursor" : ""}`}
-                onClick={() => (q.multiSelect ? dispatch({ type: "pick", label: o.label }) : choose(o.label))}
-              >
-                <span className="qc-key">{q.multiSelect ? (picked ? "✓" : "") : i + 1}</span>
-                <span className="qc-text">
-                  <span className="qc-label">{o.label}</span>
-                  {o.description && <span className="qc-desc">{o.description}</span>}
-                </span>
-              </button>
-            );
-          })}
+        <div className="qc-answers">
+          {!freeText && (
+            <div className="qc-options" role="listbox" aria-label={q.question} aria-multiselectable={q.multiSelect || undefined}>
+              {q.options.map((o, i) => {
+                const picked = picks.includes(o.label);
+                return (
+                  <button
+                    key={o.label}
+                    type="button"
+                    role="option"
+                    aria-selected={picked}
+                    className={`qc-option${picked ? " picked" : ""}${state.cursor === i ? " cursor" : ""}`}
+                    onClick={() => (q.multiSelect ? dispatch({ type: "pick", label: o.label }) : choose(o.label))}
+                  >
+                    <span className="qc-key">{q.multiSelect ? (picked ? "✓" : "") : i + 1}</span>
+                    <span className="qc-text">
+                      <span className="qc-label">{o.label}</span>
+                      {o.description && <span className="qc-desc">{o.description}</span>}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {q.allowOther &&
             (otherOn ? (
               <div className={`qc-option other picked${state.cursor === q.options.length ? " cursor" : ""}`}>
@@ -126,6 +130,7 @@ export function QuestionCardBody({
                 <input
                   className="text-input qc-other"
                   type={q.secret ? "password" : "text"}
+                  aria-label={freeText ? q.question : `Your own answer: ${q.question}`}
                   placeholder={freeText ? "Type your answer" : "Your own answer"}
                   value={state.other[q.id] ?? ""}
                   autoFocus
@@ -136,6 +141,10 @@ export function QuestionCardBody({
               <button
                 type="button"
                 className={`qc-option other${state.cursor === q.options.length ? " cursor" : ""}`}
+                onKeyDown={(e) => {
+                  // Let the focused button activate natively, independently of the list cursor.
+                  if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+                }}
                 onClick={() => dispatch({ type: "other-on" })}
               >
                 <span className="qc-key">{q.options.length + 1}</span>

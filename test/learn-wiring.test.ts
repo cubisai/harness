@@ -185,6 +185,19 @@ describe("counting a turn's lessons", () => {
 });
 
 describe("the Learned tab's actions", () => {
+  it.each(["drop", "retire"] as const)("does not revive a lesson after %s during verification", async (action) => {
+    let release!: () => void;
+    const { learner, db } = setup({ verifyLesson: async () => {
+      await new Promise<void>((resolve) => { release = resolve; });
+      return { verification, promote: true, why: "passed", tokens: 1 };
+    } });
+    db.putLesson(lesson({ id: "late", status: "candidate" }));
+    const result = learner.verify("late");
+    const decided = learner.setLesson("late", action);
+    release();
+    expect(await result).toEqual(decided);
+    expect(db.getLesson("late")).toEqual(decided);
+  });
   it("retires and undoes a lesson", () => {
     const { db, learner } = setup();
     db.putLesson(lesson({ id: "a", status: "active", verified: verification }));

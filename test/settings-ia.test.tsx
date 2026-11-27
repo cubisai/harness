@@ -76,11 +76,12 @@ describe("Settings IA", () => {
     expect(off).toMatch(/<button class="">On<\/button><button class="on">Off<\/button>/);
   });
 
-  it("keeps Code mode in Experiments, with Read-only + MCP marked Recommended", () => {
+  it("keeps Code mode in Experiments and describes native and external permissions", () => {
     expect(SETTINGS_GROUPS.find((g) => g.id === "experiments")?.sections).toEqual(["Code mode"]);
     expect(html.experiments).not.toContain("Browser tools");
     expect(html.agents).not.toContain("Code mode");
-    expect(html.experiments).toContain(">Read-only + MCP (Recommended)<");
+    expect(html.experiments).toContain("scripts can also request edits");
+    expect(html.experiments).toContain("read-only script tool");
     expect(html.experiments).toMatch(/class="on"[^>]*>Off</);
   });
 

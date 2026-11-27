@@ -38,6 +38,7 @@ import { ESCAPE_OWNERS, ESCAPE_OWNERS_OVER_DRAWER, escapeStopsTurn, type EscapeT
 import { lastAgentLine } from "./prompt-bar";
 import { inboxModel, nthVisibleThread, sidebarMode, threadKind, waitingThreads } from "./sections";
 import { useSelectedThread, useStore } from "./store";
+import { api } from "./api";
 import { applyTheme } from "./store";
 import { AppThemePreviewBar, cancelThemePreview } from "./components/AppThemeControls";
 
@@ -177,6 +178,7 @@ export function App() {
   const [headSlot, setHeadSlot] = useState<HTMLDivElement | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const hasMessages = useStore((s) => (thread ? (s.events[thread.id]?.length ?? 0) > 0 : false));
+  const hasOutbox = useStore((s) => Boolean(thread && s.outbox[thread.id]?.length));
   const systemOpen = useStore((s) => Boolean(studio && thread && s.designSystemWhere[thread.id]));
   const drawerHandle = useRef<HTMLButtonElement>(null);
   // Esc closes the open transcript drawer first (ESCAPE_OWNERS keeps it from stopping the turn), unless a menu or
@@ -362,7 +364,7 @@ export function App() {
                   aria-label={canvasFirst ? "Chat" : undefined}
                 >
                   {studio && <TodoDock threadId={thread.id} quietWhileRunning />}
-                  {thread.preset === "creator" && !hasMessages && !running && !thread.expertId ? (
+                  {thread.preset === "creator" && !hasMessages && !hasOutbox && !running && !thread.expertId ? (
                     <div className="start-thread">
                       <CreatorEmptyState />
                     </div>
@@ -489,24 +491,56 @@ export function App() {
 /** Creator starter prompts insert into the Composer without sending. */
 function CreatorEmptyState() {
   const { setComposerDraft } = useStore.getState();
+  const project = useStore((s) => s.projects.find((p) => p.id === s.selectedProjectId));
+  const thread = useSelectedThread();
+  const mode = useStore((s) => thread?.permissionMode ?? s.draft.permissionMode ?? s.settings?.defaultPermissionMode);
+  const [drafts, setDrafts] = useState<string[]>([]);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [reload, setReload] = useState(0);
+  const tid = thread?.id ?? null;
+  useEffect(() => {
+    let current = true;
+    setDrafts([]);
+    if (project) void api().listAppDrafts(project.id, tid).then((list) => { if (current) setDrafts(list); })
+      .catch((err) => { if (current) useStore.getState().showNotice(String(err)); });
+    return () => { current = false; };
+  }, [project?.id, tid, reload]);
+  const openDraft = async (draft: string, template?: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const id = tid ?? await useStore.getState().newThread();
+      if (!id) return;
+      await api().openAppDraft(id, draft, template);
+      setReload((n) => n + 1);
+      setComposerDraft(`Continue working on the existing app draft ${draft}. `);
+    } catch (err) { useStore.getState().showNotice(String(err)); }
+    finally { setBusy(false); }
+  };
   return (
     <>
       <h1>Extend CubiQ</h1>
-      <p>Build apps, reusable skills and MCP connectors for CubiQ.</p>
+      <p>Start an extension or resume an app draft.</p>
       <div className="empty-actions" style={{ marginTop: 16 }}>
-        <button type="button" className="button ghost" onClick={() => setComposerDraft("Build an app that ")}>
+        <button type="button" className="button ghost" onClick={() => setComposerDraft("Build a sales dashboard with sample orders and revenue by day.")}>
           Build an app
         </button>
-        <button type="button" className="button ghost" onClick={() => setComposerDraft("Create a skill that ")}>
+        <button type="button" className="button ghost" onClick={() => setComposerDraft("Create a skill that reviews a change against our release checklist.")}>
           Create a skill
         </button>
-        <button type="button" className="button ghost" onClick={() => setComposerDraft("Add an MCP connector for ")}>
+        <button type="button" className="button ghost" onClick={() => setComposerDraft("Add an MCP connector for our project issue tracker.")}>
           Add a connector
         </button>
-        <button type="button" className="button ghost" onClick={() => setComposerDraft("What apps, skills and connectors are installed, and what can I add?")}>
-          What can I add?
-        </button>
+        <button type="button" className="button ghost" disabled={!project || project.builtin} onClick={() => setComposerDraft("Design a warm editorial page theme with light and dark variants.")}>Create a page theme</button>
+        <button type="button" className="button ghost" disabled={!project || project.builtin} onClick={() => setComposerDraft("Schedule a weekday morning summary of this project's changes.")}>Schedule a prompt</button>
       </div>
+      {project?.builtin && <p className="note">Page themes and schedules need a project folder.</p>}
+      <div className="empty-actions"><input aria-label="App draft name" placeholder="App draft name" value={name} onChange={(e) => setName(e.target.value)} />
+        {([['Blank', undefined], ['Widget', 'widget'], ['Dashboard', 'dashboard']] as const).map(([label, template]) => <button type="button" key={label} className="button ghost" disabled={busy || mode === "plan" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(name)} onClick={() => void openDraft(name, template)}>{label}</button>)}
+      </div>
+      {mode === "plan" && <p className="note">Plan mode can inspect drafts. Switch to Ask or Auto-edit to create one.</p>}
+      {drafts.length > 0 && <div className="empty-actions">{drafts.map((draft) => <button className="button ghost" key={draft} disabled={busy} onClick={() => { setName(draft); setComposerDraft(`Resume the existing app draft ${draft}. `); }}>Resume {draft}</button>)}</div>}
     </>
   );
 }

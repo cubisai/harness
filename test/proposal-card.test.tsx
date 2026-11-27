@@ -177,7 +177,8 @@ describe("app proposals", () => {
 
   it("a staged app offers Preview, Reject and Install", () => {
     const html = render(app(), { onPreview: noop, onOpenApp: noop });
-    expect(buttons(html)).toEqual(["Preview", "Reject", "Install"]);
+    expect(html).toContain("Not checked");
+    expect(buttons(html)).toEqual(["light", "dark", "Check sample data", "Real read-only connector check", "Preview", "Reject", "Install"]);
   });
 
   it("an update names the changed files and installs as Update", () => {
@@ -200,7 +201,7 @@ describe("app proposals", () => {
       }),
       { onPreview: noop },
     );
-    expect(buttons(html)).toEqual(["Preview", "Reject", "Update"]);
+    expect(buttons(html)).toEqual(["light", "dark", "Check sample data", "Real read-only connector check", "Preview", "Reject", "Update"]);
     expect(html).toContain("Changed");
     expect(html).toContain("New");
     expect(html).toContain("Removed");

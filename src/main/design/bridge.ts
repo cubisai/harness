@@ -432,6 +432,12 @@ export function designBridge(
   const post = (type: string, data?: Record<string, unknown>): void => {
     parent.postMessage({ source: "cubiq-design", type, ...(data ?? {}), ...(nonce ? { nonce } : {}) }, "*");
   };
+  document.addEventListener("click", (event) => {
+    if (!event.isTrusted || !(event.target instanceof Element)) return;
+    const link = event.target.closest("a[href], [data-goto]");
+    const dest = link?.getAttribute("href") ?? link?.getAttribute("data-goto");
+    if (dest) post("follow-link", { url: new URL(dest, location.href).href });
+  }, true);
 
   const reportTweaks = (): void => {
     const el = document.getElementById("cubiq-tweaks");

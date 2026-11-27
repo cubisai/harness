@@ -3,7 +3,7 @@
 
 import { readdir, stat } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { resolvePath } from "./paths";
+import { resolvePath, scopedReadPath } from "./paths";
 import { intAny, strAny, ToolError, type NativeTool } from "./types";
 
 /** Folders a search never descends into: they are large and never the target. */
@@ -156,7 +156,7 @@ export const globTool: NativeTool = {
     const pattern = strAny(args, ["pattern", "glob"], true);
     const split = splitPattern(pattern);
     const base = resolvePath(ctx.cwd, strAny(args, ["path", "dir", "directory"]) ?? ".");
-    const dir = split ? resolvePath(base.abs, split.dir) : base;
+    const dir = scopedReadPath(ctx, split ? resolvePath(base.abs, split.dir) : base);
     const limit = intAny(args, ["limit"]);
     const re = globToRegExp(split ? split.glob : pattern);
     // Paths come back the way read resolves them: relative to the thread's folder, or absolute outside it.

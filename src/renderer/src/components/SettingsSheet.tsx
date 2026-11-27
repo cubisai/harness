@@ -519,7 +519,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
           <div className="row">
             <span className="label">Code mode</span>
             <div className="segmented">
-              {([["off", "Off"], ["on", "Read-only + MCP (Recommended)"]] as const).map(([value, label]) => (
+              {([["off", "Off"], ["on", "On"]] as const).map(([value, label]) => (
                 <button key={value} className={(settings.codeMode ?? "off") === value ? "on" : ""} onClick={() => update({ codeMode: value })}>
                   {label}
                 </button>
@@ -527,7 +527,7 @@ export function SettingsGroupContent({ group, settings }: { group: SettingsGroup
             </div>
           </div>
           <p className="note">
-            Agents get run_code: one sandboxed script that chains read, grep, glob and other read-only tools, so a multi-step search costs one call. The agent keeps its own read, search and edit tools. OpenCode 2 uses its own Code Mode. Applies to new threads.
+            The native agent uses run_code in place of direct read, glob and grep. Its scripts can also request edits under the thread's permissions. External agents keep their own tools and get a read-only script tool. OpenCode 2 uses its own Code Mode. Applies to new threads.
           </p>
         </section>
       );

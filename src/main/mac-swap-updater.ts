@@ -146,10 +146,10 @@ export class MacSwapBackend implements UpdaterBackend {
   /** Starts the helper once; it does the swap after this process exits. */
   private swap(relaunch: boolean): boolean {
     if (!this.staged || this.swapped) return false;
-    this.swapped = true;
     const script = `${this.deps.stagingDir}/swap.sh`;
     this.deps.writeFile(script, SWAP_SCRIPT);
     this.deps.spawnDetached("/bin/sh", [script, String(this.deps.pid), this.deps.appPath, this.staged, relaunch ? "1" : "0"]);
+    this.swapped = true;
     return true;
   }
 }

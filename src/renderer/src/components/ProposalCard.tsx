@@ -8,6 +8,8 @@ import { AppThemeControls } from "./AppThemeControls";
 import { useStore } from "../store";
 import "../styles/creator.css";
 import { StyleSpecimen } from "./StyleSpecimen";
+import { SchedulePreview } from "./SchedulePreview";
+import type { AppCheckEvidence } from "../../../shared/types";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -298,6 +300,7 @@ export function ProposalCardView({ proposal, busy, actionError, previewOpen, onT
             <p className="proposal-desc">{draft.description}</p>
             {!!draft.tools?.length && <><div className="proposal-grants-label">Agent tools</div><ul className="proposal-grants">{draft.tools.map((t) => <li key={t.name}><code>{t.name}</code><span>{t.description}</span></li>)}</ul><p className="proposal-desc">Tools can change this plugin's saved data. They ask before running, except in Full access; Plan mode blocks them.</p></>}
             <PluginParts parts={draft.parts} />
+            <ProposalChecks key={proposal.id} id={proposal.id} />
             {(waiting || status === "installed") && draft.parts?.some((p) => p.kind === "app-theme" && p.change !== "removed") && <AppThemeControls key={proposal.id} {...(proposal.status === "installed" ? { pluginKey: `g~${draft.name}` } : { proposalId: proposal.id })} />}
             {!!draft.cards?.length && <p className="proposal-desc">Chat cards: {draft.cards.join(", ")}. Cards cannot change data.</p>}
             {draft.grants.length > 0 ? (
@@ -350,6 +353,7 @@ export function ProposalCardView({ proposal, busy, actionError, previewOpen, onT
             <p className="proposal-desc">{draft.scheduleText} · {draft.input.agent} · {draft.input.model ?? "default model"}</p>
             <p className="proposal-desc">{draft.input.budgetUsd === null ? "No per-run budget limit" : `$${draft.input.budgetUsd} per run`} · Missed runs: {draft.input.missed === "skip" ? "skip" : "run once to catch up"}</p>
             <div className="creator-automation-prompt"><pre>{draft.input.prompt}</pre></div>
+            <SchedulePreview {...draft.input} enabled={false} />
             <p className="proposal-desc">Saved Off, with Ask permissions. Enable it or Run now in Library → Automations. Installing starts no run.</p>
           </>
         ) : (
@@ -468,4 +472,26 @@ function ThemeSpecimen({ url, title }: { url: string; title: string }) {
     </div>
     <StyleSpecimen title={`${title} ${scheme} page theme preview`} url={url.replace(/theme=light/, `theme=${scheme}`)} />
   </div>;
+}
+
+function ProposalChecks({ id }: { id: string }) {
+  const [scheme, setScheme] = useState<"light" | "dark">("light");
+  const [evidence, setEvidence] = useState<AppCheckEvidence[]>([]);
+  const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const request = useRef(0);
+  const check = useCallback(async (mode?: "samples" | "real") => {
+    const generation = ++request.current;
+    setBusy(true); setError("");
+    try { const rows = await api().appProposalChecks(id, scheme, mode); if (generation === request.current) setEvidence(rows); }
+    catch (err) { if (generation === request.current) setError(String(err)); }
+    finally { if (generation === request.current) setBusy(false); }
+  }, [id, scheme]);
+  useEffect(() => { void check(); return () => { request.current++; }; }, [check]);
+  const rows = evidence.filter((r) => r.scheme === scheme);
+  return <section aria-label="App checks"><div className="proposal-grants-label">App checks</div>
+    <div className="segmented compact">{(["light", "dark"] as const).map((s) => <button type="button" key={s} aria-pressed={scheme === s} onClick={() => setScheme(s)}>{s}</button>)}</div>
+    {busy ? <p role="status">Checking…</p> : error ? <p role="alert">{error}</p> : !rows.length ? <p>Not checked</p> : <ul>{rows.map((r) => <li key={r.scenario}>{r.scenario}: {r.ok ? "Passed" : "Failed"} · {r.placement}, {r.width} × {r.height} · {r.realConnector ? "Used a real connector" : r.detail}</li>)}</ul>}
+    <button type="button" className="button ghost" disabled={busy} onClick={() => void check("samples")}>Check sample data</button>
+    <button type="button" className="button ghost" disabled={busy} onClick={() => void check("real")}>Real read-only connector check</button>
+  </section>;
 }

@@ -66,6 +66,7 @@ const tail = (lines: string[]): string => (lines.length ? lines.slice(-TAIL_LINE
  */
 export class DevServers {
   private servers = new Map<string, OwnedServer>();
+  private starting = new Map<string, symbol>();
   private spawnFn: SpawnFn;
   private probe: (port: number) => Promise<boolean>;
   private readyTimeoutMs: number;
@@ -95,12 +96,16 @@ export class DevServers {
   async start(projectId: string, cwd: string, d: DevScript): Promise<OwnedServer> {
     const id = `${projectId}:${d.script}`;
     const existing = this.servers.get(id);
-    if (existing && existing.exited === null) {
+    if (this.starting.has(id) || (existing && existing.exited === null)) {
       throw new Error(`Already running: ${d.script} on port ${d.port} (owned by CubiQ).`);
     }
-    if (await this.probe(d.port)) {
-      throw new Error(`Port ${d.port} is already in use; a server is probably running there. Open http://localhost:${d.port} instead of starting another.`);
-    }
+    const reservation = Symbol(id);
+    this.starting.set(id, reservation);
+    try {
+      const occupied = await this.probe(d.port);
+      if (this.starting.get(id) !== reservation) throw new Error(`Stopped before starting ${d.script}.`);
+      if (occupied) throw new Error(`Port ${d.port} is already in use; a server is probably running there. Open http://localhost:${d.port} instead of starting another.`);
+    } finally { if (this.starting.get(id) === reservation) this.starting.delete(id); }
     const child = this.spawnFn(packageManager(cwd), ["run", d.script], cwd);
     const server: OwnedServer = {
       id,
@@ -137,23 +142,23 @@ export class DevServers {
         if (settled) return;
         settled = true;
         stopPolling();
-        this.stop(id);
+        if (this.servers.get(id) === server) this.stop(id);
         reject(new Error(`${d.script} didn't open port ${d.port} within ${Math.round(this.readyTimeoutMs / 1000)} s:\n${tail(server.output)}`));
       }, this.readyTimeoutMs);
 
-      child.once("exit", (code) => {
-        server.exited = code;
+      child.once("exit", (code, signal) => {
+        server.exited = code ?? -1;
         if (settled) return;
         settled = true;
         stopPolling();
-        this.servers.delete(id);
-        reject(new Error(`${d.script} exited with code ${code ?? "?"} before port ${d.port} opened:\n${tail(server.output)}`));
+        if (this.servers.get(id) === server) this.servers.delete(id);
+        reject(new Error(`${d.script} exited with ${signal ?? `code ${code ?? "?"}`} before port ${d.port} opened:\n${tail(server.output)}`));
       });
       child.once("error", (err) => {
         if (settled) return;
         settled = true;
         stopPolling();
-        this.servers.delete(id);
+        if (this.servers.get(id) === server) this.servers.delete(id);
         reject(err instanceof Error ? err : new Error(String(err)));
       });
 
@@ -166,6 +171,7 @@ export class DevServers {
           open = false;
         }
         if (settled) return;
+        if (this.servers.get(id) !== server) { settled = true; stopPolling(); reject(new Error(`Stopped ${d.script}.`)); return; }
         if (open) {
           settled = true;
           stopPolling();
@@ -181,8 +187,9 @@ export class DevServers {
 
   /** Stop an owned server: its process group gets SIGTERM, then SIGKILL after 2 s. Unknown id → false. */
   stop(id: string): boolean {
+    const starting = this.starting.delete(id);
     const server = this.servers.get(id);
-    if (!server) return false;
+    if (!server) return starting;
     this.servers.delete(id);
     // A spawn that failed has no pid; never signal a made-up one (-(-1) would be pid 1).
     if (server.pid <= 0 || server.exited !== null) return true;
@@ -196,6 +203,7 @@ export class DevServers {
       // Already gone.
     }
     const hardKill = setTimeout(() => {
+      if (server.exited !== null) return;
       try {
         process.kill(-server.pid, "SIGKILL");
       } catch {
@@ -208,6 +216,7 @@ export class DevServers {
 
   /** Stop every owned server (on app quit). */
   stopAll(): void {
+    this.starting.clear();
     for (const id of [...this.servers.keys()]) this.stop(id);
   }
 }

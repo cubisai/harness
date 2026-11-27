@@ -211,6 +211,14 @@ export class DesignDocuments {
   private readonly options: DesignDocumentsOptions;
   private readonly tracked = new Map<string, Tracked>();
 
+  flushThread(threadId: string): void {
+    for (const [id, page] of this.tracked) {
+      if (page.threadId !== threadId) continue;
+      this.checkDisk(id);
+      if (!this.service.flush(id)) throw new Error(`Not saved: ${page.rel}`);
+    }
+  }
+
   constructor(options: DesignDocumentsOptions) {
     this.options = options;
     // Both callbacks run from a save timer, where a throw would be an uncaught exception.
@@ -334,7 +342,7 @@ export class DesignDocuments {
    * Edits the main process makes for a page: an agent's token call, a kit move. They're one undo step, they apply even
    * during the turn that asked for them, and they're on disk when this returns. Refusals come back as the message.
    */
-  apply(threadId: string, rel: string, file: string, target: DesignMutation["target"], changes: DesignMutation["change"][]): { ok: true } | { ok: false; message: string } {
+  apply(threadId: string, rel: string, file: string, target: DesignMutation["target"], changes: DesignMutation["change"][]): { ok: true } | { ok: false; message: string; journaled?: true } {
     const id = this.ensure(threadId, rel, file);
     this.checkDisk(id);
     const busy = this.options.isBusy(threadId);
@@ -348,7 +356,7 @@ export class DesignDocuments {
         if (!result.ok) return { ok: false, message: result.message ?? "That edit can't be made here." };
       }
       this.service.closeTransaction(id, transactionId);
-      this.service.flush(id);
+      if (!this.service.flush(id)) return { ok: false, journaled: true, message: `The edit to ${rel} is journaled but not saved to disk. Use Retry to save it.` };
       return { ok: true };
     } finally {
       if (busy) this.service.setReadOnly(id, true);

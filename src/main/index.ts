@@ -1,7 +1,7 @@
-import { accessSync, constants as fsConstants, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, constants as fsConstants, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { homedir, release, tmpdir, type as osType } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -33,7 +33,7 @@ import { readTarget } from "../shared/comments";
 import { bridgeScript } from "./design/bridge";
 import { buildDesignExport, exportFileName, pageTitleSource, type DesignExportDeps } from "./design/export";
 import { lintScript, type LintResult } from "./design/lint";
-import { detectPins, lintWidth, styleAllows, withoutAllowed, type PageLint } from "./design/autolint";
+import { AUTO_LINT_RULES, detectPins, lintWidth, styleAllows, withoutAllowed, type PageLint } from "./design/autolint";
 import { kitIndexEntry, kitThemeIndex, type KitIndexEntry } from "./design/systems";
 import { electronShotWindow } from "./design/shot-window";
 import { Shooter } from "./design/shooter";
@@ -77,6 +77,8 @@ import { PreviewHost, utilityFork } from "./preview/host";
 import { migrateLegacyData } from "./migrate-data";
 import { startToolServer, type ToolServer } from "./mcp-http";
 import { codeModes, createCodeServer } from "./code-mode";
+import { configureCodeWorker } from "./harness/tools/code";
+import { captureDesign, creatorFilesFromReview, writeDesignSnapshot } from "./design/review";
 import { TerminalManager } from "./terminal";
 import { Service } from "./service";
 import { startAutomations } from "./automations/app";
@@ -141,8 +143,11 @@ import { APP_SCHEME, appUrl, serveApp } from "./apps/serve";
 import { AppChecker } from "./apps/check";
 import { electronCheckWindow } from "./apps/check-window";
 import { appDraftsDir, appEditDraftsDir, projectAppsDir } from "./apps/registry";
+import { validateApp, appSize } from "./apps/manifest";
+import { SAMPLE_MODES, SAMPLE_VERSION } from "../shared/app-sample";
+import { computeProposalDigest } from "./extensions/manifest";
 import { DraftWatcher } from "./apps/watch";
-import { creatorAppTools } from "./creator/app-tools";
+import { APP_TEMPLATES, CREATOR_APP_PREVIEW_TOOL, creatorAppTools, listAppDrafts } from "./creator/app-tools";
 import { prepareAppEdit } from "./apps/manage";
 import { providerWarning } from "../shared/provider-rules";
 import { Updater, type UpdaterBackend } from "./updater";
@@ -371,6 +376,7 @@ async function main(): Promise<void> {
     { scheme: DOC_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   ]);
   await app.whenReady();
+  configureCodeWorker(join(here, "code-worker.js"));
   // A dev run is the stock Electron binary: give its Dock tile the app's own icon.
   if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(appIcon());
 
@@ -387,7 +393,7 @@ async function main(): Promise<void> {
     if (!/^[\w.-]+\.png$/.test(name)) return new Response(null, { status: 404 });
     return net.fetch(pathToFileURL(join(shotsDir, name)).toString());
   });
-  const store = new Store(join(userData, "unskilled.db"));
+  const store = new Store(join(userData, "unskilled.db"), () => settings.get().codeMode ?? "off");
   const extensions = new ExtensionStore(store.sql);
   // Content left behind by threads deleted before blobs were pruned on delete, off the startup path.
   setImmediate(() => store.pruneBlobs());
@@ -511,7 +517,16 @@ async function main(): Promise<void> {
   const windows = new Set<BrowserWindow>();
   // Built after the service; a turn on a thread makes that thread's open pages read-only.
   let designDocuments: DesignDocuments | null = null;
+  let pendingSequence = 0;
+  let browserOwner: { threadId: string; turnId: string } | null = null;
+  let browserSignal: AbortSignal | undefined;
+  const pendingTypes = new Set<LiveUpdate["type"]>(["running", "queued", "permission", "permission-withdrawn", "plan-approval", "plan-approval-done", "question", "question-done", "automation-run"]);
   const broadcast = (update: LiveUpdate) => {
+    if (update.type === "running" && !update.running && browserOwner?.threadId === update.threadId) {
+      browserOwner = null; browserSignal = undefined; browser.setPaused(false);
+      broadcast({ type: "browser-control", owner: null, paused: false });
+    }
+    if (pendingTypes.has(update.type)) update = { ...update, pendingSequence: ++pendingSequence };
     if (update.type === "running") designDocuments?.setBusy(update.threadId, update.running);
     for (const w of windows) if (!w.isDestroyed()) w.webContents.send("unskilled:update", update);
   };
@@ -669,12 +684,19 @@ async function main(): Promise<void> {
       onLog: (entry) => broadcast({ type: "browser-log", entry }),
       onScreenshot: (path) => broadcast({ type: "browser-screenshot", shot: shotInfo(path) }),
       onDevice: (device) => broadcast({ type: "browser-device", device }),
-      onAction: (action, ref, url) => broadcast({ type: "browser-action", action, ref, url }),
+      onAction: (action, ref, url) => broadcast({ type: "browser-action", action, ref, url, owner: browserOwner }),
     },
   );
   // The pane is one target: a thread whose turn is running owns it until the turn ends (service is set up below).
   // takeImage is set up below with the design tools; it's only called once a turn runs.
-  const tools = browserTools(browser, { busy: (threadId) => service.isRunning(threadId), takeImage: (threadId) => takeImage(threadId) });
+  const tools = browserTools(browser, { takeImage: (threadId) => takeImage(threadId),
+    turnSignal: (id) => service.turnSignal(id), onOwner: (threadId, signal) => {
+      if (browserSignal === signal) return;
+      browserSignal = signal;
+      browserOwner = { threadId, turnId: randomUUID() };
+      broadcast({ type: "browser-control", owner: browserOwner, paused: false });
+    },
+  });
   const memoryEnabled = (pid: string) => memoryOn(settings.get(), pid);
   const memoryTools = [memoryReadTool({ store: memory.store, enabled: memoryEnabled }), memoryWriteTool({ store: memory.store, enabled: memoryEnabled })];
   // Dev servers the app starts for the agent (P5.5); only these are ever stopped, all of them on quit.
@@ -1017,7 +1039,7 @@ async function main(): Promise<void> {
     return managedRules.tools(browserOnDemand(thread) ? withBrowserOnDemand(list) : list, thread.id);
   };
   // Code mode, fixed per thread for this app run (a session's tool list never changes).
-  const codeModeOf = codeModes(() => settings.get().codeMode);
+  const codeModeOf = codeModes((id) => store.codeMode(id));
   const threadOf = (threadId: string): Thread | null => {
     try {
       return store.getThread(threadId);
@@ -1504,7 +1526,7 @@ async function main(): Promise<void> {
   }));
   protocol.handle(DESIGN_SCHEME, (req) =>
     serveDesign(req.url, {
-      designRoot: (threadId) => service.designRoot(threadId),
+      designRoot: (threadId) => reviewRoots.get(threadId) ?? service.designRoot(threadId),
       readVersion: (threadId, rel, version) => service.readDesignVersion(threadId, rel, version),
       bridge: designBridgeJs,
     }),
@@ -1895,6 +1917,92 @@ async function main(): Promise<void> {
     }
   });
   // Detect: the saved page linted off screen, as the auto-lint does, for the canvas's clickable pins.
+  const reviewRoots = new Map<string, string>();
+  ipcMain.handle("design:flows", (e, id: string, save?: import("../shared/types").PrototypeFlow) => {
+    assertMainWindow(e);
+    const root = service.designRoot(id);
+    if (!root) throw new Error("Not a design thread.");
+    const file = join(root, ".flows.json");
+    if (existsSync(file) && !resolveInside(root, ".flows.json")) throw new Error("Invalid flow file.");
+    const flows: import("../shared/types").PrototypeFlow[] = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : [];
+    if (!Array.isArray(flows) || flows.some((f) => !f || typeof f.name !== "string" || !Array.isArray(f.pages) || !f.pages.every((p) => typeof p === "string"))) throw new Error("Could not read saved flows.");
+    if (!save) return flows;
+    const pages = listDesignPages(root);
+    if (!save.name?.trim() || save.name.length > 100 || !Array.isArray(save.pages) || save.pages.length < 2 || save.pages.length > 50 || save.pages.some((p) => !pages.includes(p))) throw new Error("Name the flow and choose an existing page for each step.");
+    const name = save.name.trim(), next = [...flows.filter((f) => f.name !== name), { name, pages: save.pages }];
+    const tmp = `${file}.${randomUUID()}.tmp`;
+    writeFileSync(tmp, JSON.stringify(next), { flag: "wx" });
+    try { renameSync(tmp, file); } finally { rmSync(tmp, { force: true }); }
+    return next;
+  });
+  const reviewRoot = (threadId: string) => {
+    const root = service.designRoot(threadId);
+    if (!root) throw new Error("Not a design thread.");
+    designDocuments?.flushThread(threadId);
+    return root;
+  };
+  ipcMain.handle("design:review-sizes", async (e, threadId: string, page: string) => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    const root = reviewRoot(threadId), captured = await captureDesign(root, page, false);
+    const dir = mkdtempSync(join(userData, "size-review-")), key = basename(dir);
+    try {
+      await writeDesignSnapshot(dir, captured.contents);
+      reviewRoots.set(key, dir);
+      const results = [];
+      for (const width of [390, 768, 1440]) {
+        const raw = await shooter.evaluate(designUrl(key, page), width, 900, designLintJs);
+        const result = withoutAllowed(JSON.parse(String(raw)) as LintResult, styleAllows(root));
+        results.push({ width, findings: result.findings.filter((f) => AUTO_LINT_RULES.includes(f.rule)) });
+      }
+      if ((await captureDesign(reviewRoot(threadId), page, false)).digest !== captured.digest) throw new Error("The design changed. Review sizes again.");
+      return results;
+    } finally { reviewRoots.delete(key); rmSync(dir, { recursive: true, force: true }); }
+  });
+  ipcMain.handle("design:review", async (e, id: string, page: string) => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    const { files, digest } = await captureDesign(reviewRoot(id), page, true);
+    return { files, digest, page };
+  });
+  ipcMain.handle("design:to-creator", async (e, id: string, dir: string, size: { width: number; height: number }) => {
+    assertMainWindow(e);
+    if (typeof dir !== "string" || dirname(dir) !== userData || !/^approved-design-[\w-]+$/.test(basename(dir)) || !resolveInside(userData, `${basename(dir)}/.review.json`)) throw new Error("Not an approved design.");
+    const review = JSON.parse(readFileSync(join(dir, ".review.json"), "utf8"));
+    if (review.threadId !== id || !service.designRoot(id)) throw new Error("This revision belongs to another design.");
+    const source = store.getThread(id);
+    const name = `design-${review.digest.slice(0, 8)}-${randomUUID().slice(0, 8)}`;
+    const files = await creatorFilesFromReview(dir, review, name, size);
+    const thread = service.createThread(source.projectId, source.agent, "chat", null, null, "creator");
+    const base = creatorDraftsDir(thread.id)!;
+    mkdirSync(base, { recursive: true });
+    const staged = mkdtempSync(join(base, ".design-"));
+    try {
+      for (const f of files) {
+        const path = join(staged, f.path);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, f.content, { flag: "wx" });
+      }
+      renameSync(staged, join(base, name));
+    } catch (err) { await service.deleteThread(thread.id); throw err; }
+    finally { rmSync(staged, { recursive: true, force: true }); }
+    const app = appRegistry.info(`d~${thread.id}~${name}`)!;
+    draftWatcher.watch(app.key, thread.id, join(base, name));
+    broadcast({ type: "thread", thread });
+    return { thread, app };
+  });
+  ipcMain.handle("design:approve", async (e, id: string, review: import("../shared/types").DesignReview) => {
+    if (!isFromAppWindow(e)) throw new Error("Not allowed from a page.");
+    const captured = await captureDesign(reviewRoot(id), review.page, true);
+    if (captured.digest !== review.digest) {
+      const changed = captured.files.filter((f) => !review.files.some((old) => old.path === f.path && old.sha256 === f.sha256));
+      throw new Error(`Review changed inputs: ${changed.map((f) => f.path).join(", ") || review.page}`);
+    }
+    const dir = mkdtempSync(join(userData, "approved-design-"));
+    try {
+      await writeDesignSnapshot(dir, captured.contents);
+      writeFileSync(join(dir, ".review.json"), JSON.stringify({ threadId: id, page: review.page, digest: captured.digest, files: captured.files }), { mode: 0o444, flag: "wx" });
+      return dir;
+    } catch (err) { rmSync(dir, { recursive: true, force: true }); throw err; }
+  });
   ipcMain.handle("design:detect", async (_e, threadId: string, rel: unknown) => {
     const root = service.designRoot(threadId);
     if (!root || typeof rel !== "string" || !/\.html?$/i.test(rel) || !resolveInside(root, rel)) throw new Error("Not a design page.");
@@ -2342,9 +2450,36 @@ async function main(): Promise<void> {
   });
   const appBridgeJs = appBridgeScript();
   const appBridgeOwnJs = appBridgeScript({ ownStyle: true });
+  const checkRoots = new Map<string, { dir: string; own: boolean }>();
   protocol.handle(APP_SCHEME, (req) =>
-    serveApp(req.url, { appRoot: (key) => appRegistry.root(key), bridge: appBridgeJs, bridgeFor: (key) => (appRegistry.manifest(key)?.style === "own" ? appBridgeOwnJs : appBridgeJs) }),
+    serveApp(req.url, { appRoot: (key) => checkRoots.get(key)?.dir ?? appRegistry.root(key), bridge: appBridgeJs, bridgeFor: (key) => ((checkRoots.get(key)?.own ?? (appRegistry.manifest(key)?.style === "own")) ? appBridgeOwnJs : appBridgeJs) }),
   );
+  ipcMain.handle("creator:proposal-checks", async (e, id: string, scheme: "light" | "dark", run?: "samples" | "real") => {
+    assertMainWindow(e);
+    const proposal = extensions.get(id);
+    if (proposal?.draft.kind !== "app" || !["light", "dark"].includes(scheme) || (run && !["samples", "real"].includes(run))) throw new Error("Invalid app check.");
+    const draft = proposal.draft, validated = validateApp(draft.name, draft.files);
+    if (!validated.ok) throw new Error(validated.errors.join("\n"));
+    if (computeProposalDigest(proposal.scope, draft) !== proposal.digest) throw new Error("Proposal inputs changed.");
+    const m = validated.manifest, size = appSize(m), placement = m.placement ?? "modal";
+    const context = JSON.stringify([proposal.digest, SAMPLE_VERSION, placement, size.width, size.height, scheme]);
+    if (run) {
+      const key = `c~${randomUUID()}`, dir = mkdtempSync(join(userData, "app-check-"));
+      try {
+        await writeDesignSnapshot(dir, new Map(validated.files.map((f) => [f.path, Buffer.from(f.content)])));
+        checkRoots.set(key, { dir, own: m.style === "own" });
+        for (const scenario of run === "real" ? ["real"] as const : SAMPLE_MODES) {
+          const report = await appChecker.check(`d~${proposal.threadId}~${draft.name}`, appUrl(key, m.entry), { scheme, size, screenshot: false, disposableStore: true,
+            allowedGrants: m.grants, ...(scenario === "real" ? {} : { sample: { mode: scenario, grants: m.grants } }) });
+          const evidence: import("../shared/types").AppCheckEvidence = { scenario, placement, ...size, scheme, ok: report.ok,
+            realConnector: scenario === "real" && report.calls.some((c) => c.status === "ok"),
+            detail: report.errors.map((x) => x.message).concat(report.calls.filter((c) => c.status === "error").map((c) => c.error ?? c.call)).join("; ").slice(0, 500) || (report.timedOut ? "Timed out" : report.empty ? "Empty view" : report.text.slice(0, 120)) };
+          store.sql.prepare("INSERT OR REPLACE INTO app_check_evidence VALUES (?, ?, ?)").run(context, scenario, JSON.stringify(evidence));
+        }
+      } finally { checkRoots.delete(key); rmSync(dir, { recursive: true, force: true }); }
+    }
+    return store.sql.prepare("SELECT report FROM app_check_evidence WHERE context = ? ORDER BY scenario").all(context).map((r) => JSON.parse(String(r.report)));
+  });
   const str = (v: unknown, max = 200): string => {
     if (typeof v !== "string" || !v || v.length > max) throw new Error("Invalid argument.");
     return v;
@@ -2372,6 +2507,20 @@ async function main(): Promise<void> {
   ipcMain.handle("apps:list", (e, projectId?: string | null) => {
     assertMainWindow(e);
     return appRegistry.list(projectArg(projectId));
+  });
+  ipcMain.handle("creator:drafts", (e, projectId: string, threadId: string | null) => {
+    assertMainWindow(e);
+    const root = realProjectPath(projectId);
+    if (threadId && store.getThread(threadId).projectId !== projectId) throw new Error("Draft project changed.");
+    return listAppDrafts(threadId ? creatorDraftsDir(threadId) : root ? appDraftsDir(root) : null);
+  });
+  ipcMain.handle("creator:open-draft", async (e, id: string, name: string, template?: string) => {
+    assertMainWindow(e);
+    if (template && !APP_TEMPLATES.some((t) => t === template)) throw new Error("Unknown template.");
+    const tool = creatorToolsOf(id).find((t) => t.name === CREATOR_APP_PREVIEW_TOOL);
+    if (!tool) throw new Error("Open a Creator thread first.");
+    const result = await tool.run({ name, template });
+    if (result.isError) throw new Error(result.text);
   });
   ipcMain.handle("apps:info", (e, key: unknown) => {
     assertMainWindow(e);
@@ -2702,7 +2851,11 @@ async function main(): Promise<void> {
       memoryApi.write(projectId, note, memoryScope(scope)),
   );
   ipcMain.handle("memory:delete", (_e, projectId: string, file: string, scope?: unknown) => memoryApi.remove(projectId, file, memoryScope(scope)));
-  ipcMain.handle("memory:set-enabled", (_e, projectId: string | null, on: boolean) => memoryApi.setEnabled(projectId, on));
+  ipcMain.handle("memory:set-enabled", (_e, projectId: string | null, on: boolean) => {
+    const result = memoryApi.setEnabled(projectId, on);
+    extractor.cancelDisabled();
+    return result;
+  });
   ipcMain.handle("memory:import", (_e, projectId: string) => memoryApi.reimport(projectId));
   ipcMain.handle("automation:overview", (_e, projectId: string) => automations.overview(projectId));
   ipcMain.handle("automation:save", (_e, projectId: string, input: AutomationInput, id?: string) => automations.save(projectId, input, id));
@@ -2924,13 +3077,12 @@ async function main(): Promise<void> {
   ipcMain.handle("thread:totals", (_e, threadId: string) => store.threadTotals(threadId));
   ipcMain.handle("skills:list", (_e, projectId?: string) => service.listSkills(projectId));
   ipcMain.handle("agents:list", () => service.listAgents());
-  ipcMain.handle("turn:send", (_e, req: SendRequest) => {
-    // Resolve once the turn has started; progress arrives as updates.
-    service.send(req).catch((err: unknown) => {
-      service.settleFailedSend(req.threadId);
-      console.error(redactSecrets(err instanceof Error ? (err.stack ?? err.message) : String(err), knownSecrets()));
+  ipcMain.handle("turn:send", (_e, req: SendRequest) => new Promise<import("../shared/types").TurnAdmission>((resolve) => {
+    void service.send(req, resolve).catch((err: unknown) => {
+      const reason = redactSecrets(err instanceof Error ? err.message : String(err), knownSecrets());
+      resolve({ status: "rejected", reason });
     });
-  });
+  }));
   // Attachments read the user's own files: only the app window may ask, never a page or webview.
   ipcMain.handle("attachments:save", (e, threadId: unknown, sources: unknown) => {
     if (!isFromAppWindow(e) || e.sender.getType() === "webview") throw new Error("Not allowed from a page.");
@@ -2956,7 +3108,7 @@ async function main(): Promise<void> {
     service.respondPermission(requestId, decision),
   );
   ipcMain.handle("plan:respond", (_e, requestId: string, decision: PlanDecision) => service.respondPlan(requestId, decision));
-  ipcMain.handle("pending:get", () => service.pendingState());
+  ipcMain.handle("pending:get", () => ({ ...service.pendingState(), automationNotices: automations?.recentNotices(), sequence: pendingSequence }));
   ipcMain.handle("question:respond", (_e, requestId: string, answer: unknown) => service.respondQuestion(requestId, questionAnswerOf(answer)));
   ipcMain.handle("diff:get", (_e, projectId: string, threadId?: string | null) => service.getDiff(projectId, threadId));
   // /doctor: the core CLIs always, plus the other ACP agents found; a fix is looked up in the app's own last report.
@@ -3046,11 +3198,18 @@ async function main(): Promise<void> {
   ipcMain.handle("project:branch", (_e, projectId: string) => service.projectBranch(projectId));
   ipcMain.handle("browser:attached", (_e, webContentsId: number) => browser.attach(webContentsId));
   ipcMain.handle("browser:pick", () => browser.startPick());
-  ipcMain.handle("browser:takeover", (_e, paused: boolean) => browser.setPaused(paused === true));
+  ipcMain.handle("browser:takeover", (_e, paused: boolean, owner?: { threadId: string; turnId: string }, stop?: boolean) => {
+    if (!owner || !browserOwner || owner.turnId !== browserOwner.turnId || owner.threadId !== browserOwner.threadId || service.turnSignal(owner.threadId) !== browserSignal) return;
+    if (browserSignal?.aborted) return;
+    if (stop === true) { service.interrupt(owner.threadId); return; }
+    browser.setPaused(paused === true);
+    broadcast({ type: "browser-control", owner: browserOwner, paused: browser.paused });
+  });
   ipcMain.handle("browser:device", (_e, preset: DevicePreset) =>
     browser.setDevice(["mobile", "tablet", "desktop"].includes(preset) ? preset : "desktop"),
   );
   ipcMain.handle("browser:state", () => ({
+    owner: browserOwner, paused: browser.paused,
     device: browser.device,
     logs: browser.logsView(),
     screenshots: browser.listScreenshots().map(shotInfo),

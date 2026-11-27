@@ -369,7 +369,8 @@ export function collectSlopPage(selectorFor?: (el: Element) => string): SlopPage
       if (parent.closest("script, style, noscript, template, svg, [aria-hidden=true]")) continue;
       taken.add(parent);
       const cs = getComputedStyle(parent);
-      const alpha = /rgba?\([^)]*[,/]\s*([\d.]+)\s*\)/.exec(cs.color);
+      // rgb(0, 0, 0) has no alpha channel: its blue channel must not hide black text.
+      const alpha = /^(?:rgba\([^)]*,|rgba?\([^)]*\/)\s*([\d.]+)\s*\)/.exec(cs.color);
       if (cs.visibility !== "visible" || Number(cs.opacity) < 0.5 || (alpha && Number(alpha[1]) < 0.5)) continue;
       // Inside a closed <details>, a hidden or faded ancestor: not on screen at all.
       const check = (parent as unknown as { checkVisibility?: (o: object) => boolean }).checkVisibility;

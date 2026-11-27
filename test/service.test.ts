@@ -11,8 +11,9 @@ import { Store } from "../src/main/db";
 import type { TurnDelta } from "../src/main/memory/extractor";
 import { Service, titleFrom } from "../src/main/service";
 import { normalizeUsage } from "../src/main/usage";
-import { catalog, closeAfter, tempDir } from "./helpers";
+import { catalog, closeAfter, deferred, tempDir } from "./helpers";
 import { mergeCatalog } from "../src/main/skills/catalog";
+import * as issues from "../src/main/issues";
 
 function fakeDriver(script: (input: TurnInput) => Promise<void>): AgentDriver & { prompts: string[] } {
   const prompts: string[] = [];
@@ -92,6 +93,14 @@ describe("Service.settleFailedSend", () => {
 });
 
 describe("Service.send", () => {
+  it("returns the original turn's error even after partial assistant text", async () => {
+    const { service, thread, store } = setup(async (input) => {
+      input.onEvent({ kind: "assistant-text", text: "partial" });
+      input.onEvent({ kind: "error", message: "provider down" });
+    });
+    expect(await service.send({ threadId: thread.id, text: "hello" })).toEqual({ status: "failed", text: "partial", reason: "provider down" });
+    expect(store.listEvents(thread.id).map((e) => e.event)).toContainEqual({ kind: "assistant-text", text: "partial" });
+  });
   it("requires the picked plugin skill revision and rejects a stale retry without changing standalone skills", async () => {
     const dir = tempDir();
     writeFileSync(join(dir, "SKILL.md"), "---\nname: review\ndescription: Review\n---\nFrozen skill body.\n");
@@ -225,7 +234,7 @@ describe("Service.send", () => {
     expect(updates.some((u) => u.type === "projects-changed")).toBe(true);
     expect(updates).toContainEqual({ type: "running", threadId: thread.id, running: false });
     expect(service.isRunning(thread.id)).toBe(false);
-    await expect(service.send({ threadId: thread.id, text: "again" })).resolves.toBeUndefined();
+    await expect(service.send({ threadId: thread.id, text: "again" })).resolves.toMatchObject({ status: "failed" });
   });
 
   it("refuses an unknown permission mode instead of storing it", () => {
@@ -381,6 +390,28 @@ describe("Service.send", () => {
     await service.send({ threadId: thread.id, text: "Go" });
     expect(driver.prompts[0]).toContain("(CubiQ: Working on #9: Gone)");
     expect(store.getThread(thread.id).issue?.briefed).toBeUndefined();
+  });
+
+  it.each(["remove", "replace"])("does not brief or restore an issue after %s during its detail fetch", async (action) => {
+    const { service, store, thread, driver } = setup(async () => {});
+    const dir = join(store.getProject(thread.projectId).path, ".cubiq");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "issues.json"), JSON.stringify({ tracker: "local" }));
+    const original = { number: 1, title: "Original", labels: [], commentCount: 0 };
+    service.setThreadIssue(thread.id, original);
+    const entered = deferred<void>();
+    const reply = deferred<Awaited<ReturnType<typeof issues.getIssue>>>();
+    const fetchIssue = vi.spyOn(issues, "getIssue").mockImplementationOnce(() => { entered.resolve(); return reply.promise; });
+    try {
+      const sending = service.send({ threadId: thread.id, text: "go" });
+      await entered.promise;
+      const replacement = action === "remove" ? null : { ...original, number: 2, title: "New issue" };
+      const picked = service.setThreadIssue(thread.id, replacement).issue;
+      reply.resolve({ ok: true, tracker: "local", value: { ...original, body: "Outdated detail", comments: [] } });
+      expect((await sending).status).toBe("succeeded");
+      expect(driver.prompts).toEqual(["go"]);
+      expect(store.getThread(thread.id).issue).toEqual(picked);
+    } finally { fetchIssue.mockRestore(); }
   });
 
   it("leaves a new session's prompt unchanged, since it gets a fresh memory block anyway", async () => {
@@ -1122,6 +1153,43 @@ describe("the project check gate", () => {
     expect(driver.prompts).toHaveLength(1);
   });
 
+  it.each(["succeeded", "failed"] as const)("releases the slot for an immediate second send after a %s fix", async (status) => {
+    const fixing = deferred<void>();
+    const finishFix = deferred<void>();
+    const signals: AbortSignal[] = [];
+    const { service, store, thread, driver, updates } = setup(async (input) => {
+      signals.push(input.signal);
+      if (input.prompt === "edit") edit(input);
+      else if (input.prompt !== "next") {
+        fixing.resolve();
+        await finishFix.promise;
+        if (status === "succeeded") writeFileSync(join(input.cwd, "fixed"), "yes");
+      }
+      input.onEvent({ kind: "assistant-text", text: input.prompt === "next" ? "second answer" : "first answer" });
+    });
+    store.setCheckCommand(thread.projectId, nodeCmd("process.exit(require('fs').existsSync('fixed') ? 0 : 3)"), 1);
+    service.setRunLimit(() => 1);
+    const admissions = vi.fn();
+    const first = service.send({ threadId: thread.id, text: "edit", background: true }, admissions);
+    await fixing.promise;
+    expect(signals).toHaveLength(2);
+    expect(signals[0]).toBe(signals[1]);
+    expect(updates).not.toContainEqual({ type: "running", threadId: thread.id, running: false });
+    await expect(service.send({ threadId: thread.id, text: "too early" })).rejects.toThrow(/already running/);
+    finishFix.resolve();
+    const firstResult = await first;
+    const secondResult = await service.send({ threadId: thread.id, text: "next", background: true }, admissions);
+
+    expect(firstResult).toMatchObject({ status, text: "first answer" });
+    expect(secondResult).toEqual({ status: "succeeded", text: "second answer" });
+    expect(signals[2]).not.toBe(signals[0]);
+    expect(admissions.mock.calls).toEqual([[{ status: "started" }], [{ status: "started" }]]);
+    expect(driver.prompts).toEqual(["edit", expect.stringContaining("failed (exit 3)"), "next"]);
+    const checks = store.listEvents(thread.id).flatMap(({ event }) => event.kind === "check" && event.ok !== null ? [[event.round, event.ok]] : []);
+    expect(checks).toEqual([[0, false], [1, status === "succeeded"]]);
+    expect(service.pendingState()).toMatchObject({ running: [], queued: [] });
+  });
+
   it("sends up to 2 fix rounds when the check keeps failing", async () => {
     const { store, service, driver, thread } = setup(async (input) => edit(input));
     store.setCheckCommand(thread.projectId, nodeCmd("process.exit(3)"), 2);
@@ -1347,6 +1415,7 @@ describe("worktree threads", () => {
     const cwds: string[] = [];
     const driver = fakeDriver(async (input) => {
       cwds.push(input.cwd);
+      writeFileSync(join(input.cwd, "a.txt"), "edited\n");
     });
     const { store, service } = setupWorktrees(tempDir(), driver);
     const project = store.addProject(repo());
@@ -1359,6 +1428,8 @@ describe("worktree threads", () => {
 
     await service.send({ threadId: thread.id, text: "hi" });
     expect(cwds).toEqual([thread.worktreePath]);
+    expect(readFileSync(join(thread.worktreePath!, "a.txt"), "utf8")).toBe("edited\n");
+    expect(readFileSync(join(project.path, "a.txt"), "utf8")).toBe("one\n");
   });
 
   it("leaves no thread behind when the worktree can't be made", async () => {
@@ -1478,6 +1549,43 @@ describe("Service questions", () => {
 describe("Service async questions", () => {
   const questions = [{ id: "q0", header: "", question: "Free-form or fixed?", options: [{ label: "Free-form", description: "" }], multiSelect: false, allowOther: true }];
 
+  it.each(["running", "finished"])("deleting a thread with a %s turn dismisses its async question and ignores late callbacks", async (state) => {
+    const entered = deferred<TurnInput>();
+    const finish = deferred<void>();
+    let answer!: ReturnType<NonNullable<TurnInput["requestUserInput"]>>;
+    const { service, store, thread, updates, driver } = setup(async (input) => {
+      answer = input.requestUserInput!(questions, { async: true });
+      entered.resolve(input);
+      await finish.promise;
+    });
+    const turn = service.send({ threadId: thread.id, text: "ask" });
+    const input = await entered.promise;
+    if (state === "finished") {
+      finish.resolve();
+      expect((await turn).status).toBe("succeeded");
+    }
+    const [card] = service.pendingState().questions;
+    expect(card).toMatchObject({ threadId: thread.id, async: true });
+    const deletion = service.deleteThread(thread.id);
+    expect(await answer).toBe("dismiss");
+    if (state === "running") {
+      expect(store.getThread(thread.id).id).toBe(thread.id);
+      await expect(service.send({ threadId: thread.id, text: "late send" })).rejects.toThrow(/delet/);
+      finish.resolve();
+      expect((await turn).status).toBe("cancelled");
+    }
+    await deletion;
+    expect(store.listThreads(thread.projectId)).toEqual([]);
+    expect(updates.filter((u) => u.type === "question-done")).toEqual([{ type: "question-done", requestId: card!.requestId }]);
+    const before = updates.length;
+    service.respondQuestion(card!.requestId, { answers: { q0: ["Free-form"] } });
+    const lateQuestion = input.requestUserInput!(questions, { async: true });
+    expect(service.pendingState()).toMatchObject({ questions: [], running: [], queued: [] });
+    expect(await lateQuestion).toBe("dismiss");
+    expect(updates).toHaveLength(before);
+    expect(driver.prompts).toEqual(["ask"]);
+  });
+
   it("steers the running turn with the answer when the agent can take it", async () => {
     let release!: () => void;
     const steered: string[] = [];
@@ -1501,6 +1609,29 @@ describe("Service async questions", () => {
     release();
     await sending;
     expect(driver.prompts).toHaveLength(1);
+  });
+
+  it("drops a delayed steering refusal if the thread was deleted after its turn finished", async () => {
+    const asked = deferred<void>();
+    const finish = deferred<void>();
+    const steering = deferred<boolean>();
+    const { service, thread, driver } = setup(async (input) => {
+      void input.requestUserInput!(questions, { async: true });
+      asked.resolve();
+      await finish.promise;
+    });
+    driver.steer = vi.fn(() => steering.promise);
+    const turn = service.send({ threadId: thread.id, text: "ask" });
+    await asked.promise;
+    service.respondQuestion(service.pendingState().questions[0]!.requestId, { answers: { q0: ["Free-form"] } });
+    expect(driver.steer).toHaveBeenCalledTimes(1);
+    finish.resolve();
+    await turn;
+    await service.deleteThread(thread.id);
+    const send = vi.spyOn(service, "send");
+    steering.resolve(false);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("keeps the card after the turn and sends the answer as the next message", async () => {
@@ -1539,7 +1670,27 @@ describe("Service async questions", () => {
     service.interrupt(thread.id);
     release();
     await sending;
-    expect(service.pendingState()).toEqual({ running: [], permissions: [], plans: [], questions: [] });
+    expect(service.pendingState()).toEqual({ running: [], queued: [], permissions: [], plans: [], questions: [] });
+  });
+
+  it("announces Stop's card withdrawals while the driver is still finishing", async () => {
+    const asked = deferred<void>();
+    const finish = deferred<void>();
+    const { service, thread, updates } = setup(async (input) => {
+      const permission = input.requestPermission({ toolName: "Read", summary: "sample", canAlwaysAllow: false });
+      const plan = input.requestPlanDecision({ plan: "Read sample" });
+      asked.resolve();
+      await Promise.all([permission, plan, finish.promise]);
+    });
+    const sending = service.send({ threadId: thread.id, text: "go" });
+    await asked.promise;
+    const { permissions, plans } = service.pendingState();
+    service.interrupt(thread.id);
+    try {
+      expect(service.pendingState()).toMatchObject({ running: [thread.id], permissions: [], plans: [] });
+      expect(updates).toContainEqual({ type: "permission-withdrawn", requestId: permissions[0]!.requestId });
+      expect(updates).toContainEqual({ type: "plan-approval-done", requestId: plans[0]!.requestId });
+    } finally { finish.resolve(); await sending; }
   });
 });
 

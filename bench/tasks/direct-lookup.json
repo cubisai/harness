@@ -1,0 +1,6 @@
+{
+  "id": "direct-lookup", "suite": "behaviour", "fixture": "greet",
+  "about": "One manifest lookup; grade only the answer.",
+  "prompt": "What version is declared in package.json? Return just the version.",
+  "expect": {}, "graders": [{ "type": "answer", "matches": "^\\s*1\\.0\\.0\\s*$" }]
+}

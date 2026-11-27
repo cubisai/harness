@@ -54,6 +54,28 @@ export class SessionStore {
     appendFileSync(this.file(id), `${JSON.stringify(message)}\n`);
   }
 
+  /** Open for another turn. Normalize the on-disk append point before returning the model history. */
+  resume(id: string): LlmMessage[] | null {
+    if (!SESSION_ID.test(id) || !existsSync(this.file(id))) return null;
+    const path = this.file(id), original = readFileSync(path, "utf8");
+    const parsed: LlmMessage[] = [];
+    let corrupt = false, interior = false;
+    for (const line of original.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        parsed.push(JSON.parse(line) as LlmMessage);
+        if (corrupt) interior = true;
+      } catch { corrupt = true; }
+    }
+    if (interior) {
+      const backup = existsSync(`${path}.original`) ? `${path}.${randomUUID()}.original` : `${path}.original`;
+      writeFileSync(backup, original, { flag: "wx", mode: 0o600 });
+    }
+    const history = repairHistory(parsed);
+    if (corrupt || history !== parsed || (original && !original.endsWith("\n"))) this.replace(id, history);
+    return history;
+  }
+
   /** The session's sidecar metadata; {} when there is none or it's unreadable. */
   meta(id: string): SessionMeta {
     try {
@@ -89,8 +111,25 @@ export class SessionStore {
  * never got results. The conversation then reads on from the last whole step.
  */
 export function repairHistory(messages: LlmMessage[]): LlmMessage[] {
-  const out = [...messages];
-  const last = out.at(-1);
-  if (last?.role === "assistant" && last.content.some((p) => p.type === "tool-call")) out.pop();
-  return out;
+  const out: LlmMessage[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i]!;
+    if (message.role === "tool") continue; // orphaned result after a damaged record
+    if (message.role !== "assistant" || !message.content.some((p) => p.type === "tool-call")) {
+      out.push(message);
+      continue;
+    }
+    const batch = messages[i + 1];
+    const results = batch?.role === "tool" ? batch.results : [];
+    const ids = new Set(results.map((r) => r.callId));
+    const content = message.content.filter((p) => p.type !== "tool-call" || ids.has(p.id));
+    if (content.length) out.push(content.length === message.content.length ? message : { ...message, content });
+    if (batch?.role === "tool") {
+      i++;
+      const calls = new Set(content.filter((p) => p.type === "tool-call").map((p) => p.id));
+      const matched = results.filter((r) => calls.has(r.callId));
+      if (matched.length) out.push(matched.length === results.length ? batch : { role: "tool", results: matched });
+    }
+  }
+  return out.length === messages.length && out.every((m, i) => m === messages[i]) ? messages : out;
 }

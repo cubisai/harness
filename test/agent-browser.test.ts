@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { AgentBrowserBackend, formatHeadlessSnapshot, parseVersion, resolveAgentBrowser, supported, type RunCli } from "../src/main/browser/agent-browser";
 import { NO_NEW_LOGS } from "../src/main/browser/backend";
 import { browserTools } from "../src/main/browser/tools";
-import { runs, tempDir } from "./helpers";
+import { deferred, runs, tempDir } from "./helpers";
 
 const ok = (data: unknown) => ({ code: 0, stdout: `${JSON.stringify({ success: true, data, error: null })}\n`, stderr: "" });
 const fail = (error: string) => ({ code: 1, stdout: `${JSON.stringify({ success: false, data: null, error })}\n`, stderr: "" });
@@ -218,6 +218,34 @@ describe("browser target ownership (P5.3)", () => {
     const lock = new TargetLock();
     await expect(lock.run("t1", async () => { throw new Error("x"); })).rejects.toThrow("x");
     await expect(lock.run("t1", async () => "ok")).resolves.toBe("ok");
+  });
+
+  it("a new turn on the old owner's thread does not inherit the browser lock", async () => {
+    const signals = new Map(["a", "b"].map((id) => [id, new AbortController().signal]));
+    const f = fake({ snapshot: ok(SNAPSHOT), "get url": ok({ url: "http://x/" }) });
+    const tools = browserTools(backend(f.run), { busy: (id) => signals.has(id), turnSignal: (id) => signals.get(id) });
+    const open = tools.find((t) => t.name === "browser_open")!;
+    const drive = (threadId: string) => open.run({ url: "http://x/" }, { threadId });
+    expect((await drive("a")).isError).toBeUndefined();
+    expect((await drive("b")).isError).toBe(true);
+    signals.set("a", new AbortController().signal);
+    expect((await drive("b")).isError).toBeUndefined();
+  });
+
+  it("a stale queued action cannot take the lock for its replacement turn", async () => {
+    const { TargetLock } = await import("../src/main/browser/tools");
+    const signals = new Map(["a", "b"].map((id) => [id, new AbortController().signal]));
+    const lock = new TargetLock((id, turn) => signals.get(id) === turn);
+    const gate = deferred<void>();
+    const head = lock.run(undefined, () => gate.promise);
+    const late = lock.run("a", async () => "outdated", signals.get("a"));
+    signals.set("a", new AbortController().signal);
+    const valid = lock.run("b", async () => "current", signals.get("b"));
+    gate.resolve();
+    await head;
+    await expect(late).rejects.toThrow(/originating browser turn ended/);
+    expect(await valid).toBe("current");
+    expect(lock.current).toBe("b");
   });
 
   it("browser_click from another thread is refused as a tool error; reads still work", async () => {

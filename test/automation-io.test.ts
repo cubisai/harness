@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { messageCenterDestination } from "../src/main/automations/destinations";
+import { Store } from "../src/main/db";
+import { AutomationStore } from "../src/main/automations/store";
+import { closeAfter, tempDir } from "./helpers";
+import { join } from "node:path";
 import type { DeliveryPayload } from "../src/main/automations/io";
 import { gitLogSource, defaultSources, type GitExec } from "../src/main/automations/sources";
 
@@ -102,11 +106,20 @@ describe("gitLogSource", () => {
 });
 
 describe("messageCenterDestination", () => {
+  function database() {
+    const store = new Store(join(tempDir(), "automations.db"));
+    closeAfter(() => store.close());
+    const db = new AutomationStore(store.sql);
+    db.create({ id: "a1", projectId: "p1", name: "A", template: "custom", prompt: "p", schedule: { kind: "interval", everyMinutes: 5 }, anchor: 0, missed: "skip", enabled: true, agent: null, model: null, budgetUsd: null, permissions: "ask" });
+    db.claimRun("a1", "first", 1);
+    return db;
+  }
   const payload = (key: string): DeliveryPayload => ({ key, automationId: "a1", runId: 1, threadId: "t1", title: "T", text: "B" });
 
   it("delivers once per key and returns the receipt", async () => {
     const seen: string[] = [];
-    const dest = messageCenterDestination((p) => seen.push(p.key));
+    const db = database();
+    const dest = messageCenterDestination(db, (p) => seen.push(p.key));
 
     expect(dest.id).toBe("message-center");
     expect(await dest.publish(payload("k1"))).toBe("k1");
@@ -117,10 +130,11 @@ describe("messageCenterDestination", () => {
   });
 
   it("checks confirmed for a key it delivered and missing otherwise", async () => {
-    const dest = messageCenterDestination(() => {});
+    const db = database();
+    const dest = messageCenterDestination(db, () => {});
 
     expect(await dest.check("k1")).toBe("missing");
     await dest.publish(payload("k1"));
-    expect(await dest.check("k1")).toBe("confirmed");
+    expect(await messageCenterDestination(db, () => {}).check("k1")).toBe("confirmed");
   });
 });

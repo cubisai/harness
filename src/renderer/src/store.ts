@@ -1,5 +1,5 @@
 import type { ExpertDef } from "../../shared/experts";
-import type { AutomationNotice } from "../../shared/automations";
+import { newestNoticeFirst, type AutomationNotice } from "../../shared/automations";
 import { create } from "zustand";
 import type { AppInfo, Attachment, AttachmentSource } from "../../shared/types";
 import type {
@@ -35,6 +35,7 @@ import type {
 } from "../../shared/types";
 import type { DocumentStatus } from "../../shared/design-mutation";
 import { api } from "./api";
+import { forgetComposerDrafts } from "./composer-drafts";
 import { pluginSkillSelections, type PluginSelections } from "./commands";
 import type { PluginCommandView } from "../../shared/plugin-parts";
 import type { AppThemeState } from "../../shared/app-themes";
@@ -47,7 +48,7 @@ import { threadSeen, turnEnded, type FinishedTurn } from "./inbox";
 import { waitingThreads, workspaceModeOf } from "./sections";
 import { readSession, restoreDraft, restoreTarget, writeSession } from "./session";
 import { setupMessage, setupQuestions } from "./issueSetup";
-import { buildInCodePrompt, buildThreadPatch, designDirName, handoffPath } from "../../shared/design";
+import { buildInCodePrompt, buildThreadPatch, designDirName } from "../../shared/design";
 import type { SelectedElement } from "../../shared/selection";
 import type { PrototypeTier } from "../../shared/tiers";
 import type { TurnScore } from "../../shared/learn";
@@ -84,7 +85,11 @@ interface Draft {
   issue?: { projectId: string; issue: IssueSummary };
 }
 
+type SendOptions = { background?: boolean; files?: AttachmentSource[]; attachments?: Attachment[]; initialPatch?: ReturnType<typeof draftPatch> } & PluginSelections;
+type OutboxMessage = { text: string; skills?: string[]; mentions?: string[]; retry?: true } & SendOptions;
+
 interface State {
+  inboxTarget: { threadId: string; requestId: string; kind: "permission" | "question" | "plan" } | null;
   projects: Project[];
   threads: Record<string, Thread[]>; // by project id
   skills: SkillEntry[];
@@ -312,11 +317,11 @@ interface State {
   /** Change a design thread's prototype tier. */
   setPrototypeTier(threadId: string, tier: PrototypeTier): Promise<void>;
   /** Start `text` as a new thread in the open project without leaving the current one; it reports through the Message Center. */
-  sendInBackground(text: string, skills?: string[], opts?: { worktree?: boolean } & PluginSelections, mentions?: string[], files?: AttachmentSource[]): Promise<void>;
+  sendInBackground(text: string, skills?: string[], opts?: { worktree?: boolean } & PluginSelections, mentions?: string[], files?: AttachmentSource[]): Promise<boolean>;
   /** Start a chat thread (same project and agent, in the background) that builds a design thread's design into the codebase. */
-  buildDesignInCode(designThreadId: string): Promise<void>;
+  buildDesignInCode(designThreadId: string, snapshot: string, page: string): Promise<void>;
   /** From the project's start screen: open a new thread and send `text` in it. */
-  startThread(text: string, skills?: string[], mentions?: string[], files?: AttachmentSource[], selections?: PluginSelections): Promise<void>;
+  startThread(text: string, skills?: string[], mentions?: string[], files?: AttachmentSource[], selections?: PluginSelections): Promise<boolean>;
   /** Add skills for the composer to pick up (deduped, in order). */
   addPendingSkills(names: string[]): void;
   takePendingSkills(): string[];
@@ -331,11 +336,13 @@ interface State {
    * Start a turn on the open thread (or `threadId`); resolves false when it couldn't start (no thread, already running, or the send failed).
    * `files` are copied into the thread first; `attachments` are ones it already holds (Retry).
    */
-  send(text: string, skills?: string[], threadId?: string, mentions?: string[], opts?: { background?: boolean; files?: AttachmentSource[]; attachments?: Attachment[] } & PluginSelections): Promise<boolean>;
+  send(text: string, skills?: string[], threadId?: string, mentions?: string[], opts?: SendOptions & { keepOnRefusal?: boolean }): Promise<boolean>;
+  admitting: Record<string, AbortController>;
   /** Compact a thread's session now (/compact), with an optional focus for the summary. */
   compact(threadId: string, focus: string | null): Promise<void>;
   /** Messages sent while a turn ran, by thread: each goes out as the next turn, in order. Stop clears them; never persisted. */
-  outbox: Record<string, ({ text: string; skills?: string[]; mentions?: string[]; files?: AttachmentSource[] } & PluginSelections)[]>;
+  outbox: Record<string, OutboxMessage[]>;
+  deliverOutbox(threadId: string, message: OutboxMessage): Promise<void>;
   enqueue(threadId: string, text: string, skills?: string[], mentions?: string[], files?: AttachmentSource[], selections?: PluginSelections): void;
   /** Remove the queued message at `index`; drops the thread's key once its queue is empty. */
   dequeue(threadId: string, index: number): void;
@@ -479,12 +486,60 @@ function draftPatch(draft: Draft, thread: Thread): Partial<Pick<Thread, "model" 
   return patch;
 }
 
+/** Once creation succeeds the message belongs to that thread, including any setup still to retry. */
+async function startComposerThread(background: boolean, text: string, skills?: string[], mentions?: string[], files?: AttachmentSource[], opts?: PluginSelections & { worktree?: boolean }) {
+  const origin = useStore.getState();
+  const { selectedProjectId: projectId, draft } = origin;
+  if (!projectId) return false;
+  const worktree = background ? opts?.worktree ?? origin.settings?.background?.worktree : undefined;
+  let thread: Thread;
+  let selections: PluginSelections;
+  try {
+    selections = {
+      pluginCommand: opts?.pluginCommand,
+      pluginSkills: opts?.pluginSkills ?? pluginSkillSelections(origin.skills.filter((s) => skills?.includes(s.name))).pluginSkills ?? [],
+    };
+    thread = await api().createThread(projectId, draft.agent ?? origin.lastAgent ?? undefined, createOpts(origin.threadKind, draft, { worktree }));
+  } catch (err) {
+    origin.showNotice(ipcErrorText(err));
+    return false;
+  }
+  if (draft.issue?.projectId === projectId) {
+    thread = await api().setThreadIssue(thread.id, draft.issue.issue).catch(() => thread);
+  }
+  useStore.setState((s) => {
+    const stillHere = s.selectedProjectId === projectId && s.selectedThreadId === origin.selectedThreadId && s.threadKind === origin.threadKind;
+    return {
+      threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) },
+      events: { ...s.events, [thread.id]: [] },
+      history: { ...s.history, [thread.id]: { firstSeq: 0, hasMore: false, loadingOlder: false, totals: null } },
+      ...(stillHere && !background ? { selectedThreadId: thread.id } : {}),
+      ...(stillHere && s.draft === draft ? { draft: {}, lastAgent: thread.agent } : {}),
+    };
+  });
+  const ok = await origin.send(text, skills, thread.id, mentions, { ...selections, background, files, initialPatch: draftPatch(draft, thread), keepOnRefusal: true });
+  if (background && !ok) origin.showNotice(`${useStore.getState().notice ?? "Couldn't send."} Retry in the new thread.`);
+  return true;
+}
+
 function ipcErrorText(err: unknown): string {
   const text = err instanceof Error ? err.message : String(err);
   return text.replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
 }
 
 let initialized = false;
+let pendingUpdates: LiveUpdate[] | null = null;
+let pendingSequence = -1;
+let browserLoad: Promise<void> | null = null;
+let browserGeneration = 0;
+let projectSelection = 0;
+// A very short turn can end before its IPC admission reply arrives.
+const endedBeforeReply = new WeakSet<AbortController>();
+function drainOutbox(threadId: string) {
+  const s = useStore.getState();
+  const next = s.outbox[threadId]?.find((m) => !m.retry);
+  if (next) void s.deliverOutbox(threadId, next);
+}
 /** Launch has restored the last session; until then the empty start state must not overwrite it. */
 let restored = false;
 let subscribed = false;
@@ -559,6 +614,7 @@ export function isDark(): boolean {
 
 export const useStore = create<State>((set, get) => ({
   projects: [],
+  inboxTarget: null,
   threads: {},
   skills: [],
   agents: [],
@@ -773,6 +829,7 @@ export const useStore = create<State>((set, get) => ({
       get().showNotice(`Couldn't delete the thread: ${ipcErrorText(err)}`);
       return;
     }
+    forgetComposerDrafts(thread.projectId, threadId);
     set((s) => {
       const { [threadId]: _events, ...events } = s.events;
       const { [threadId]: _history, ...history } = s.history;
@@ -917,8 +974,14 @@ export const useStore = create<State>((set, get) => ({
   async loadBrowserState() {
     // Called when the browser panel mounts, never on every render.
     if (get().browserLoaded) return;
-    set({ browserLoaded: true });
-    set({ browser: await api().browserState() });
+    const generation = browserGeneration;
+    browserLoad ??= api().browserState().then((browser) => set((s) => {
+      const live = generation === browserGeneration ? browser : { ...browser, owner: s.browser.owner, paused: s.browser.paused };
+      return { browser: live, browserLoaded: true, takeOver: { ...s.takeOver, mode: live.owner ? (live.paused ? "human-driving" : "agent-driving") : "idle", paused: Boolean(live.paused) } };
+    }))
+      .catch((err) => get().showNotice(`Couldn't load browser: ${ipcErrorText(err)}. Reopen the Browser tab to retry.`))
+      .finally(() => { browserLoad = null; });
+    await browserLoad;
   },
 
   async setBrowserDevice(device) {
@@ -949,7 +1012,7 @@ export const useStore = create<State>((set, get) => ({
     const next = takeOverReducer(cur, { type: "human-input" });
     if (next === cur) return;
     set({ takeOver: next });
-    if (next.mode === "human-driving") void api().browserTakeOver(true);
+    if (next.mode === "human-driving") void api().browserTakeOver(true, get().browser.owner);
   },
 
   resumeAgent() {
@@ -957,13 +1020,14 @@ export const useStore = create<State>((set, get) => ({
     const next = takeOverReducer(cur, { type: "resume" });
     if (next === cur) return;
     set({ takeOver: next });
-    void api().browserTakeOver(false);
+    void api().browserTakeOver(false, get().browser.owner);
   },
 
   async stopAgent() {
-    set((s) => ({ takeOver: takeOverReducer(s.takeOver, { type: "stop" }) }));
-    void api().browserTakeOver(false);
-    await get().interrupt();
+    const owner = get().browser.owner;
+    if (!owner) return;
+    try { await api().browserTakeOver(false, owner, true); }
+    catch (err) { get().showNotice(`Couldn't stop the browser's turn: ${ipcErrorText(err)}`); }
   },
 
   setWatch(on) {
@@ -1033,12 +1097,20 @@ export const useStore = create<State>((set, get) => ({
     // React StrictMode runs effects twice in development; subscribe once.
     if (initialized) return;
     initialized = true;
+    pendingUpdates = [];
     set({ initError: null });
     // Subscribe before the first await, so no update sent during startup is lost. A retry after a
     // failed init must not double-subscribe (each onUpdate would then apply every update twice).
     if (!subscribed) {
       subscribed = true;
-      api().onUpdate((u) => get().apply(u));
+      api().onUpdate((u) => {
+        if (u.pendingSequence !== undefined) {
+          if (pendingUpdates) { pendingUpdates.push(u); return; }
+          if (u.pendingSequence <= pendingSequence) return;
+          pendingSequence = u.pendingSequence;
+        }
+        get().apply(u);
+      });
     }
     try {
       const [projects, skills, agents, settings, appUpdate, limitList, pending, allThreads] = await Promise.all([
@@ -1065,13 +1137,22 @@ export const useStore = create<State>((set, get) => ({
       set((s) => ({ projects, skills, agents, threads, settings, paneLayout: sanitizeLayout(settings.paneLayout), appUpdate, aboutOpen: s.aboutOpen || Boolean(appUpdate?.updatedFrom), limits: { ...limits, ...s.limits } }));
       // A window that loads mid-turn picks up what's live: running threads and the cards waiting on the user.
       const now = Date.now();
-      set((s) => ({
-        running: { ...Object.fromEntries(pending.running.map((id) => [id, true])), ...s.running },
-        turnStartedAt: { ...Object.fromEntries(pending.running.map((id) => [id, now])), ...s.turnStartedAt },
-        permissions: [...s.permissions, ...pending.permissions.filter((p) => !s.permissions.some((x) => x.requestId === p.requestId))],
-        plans: [...s.plans, ...pending.plans.filter((p) => !s.plans.some((x) => x.requestId === p.requestId))],
-        questions: [...s.questions, ...pending.questions.filter((q) => !s.questions.some((x) => x.requestId === q.requestId))],
-      }));
+      const waiting = pending.queued ?? [];
+      set({
+        running: Object.fromEntries([...pending.running, ...waiting].map((id) => [id, true])),
+        queued: Object.fromEntries(waiting.map((id) => [id, true])),
+        turnStartedAt: Object.fromEntries(pending.running.map((id) => [id, now])),
+        permissions: pending.permissions, plans: pending.plans, questions: pending.questions,
+        automationNotices: pending.automationNotices ?? [],
+      });
+      pendingSequence = pending.sequence ?? -1;
+      const buffered: LiveUpdate[] = pendingUpdates;
+      pendingUpdates = null;
+      for (const update of buffered.sort((a, b) => a.pendingSequence! - b.pendingSequence!)) {
+        if (update.pendingSequence! <= pendingSequence) continue;
+        pendingSequence = update.pendingSequence!;
+        get().apply(update);
+      }
       // Reopen where the user left off: the project, thread and new-thread picks of the last launch.
       const saved = readSession();
       set(restoreDraft(saved, agents));
@@ -1087,6 +1168,7 @@ export const useStore = create<State>((set, get) => ({
     } catch (err) {
       // A startup call that rejects used to leave a blank window; let the user retry.
       initialized = false;
+      pendingUpdates = null;
       set({ initError: ipcErrorText(err) });
     }
   },
@@ -1152,6 +1234,7 @@ export const useStore = create<State>((set, get) => ({
       return;
     }
     const currentSelected = get().selectedProjectId === id;
+    forgetComposerDrafts(id);
     const remainingProjects = get().projects.filter((p) => p.id !== id);
     const nextProjectId = currentSelected ? (remainingProjects[0]?.id ?? null) : get().selectedProjectId;
     const threadIdsToRemove = new Set((get().threads[id] ?? []).map((t) => t.id));
@@ -1191,13 +1274,17 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async selectProject(id) {
-    set({ selectedProjectId: id, ...(get().selectedProjectId !== id ? { appPage: null } : {}) });
+    const selection = ++projectSelection;
+    set({ selectedProjectId: id, ...(get().selectedProjectId !== id ? { appPage: null, skills: [] } : {}) });
     void get().loadBranch(id);
     if (!get().threads[id]) {
       const list = await api().listThreads(id);
       set((s) => ({ threads: { ...s.threads, [id]: list } }));
     }
-    void api().listSkills(id).then((skills) => set({ skills }));
+    if (selection !== projectSelection) return;
+    void api().listSkills(id).then((skills) => {
+      if (selection === projectSelection && get().selectedProjectId === id) set({ skills });
+    }).catch((err) => { if (selection === projectSelection) get().showNotice(ipcErrorText(err)); });
   },
 
   async selectThread(id) {
@@ -1319,7 +1406,7 @@ export const useStore = create<State>((set, get) => ({
     return thread.id;
   },
 
-  async buildDesignInCode(designThreadId) {
+  async buildDesignInCode(designThreadId, snapshot, page) {
     const design = findThread(get().threads, designThreadId);
     if (!design || design.kind !== "design") return;
     // Chats has no codebase: a build thread there starts in its own empty folder and can't find the design.
@@ -1341,46 +1428,16 @@ export const useStore = create<State>((set, get) => ({
       events: { ...s.events, [thread.id]: [] },
       history: { ...s.history, [thread.id]: { firstSeq: 0, hasMore: false, loadingOlder: false, totals: null } },
     }));
-    const dir = designDirName(designThreadId);
-    const ok = await get().send(buildInCodePrompt(dir), undefined, thread.id, [handoffPath(dir)]);
+    const ok = await get().send(buildInCodePrompt(snapshot, page), undefined, thread.id);
     if (ok) get().showNotice("Building it in a new chat thread. The Message Center says when it's done.");
   },
 
-  async sendInBackground(text, skills, opts, mentions, files) {
-    const projectId = get().selectedProjectId;
-    if (!projectId) return;
-    let thread: Thread;
-    const draft = get().draft;
-    let selections: PluginSelections;
-    try {
-      selections = { ...pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))), ...opts };
-      thread = await api().createThread(projectId, draft.agent ?? get().lastAgent ?? undefined, createOpts(get().threadKind, draft, opts ?? (get().settings?.background?.worktree ? { worktree: true } : undefined)));
-      const patch = draftPatch(draft, thread);
-      if (Object.keys(patch).length) thread = await api().updateThread(thread.id, patch);
-      // The issue is a nicety: a tracker that went away since the pick doesn't stop the thread.
-      if (draft.issue?.projectId === projectId) {
-        const created = thread;
-        thread = await api().setThreadIssue(created.id, draft.issue.issue).catch(() => created);
-      }
-    } catch (err) {
-      get().showNotice(ipcErrorText(err));
-      return;
-    }
-    set((s) => ({
-      threads: { ...s.threads, [projectId]: upsertThread(s.threads[projectId], thread) },
-      events: { ...s.events, [thread.id]: [] },
-      history: { ...s.history, [thread.id]: { firstSeq: 0, hasMore: false, loadingOlder: false, totals: null } },
-      draft: {},
-      lastAgent: thread.agent,
-    }));
-    if (await get().send(text, skills, thread.id, mentions, { ...selections, background: true, ...(files?.length ? { files } : {}) })) get().showNotice("Started in the background. The Message Center says when it's done.");
+  sendInBackground(text, skills, opts, mentions, files) {
+    return startComposerThread(true, text, skills, mentions, files, opts);
   },
 
-  async startThread(text, skills, mentions, files, selections) {
-    const pinned = { ...pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))), ...selections };
-    // Send only to the thread newThread made: the selection can change while it awaits.
-    const id = await get().newThread();
-    if (id) await get().send(text, skills, id, mentions, { ...pinned, ...(files?.length ? { files } : {}) });
+  startThread(text, skills, mentions, files, selections) {
+    return startComposerThread(false, text, skills, mentions, files, selections);
   },
 
   addPendingSkills(names) {
@@ -1458,8 +1515,14 @@ export const useStore = create<State>((set, get) => ({
   },
 
   outbox: {},
+  admitting: {},
+  async deliverOutbox(threadId, message) {
+    if (!get().outbox[threadId]?.includes(message) || get().admitting[threadId] || get().running[threadId]) return;
+    set((s) => ({ outbox: { ...s.outbox, [threadId]: s.outbox[threadId]!.filter((m) => m !== message) } }));
+    await get().send(message.text, message.skills, threadId, message.mentions, { ...message, pluginSkills: message.pluginSkills ?? [], keepOnRefusal: true });
+  },
   enqueue(threadId, text, skills, mentions, files, selections) {
-    const pinned = { ...pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))), ...selections };
+    const pinned = selections?.pluginSkills ? selections : { ...pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))), ...selections };
     set((s) => ({
       outbox: {
         ...s.outbox,
@@ -1482,38 +1545,58 @@ export const useStore = create<State>((set, get) => ({
 
   async send(text, skills, threadId, mentions, opts) {
     const id = threadId ?? get().selectedThreadId;
-    if (!id || get().running[id]) return false;
-    set((s) => ({ running: { ...s.running, [id]: true } }));
+    if (!id) return false;
+    const controller = new AbortController();
+    const { keepOnRefusal, ...options } = opts ?? {};
+    const message: OutboxMessage = { ...options, text, skills, mentions };
     try {
-      const selected = opts?.pluginSkills ?? pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))).pluginSkills;
+      message.pluginSkills ??= pluginSkillSelections(get().skills.filter((s) => skills?.includes(s.name))).pluginSkills ?? [];
+      if (get().running[id] || get().queued[id] || get().admitting[id]) throw new Error("This thread is already sending or running.");
+      set((s) => ({ admitting: { ...s.admitting, [id]: controller } }));
+      if (message.initialPatch && Object.keys(message.initialPatch).length) {
+        const thread = await api().updateThread(id, message.initialPatch);
+        get().apply({ type: "thread", thread });
+      }
+      delete message.initialPatch;
       // New files are copied into the thread before the turn starts, so the message can point at them.
-      const saved = opts?.files?.length ? await api().saveAttachments(id, opts.files) : [];
-      const attachments = [...(opts?.attachments ?? []), ...saved];
-      await api().send({
+      if (message.files?.length) {
+        const saved = await api().saveAttachments(id, message.files);
+        message.attachments = [...(message.attachments ?? []), ...saved];
+        delete message.files;
+      }
+      if (controller.signal.aborted) throw new Error("Stopped before sending.");
+      const admission = await api().send({
         threadId: id,
         text,
         ...(skills?.length ? { skills } : {}),
         ...(mentions?.length ? { mentions } : {}),
-        ...(attachments.length ? { attachments } : {}),
+        ...(message.attachments?.length ? { attachments: message.attachments } : {}),
         ...(opts?.background ? { background: true } : {}),
         ...(opts?.pluginCommand ? { pluginCommand: opts.pluginCommand } : {}),
-        ...(selected?.length ? { pluginSkills: selected } : {}),
+        ...(message.pluginSkills.length ? { pluginSkills: message.pluginSkills } : {}),
       });
+      if (admission.status === "rejected") throw new Error(admission.reason);
+      if (opts?.background && !controller.signal.aborted) get().showNotice(admission.status === "queued" ? "Queued. This thread starts when a slot is free." : "Started in the background. The Message Center says when it's done.");
       return true;
     } catch (err) {
-      set((s) => ({ running: { ...s.running, [id]: false } }));
+      if (keepOnRefusal) set((s) => ({ outbox: { ...s.outbox, [id]: [{ ...message, retry: true }, ...(s.outbox[id] ?? [])] } }));
       get().showNotice(`Couldn't send: ${ipcErrorText(err)}`);
       return false;
+    } finally {
+      if (get().admitting[id] === controller) set((s) => {
+        const { [id]: _settled, ...admitting } = s.admitting;
+        return { admitting };
+      });
+      if (endedBeforeReply.has(controller) && !controller.signal.aborted) drainOutbox(id);
     }
   },
 
   async compact(threadId, focus) {
     if (get().running[threadId]) return;
-    set((s) => ({ running: { ...s.running, [threadId]: true } }));
     try {
-      await api().send({ threadId, text: `/compact${focus ? ` ${focus}` : ""}`, compact: { focus } });
+      const admission = await api().send({ threadId, text: `/compact${focus ? ` ${focus}` : ""}`, compact: { focus } });
+      if (admission.status === "rejected") throw new Error(admission.reason);
     } catch (err) {
-      set((s) => ({ running: { ...s.running, [threadId]: false } }));
       get().showNotice(`Couldn't compact: ${ipcErrorText(err)}`);
     }
   },
@@ -1525,9 +1608,12 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async interruptThread(threadId) {
-    // Stop means stop: queued messages go too, before the turn's end could deliver one.
+    get().admitting[threadId]?.abort();
+    // Drop queued work before the turn's end can deliver it. Refused messages are manual drafts.
     set((s) => {
-      const { [threadId]: _dropped, ...outbox } = s.outbox;
+      const { [threadId]: pending, ...outbox } = s.outbox;
+      const refused = pending?.filter((m) => m.retry);
+      if (refused?.length) outbox[threadId] = refused;
       return { outbox };
     });
     await api().interrupt(threadId);
@@ -1536,7 +1622,7 @@ export const useStore = create<State>((set, get) => ({
   async stopAllRunning() {
     const s = get();
     const waiting = waitingThreads(s.permissions, s.plans, s.questions);
-    const ids = new Set([...Object.keys(s.running).filter((id) => s.running[id]), ...waiting]);
+    const ids = new Set([...Object.keys(s.running).filter((id) => s.running[id]), ...Object.keys(s.admitting), ...waiting]);
     await Promise.all([...ids].map((id) => get().interruptThread(id)));
   },
 
@@ -1863,7 +1949,7 @@ export const useStore = create<State>((set, get) => ({
         return;
       }
       case "queued":
-        set((s) => ({ queued: { ...s.queued, [update.threadId]: update.queued } }));
+        set((s) => ({ queued: { ...s.queued, [update.threadId]: update.queued }, ...(update.queued ? { running: { ...s.running, [update.threadId]: true } } : {}) }));
         return;
       case "shell":
         set((s) => ({ shells: { ...s.shells, [update.shell.id]: update.shell } }));
@@ -1889,16 +1975,9 @@ export const useStore = create<State>((set, get) => ({
         }));
         // The next queued message goes out as the next turn, exactly once.
         if (!update.running) {
-          const next = get().outbox[update.threadId]?.[0];
-          if (next) {
-            set((s) => ({ outbox: { ...s.outbox, [update.threadId]: s.outbox[update.threadId]!.slice(1) } }));
-            void get().send(next.text, next.skills, update.threadId, next.mentions, { ...(next.files?.length ? { files: next.files } : {}), ...(next.pluginCommand ? { pluginCommand: next.pluginCommand } : {}), ...(next.pluginSkills ? { pluginSkills: next.pluginSkills } : {}) });
-          }
-        }
-        if (!update.running && get().takeOver.mode !== "idle") {
-          // The pause must never outlive the turn.
-          set((s) => ({ takeOver: takeOverReducer(s.takeOver, { type: "turn-ended" }) }));
-          void api().browserTakeOver(false);
+          const pending = get().admitting[update.threadId];
+          if (pending) endedBeforeReply.add(pending);
+          else drainOutbox(update.threadId);
         }
         return;
       case "permission":
@@ -1948,8 +2027,17 @@ export const useStore = create<State>((set, get) => ({
       case "browser-device":
         set((s) => ({ browser: { ...s.browser, device: update.device } }));
         return;
-      case "browser-action":
-        set((s) => ({ takeOver: takeOverReducer(s.takeOver, { type: "agent-action" }) }));
+      case "browser-action": {
+        const owner = get().browser.owner;
+        if (owner && update.owner?.turnId === owner.turnId && update.owner.threadId === owner.threadId) {
+          set((s) => ({ takeOver: takeOverReducer(s.takeOver, { type: "agent-action" }) }));
+        }
+        return;
+      }
+      case "browser-control":
+        browserGeneration++;
+        set((s) => ({ browser: { ...s.browser, owner: update.owner, paused: update.paused }, takeOver: { ...s.takeOver,
+          mode: update.owner ? (update.paused ? "human-driving" : "agent-driving") : "idle", paused: update.paused, steps: update.owner?.turnId === s.browser.owner?.turnId ? s.takeOver.steps : 0 } }));
         return;
       case "settings":
         applyTheme(update.settings.theme);
@@ -2011,7 +2099,11 @@ export const useStore = create<State>((set, get) => ({
       case "automation-run": {
         // Only the newest run per automation matters; keep the list bounded.
         const notice = update.notice;
-        set((s) => ({ automationNotices: [notice, ...s.automationNotices.filter((n) => n.automationId !== notice.automationId)].slice(0, 20) }));
+        set((s) => {
+          const previous = s.automationNotices.find((n) => n.automationId === notice.automationId);
+          if (previous && newestNoticeFirst(previous, notice) < 0) return s;
+          return { automationNotices: [notice, ...s.automationNotices.filter((n) => n !== previous)].sort(newestNoticeFirst).slice(0, 20) };
+        });
         return;
       }
       case "automation-delivered":

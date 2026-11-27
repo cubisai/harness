@@ -894,6 +894,20 @@ describe("ProviderAgents", () => {
 });
 
 describe("SessionStore", () => {
+  it("repairs a partial tool exchange before appending and preserves later records after interior damage", () => {
+    const dir = tmp(), store = new SessionStore(dir), id = store.create();
+    const file = join(dir, `${id}.jsonl`);
+    store.append(id, { role: "assistant", content: ["a", "b"].map((n) => ({ type: "tool-call", id: n, name: "read", input: {} })) });
+    store.append(id, { role: "tool", results: [{ callId: "a", name: "read", text: "done" }] });
+    const damage = readFileSync(file, "utf8") + '{"truncated\n' + JSON.stringify({ role: "user", content: [{ type: "text", text: "later" }] });
+    writeFileSync(file, damage);
+    const history = store.resume(id)!;
+    expect(history).toHaveLength(3);
+    expect(history[0]).toEqual({ role: "assistant", content: [{ type: "tool-call", id: "a", name: "read", input: {} }] });
+    store.append(id, { role: "assistant", content: [{ type: "text", text: "new" }] });
+    expect(store.resume(id)).toEqual([...history, { role: "assistant", content: [{ type: "text", text: "new" }] }]);
+    expect(readFileSync(`${file}.original`, "utf8")).toBe(damage);
+  });
   it("appends, loads, survives a torn line and replaces atomically", () => {
     const store = new SessionStore(tmp());
     const id = store.create();

@@ -265,11 +265,11 @@ export function createExtractor(deps: {
   background?: (projectId: string) => { driver: AgentDriver; model: string; effort: string | null } | null;
   debounceMs?: number;
   log?: (msg: string) => void;
-}): { schedule(req: TurnDelta): void; dispose(): void } {
+}): { schedule(req: TurnDelta): void; cancelDisabled(): void; dispose(): void } {
   const debounceMs = deps.debounceMs ?? 30_000;
   const log = deps.log ?? ((msg: string) => console.log(msg));
   const pending = new Map<string, Pending>();
-  const active = new Map<string, AbortController>();
+  const active = new Map<string, { projectId: string; controller: AbortController }>();
   let chain: Promise<void> = Promise.resolve();
   let disposed = false;
 
@@ -277,6 +277,7 @@ export function createExtractor(deps: {
     const timeout = setTimeout(() => controller.abort(), RUN_TIMEOUT_MS);
     timeout.unref?.();
     try {
+      if (controller.signal.aborted || !deps.enabled(delta.projectId)) return;
       const driver = deps.driverFor(delta.agentId);
       const chosen = deps.background?.(delta.projectId) ?? null;
       const explicit = chosen?.driver.oneShot ? chosen : null;
@@ -311,10 +312,11 @@ export function createExtractor(deps: {
           text = await attempt(driver.id, model, false, () => shot({ prompt, model, effort, signal: controller.signal }));
         } catch (err) {
           // The cheap pick may not be runnable on this account: fall back to the thread's own model once.
-          if (model === delta.model || controller.signal.aborted) throw err;
+          if (model === delta.model || controller.signal.aborted || !deps.enabled(delta.projectId)) throw err;
           text = await attempt(driver.id, delta.model, true, () => shot({ prompt, model: delta.model, effort: null, signal: controller.signal }));
         }
       }
+      if (controller.signal.aborted || !deps.enabled(delta.projectId)) return;
       const files = new Set(deps.store.list(delta.projectId).map((f) => f.file));
       for (const f of deps.store.list(GLOBAL_SCOPE)) files.add(`global/${f.file}`);
       const { added, updated, deleted } = applyOps(deps.store, delta.projectId, parseOps(text, files));
@@ -323,7 +325,7 @@ export function createExtractor(deps: {
       log(`memory: extraction failed (${delta.projectId}): ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       clearTimeout(timeout);
-      if (active.get(delta.threadId) === controller) active.delete(delta.threadId);
+      if (active.get(delta.threadId)?.controller === controller) active.delete(delta.threadId);
     }
   };
 
@@ -339,7 +341,7 @@ export function createExtractor(deps: {
       return;
     }
     const controller = new AbortController();
-    active.set(threadId, controller);
+    active.set(threadId, { projectId: entry.delta.projectId, controller });
     chain = chain.then(() => run(entry.delta, controller)).catch(() => {});
   };
 
@@ -364,9 +366,13 @@ export function createExtractor(deps: {
     disposed = true;
     for (const { timer } of pending.values()) clearTimeout(timer);
     pending.clear();
-    for (const controller of active.values()) controller.abort();
+    for (const { controller } of active.values()) controller.abort();
     active.clear();
   };
 
-  return { schedule, dispose };
+  const cancelDisabled = () => {
+    for (const [id, p] of pending) if (!deps.enabled(p.delta.projectId)) { clearTimeout(p.timer); pending.delete(id); }
+    for (const { projectId, controller } of active.values()) if (!deps.enabled(projectId)) controller.abort();
+  };
+  return { schedule, cancelDisabled, dispose };
 }

@@ -1,7 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { buildInCodePrompt, buildThreadPatch, handoffPath } from "../src/shared/design";
+import { captureDesign, creatorFilesFromReview, writeDesignSnapshot } from "../src/main/design/review";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tempDir } from "./helpers";
 
 describe("Build in code", () => {
+  it("pins the reviewed page, linked CSS, artwork and handoff across later edits", async () => {
+    const source = tempDir(), snapshot = tempDir(), project = tempDir();
+    for (const dir of [source, project]) {
+      writeFileSync(join(dir, "index.html"), '<link rel="stylesheet" href="card.css"><h1>v2</h1>');
+      writeFileSync(join(dir, "card.css"), '.card { background:url("card.svg") }');
+      writeFileSync(join(dir, "card.svg"), dir === source ? '<svg id="v2"/>' : '<svg id="wrong"/>');
+      writeFileSync(join(dir, "handoff.md"), "Approved handoff");
+    }
+    const capture = await captureDesign(source, "index.html", true);
+    await writeDesignSnapshot(snapshot, capture.contents);
+    for (const file of capture.files) writeFileSync(join(source, file.path), "v3");
+    expect(readFileSync(join(snapshot, "card.svg"), "utf8")).toBe('<svg id="v2"/>');
+    expect(readFileSync(join(snapshot, "handoff.md"), "utf8")).toBe("Approved handoff");
+    const draft = await creatorFilesFromReview(snapshot, { ...capture, page: "index.html" }, "my-card", { width: 200, height: 120 });
+    expect(JSON.parse(draft.find((f) => f.path === "app.json")!.content)).toMatchObject({ grants: [], placement: "floating", size: { width: 200, height: 120 } });
+    expect(draft).toContainEqual({ path: "card.svg", content: '<svg id="v2"/>' });
+  });
   it("points at the handoff beside the design's pages", () => {
     expect(handoffPath("designs/ab12cd34")).toBe("designs/ab12cd34/handoff.md");
   });

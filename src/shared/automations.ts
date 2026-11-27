@@ -33,6 +33,11 @@ export interface AutomationNotice {
   error: string | null;
 }
 
+/** The same latest completion wins in the live Message Center and a reload snapshot. */
+export function newestNoticeFirst(a: AutomationNotice, b: AutomationNotice): number {
+  return (b.endedAt ?? 0) - (a.endedAt ?? 0) || b.runId - a.runId;
+}
+
 /** A starting point for a new automation: its prompt, schedule and budget. */
 export interface AutomationTemplate {
   id: "repo-health" | "browser-smoke" | "project-brief" | "eval-regression" | "custom";
@@ -59,6 +64,7 @@ export interface AutomationInput {
 
 /** One automation as the Library lists it. */
 export interface AutomationView extends AutomationInput {
+  anchor?: number;
   owner?: import("./plugin-parts").PluginOwner;
   unavailable?: string;
   id: string;

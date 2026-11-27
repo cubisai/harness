@@ -11,6 +11,7 @@ import { createServer, type Server } from "node:http";
 import { BlockList, isIP } from "node:net";
 import { auth, refreshAuthorization, type OAuthClientProvider, type OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
+import { InvalidGrantError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type { McpServerSpec } from "../../shared/types";
 import type { McpVault, VaultOAuth } from "./vault";
 
@@ -220,6 +221,7 @@ class VaultProvider implements OAuthClientProvider {
     private redirect: string,
     private open: (url: string) => Promise<void>,
     private assertCurrent: () => void = () => {},
+    private now: () => number = Date.now,
   ) {}
 
   private oauth(): VaultOAuth {
@@ -287,7 +289,7 @@ class VaultProvider implements OAuthClientProvider {
         ...((tokens.refresh_token ?? previous?.refresh_token) && { refresh_token: tokens.refresh_token ?? previous?.refresh_token }),
         ...(tokens.expires_in !== undefined && { expires_in: tokens.expires_in }),
         ...(tokens.scope && { scope: tokens.scope }),
-        obtained_at: Date.now(),
+        obtained_at: this.now(),
       },
     });
   }
@@ -434,7 +436,7 @@ export class McpAuth {
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
-    const provider = new VaultProvider(this.deps.vault, key, spec, callback.url, this.deps.openExternal, work.assert);
+    const provider = new VaultProvider(this.deps.vault, key, spec, callback.url, this.deps.openExternal, work.assert, () => this.now());
     provider.fresh = true;
     const fetchFn = this.guardedWorkFetch(spec, work);
     const o = this.oauth(key);
@@ -491,7 +493,9 @@ export class McpAuth {
     if (!stale) return t.access_token;
     const refreshed = await this.refresh(key, spec);
     if ((this.generations.get(key) ?? 0) !== generation) return null;
-    return refreshed ?? (this.now() < t.obtained_at + (t.expires_in ?? 0) * 1000 ? t.access_token : null);
+    const current = this.oauth(key).tokens;
+    if (!current || (current.expires_in !== undefined && this.now() >= current.obtained_at + current.expires_in * 1000)) return null;
+    return refreshed ?? current.access_token;
   }
 
   /** Refresh now (the server said 401). One refresh per server at a time; null when there's no way to. */
@@ -512,7 +516,7 @@ export class McpAuth {
     const refreshToken = o.tokens?.refresh_token;
     const discovery = o.discovery as OAuthDiscoveryState | undefined;
     if (!refreshToken || !discovery?.authorizationServerUrl) return null;
-    const provider = new VaultProvider(this.deps.vault, key, spec, "http://127.0.0.1/callback", this.deps.openExternal, work.assert);
+    const provider = new VaultProvider(this.deps.vault, key, spec, "http://127.0.0.1/callback", this.deps.openExternal, work.assert, () => this.now());
     const clientInformation = provider.clientInformation() ?? (o.client as OAuthClientInformationMixed | undefined);
     if (!clientInformation) return null;
     try {
@@ -526,10 +530,9 @@ export class McpAuth {
       work.assert();
       provider.saveTokens(tokens);
       return tokens.access_token;
-    } catch {
+    } catch (err) {
       try { work.assert(); } catch { return null; }
-      // invalid_grant and friends: the refresh token is dead; the user has to sign in again.
-      this.deps.vault.update(key, { oauth: { ...o, tokens: undefined } });
+      if (err instanceof InvalidGrantError) this.deps.vault.update(key, { oauth: { ...this.oauth(key), tokens: undefined } });
       return null;
     }
   }

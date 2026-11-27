@@ -412,22 +412,23 @@ export function routerTools(
         if (listing?.ok) for (const tool of listing.tools) entries.push({ server: server.name, tool });
         else unreachable.push({ name: server.name, error: listingError(listing?.error) });
       }
-      if (!enabled.length) return { text: "No MCP servers are enabled for this project.", isError: true };
+      const empty = { matches: [], unavailable: unreachable };
+      if (!enabled.length) return { text: "No MCP servers are enabled for this project.", isError: true, data: empty };
       const reached = (s: { name: string }) => !unreachable.some((u) => u.name === s.name);
       const ranked = rankTools(entries, query, limit ?? 5);
       if (!ranked.length) {
         if (unreachable.length === enabled.length) {
-          return { text: `Couldn't reach any MCP server: ${unreachable.map((u) => `${u.name} (${u.error})`).join(", ")}`, isError: true };
+          return { text: `Couldn't reach any MCP server: ${unreachable.map((u) => `${u.name} (${u.error})`).join(", ")}`, isError: true, data: empty };
         }
         if (unreachable.length) {
           const names = enabled.filter(reached).map((s) => s.name);
-          return { text: `No tool matched "${query}" on ${names.join(", ")}. Couldn't reach: ${unreachable.map((u) => `${u.name} (${u.error})`).join(", ")}.` };
+          return { text: `No tool matched "${query}" on ${names.join(", ")}. Couldn't reach: ${unreachable.map((u) => `${u.name} (${u.error})`).join(", ")}.`, data: empty };
         }
-        return { text: `No tool matched "${query}". Servers: ${enabled.map((s) => s.name).join(", ")}. Try other words or an exact tool name.` };
+        return { text: `No tool matched "${query}". Servers: ${enabled.map((s) => s.name).join(", ")}. Try other words or an exact tool name.`, data: empty };
       }
       const out = ranked.map((r) => ({ server: r.server, tool: r.tool.name, description: r.tool.description, inputSchema: r.tool.inputSchema, ...(r.tool.outputSchema ? { outputSchema: r.tool.outputSchema } : {}) }));
       const missed = unreachable.length ? `\nCouldn't reach: ${unreachable.map((u) => `${u.name} (${u.error})`).join(", ")}; their tools aren't included.` : "";
-      return { text: JSON.stringify(out, null, 2) + missed };
+      return { text: JSON.stringify(out, null, 2) + missed, data: { matches: out, unavailable: unreachable } };
     },
   });
 

@@ -6,7 +6,7 @@ import { open, readdir, readFile, stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { extname } from "node:path";
 import { bound } from "./bound";
-import { noteRead, resolvePath } from "./paths";
+import { noteRead, resolvePath, scopedReadPath } from "./paths";
 import { ToolError, intAny, strAny, type NativeTool } from "./types";
 
 const MAX_ENTRIES = 500;
@@ -41,7 +41,7 @@ export const readTool: NativeTool = {
   },
   summarize: (args) => strAny(args, ["path", "file_path", "filePath"]) ?? "",
   run: async (args, ctx) => {
-    const p = resolvePath(ctx.cwd, strAny(args, ["path", "file_path", "filePath"], true));
+    const p = scopedReadPath(ctx, resolvePath(ctx.cwd, strAny(args, ["path", "file_path", "filePath"], true)));
     let st: Awaited<ReturnType<typeof stat>>;
     try {
       st = await stat(p.abs);

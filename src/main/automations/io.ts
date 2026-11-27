@@ -23,11 +23,15 @@ export interface DeliveryPayload {
   text: string;
 }
 
-export type DeliveryCheck = "confirmed" | "missing" | "unknown";
+/** Destinations that can look up their opaque receipt return it with the confirmation. */
+export type DeliveryCheck = "confirmed" | { state: "confirmed"; receipt: string } | "missing" | "unknown";
 
 /** Where a finished run's result goes; check() reconciles a key after a crash before any retry. */
 export interface Destination {
   id: string;
+  /** Local destination: its confirmed database row is delivery; notify only after commit. */
+  afterCommit?(p: DeliveryPayload): void;
+  repeatable?: boolean;
   publish(p: DeliveryPayload): Promise<string | undefined>;
   check(key: string): Promise<DeliveryCheck>;
 }

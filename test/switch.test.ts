@@ -5,11 +5,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentCapabilities, LiveUpdate, ThreadEvent, Usage } from "../src/shared/types";
 import { createAcpDriver } from "../src/main/agents/acp/driver";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
-import type { AgentDriver, TurnInput } from "../src/main/agents/types";
+import type { AgentDriver, SeedRequest, TurnInput } from "../src/main/agents/types";
 import { Store } from "../src/main/db";
 import { Service } from "../src/main/service";
 import { normalizeUsage } from "../src/main/usage";
-import { catalog, closeAfter, tempDir } from "./helpers";
+import { catalog, closeAfter, deferred, tempDir } from "./helpers";
 
 type Script = (input: TurnInput) => Promise<void>;
 
@@ -114,6 +114,95 @@ describe("Service.switchAgent", () => {
     expect(refExists(cwd, `harness-handoff/${seq}`)).toBe(false);
     expect(store.getThread(thread.id).agent).toBe("a");
     expect(b.prompts).toHaveLength(0);
+  });
+
+  it("a Stop during checkpoint preparation leaves the original agent and creates no handoff ref", async () => {
+    const counting = deferred<void>();
+    const tokenCount = deferred<number>();
+    const b = fake("b", async () => {});
+    b.countTokens = () => { counting.resolve(); return tokenCount.promise; };
+    const { service, store, thread, cwd } = setup([fake("a", aScript), b]);
+    await service.send({ threadId: thread.id, text: "start" });
+    const seq = store.listEvents(thread.id).at(-1)!.seq;
+
+    const switching = service.switchAgent(thread.id, "b", "handoff");
+    await counting.promise;
+    await expect(service.send({ threadId: thread.id, text: "too soon" })).rejects.toThrow(/already running/);
+    service.interrupt(thread.id);
+    tokenCount.resolve(100);
+    expect(await switching).toMatchObject({ ok: false, reason: expect.stringMatching(/stopped/i) });
+    expect(refExists(cwd, `harness-handoff/${seq}`)).toBe(false);
+    expect(store.getThread(thread.id)).toMatchObject({ agent: "a", sessionId: "a-1" });
+    expect(b.prompts).toEqual([]);
+    expect(service.isRunning(thread.id)).toBe(false);
+  });
+
+  it.each(["first-message", "inject-items"] as const)("fences a stopped %s handoff from the next agent", async (channel) => {
+    const entered = deferred<() => void>();
+    const finishSeed = deferred<void>();
+    const injectItems = vi.fn(async () => {});
+    const b = fake("b", async (input) => {
+      const late = () => {
+        input.onSession("stale-b");
+        input.onEvent({ kind: "assistant-text", text: "stale reply" });
+        input.onEvent(endWith(usage({})));
+      };
+      entered.resolve(late);
+      await finishSeed.promise;
+      late();
+    }, { seeding: channel });
+    b.seed = async (req) => {
+      const late = () => req.onSession("stale-b");
+      entered.resolve(late);
+      await finishSeed.promise;
+      late();
+      const { sent } = await req.inject("stale-b", injectItems);
+      return { mode: "seeded", sent };
+    };
+    const c = fake("c", async (input) => input.onSession("session-c"));
+    const { service, store, thread, updates } = setup([fake("a", aScript), b, c], tempDir());
+    await service.send({ threadId: thread.id, text: "start" });
+    const switching = service.switchAgent(thread.id, "b", "handoff");
+    const late = await entered.promise;
+    expect(store.getThread(thread.id).agent).toBe("b");
+    await expect(service.send({ threadId: thread.id, text: "too soon" })).rejects.toThrow(/already running/);
+    service.interrupt(thread.id);
+    expect(await service.switchAgent(thread.id, "c", "fresh")).toMatchObject({ ok: false, reason: expect.stringMatching(/running/) });
+    finishSeed.resolve();
+    const result = await switching;
+    expect(result).toMatchObject({ ok: true, warning: expect.stringContaining("stopped") });
+    expect(result).not.toHaveProperty("seeded");
+    expect(store.getThread(thread.id).sessionId).toBeNull();
+    expect(injectItems).not.toHaveBeenCalled();
+    expect(store.listEvents(thread.id).some(({ provenance }) => provenance?.agent === "b")).toBe(false);
+
+    expect((await service.switchAgent(thread.id, "c", "fresh")).ok).toBe(true);
+    await service.send({ threadId: thread.id, text: "continue" });
+    const before = updates.length;
+    late();
+    expect(updates).toHaveLength(before);
+    expect(store.getThread(thread.id)).toMatchObject({ agent: "c", sessionId: "session-c", bindings: {
+      "a:default": { resumeCursor: "a-1" }, "b:default": { resumeCursor: null }, "c:default": { resumeCursor: "session-c" },
+    } });
+  });
+
+  it("closes the item injection callback when a successful handoff releases its owner", async () => {
+    const b = fake("b", async () => {}, { seeding: "inject-items" });
+    let seed!: SeedRequest;
+    const deliver = vi.fn(async () => {});
+    b.seed = async (req) => {
+      seed = req;
+      req.onSession("b-1");
+      const { sent } = await req.inject("b-1", deliver);
+      return { mode: "seeded", sent };
+    };
+    const { service, store, thread } = setup([fake("a", aScript), b], tempDir());
+    await service.send({ threadId: thread.id, text: "start" });
+    expect(await service.switchAgent(thread.id, "b", "handoff")).toMatchObject({ ok: true, seeded: { sent: 1 } });
+    expect((await service.switchAgent(thread.id, "a", "back")).ok).toBe(true);
+    await expect(async () => seed.inject("late-session", deliver)).rejects.toThrow();
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(store.injectedFingerprints({ threadId: thread.id, sessionId: "late-session", provider: "b" }).size).toBe(0);
   });
 
   it("says a target without a seeding channel can't take a handoff", async () => {

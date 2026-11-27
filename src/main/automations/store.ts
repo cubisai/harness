@@ -275,7 +275,7 @@ export class AutomationStore {
 
   /** The newest instant this automation was scheduled for, or null before any. */
   lastScheduled(automationId: string): number | null {
-    const r = this.db.prepare("SELECT MAX(scheduled_at) AS at FROM automation_runs WHERE automation_id = ?").get(automationId) as unknown as { at: number | null };
+    const r = this.db.prepare("SELECT MAX(scheduled_at) AS at FROM automation_runs WHERE automation_id = ? AND instr(run_key, automation_id || '@manual-') != 1").get(automationId) as unknown as { at: number | null };
     return r.at;
   }
 
@@ -290,7 +290,7 @@ export class AutomationStore {
     return this.run(id)!;
   }
 
-  finishRun(id: number, f: { status: RunStatus; costUsd?: number | null; inputTokens?: number; outputTokens?: number; result?: string; error?: string }): AutomationRun {
+  finishRun(id: number, f: { status: RunStatus; costUsd?: number | null; inputTokens?: number | null; outputTokens?: number | null; result?: string | null; error?: string }): AutomationRun {
     this.db
       .prepare("UPDATE automation_runs SET status = ?, cost_usd = ?, input_tokens = ?, output_tokens = ?, result = ?, error = ?, ended_at = ?, lease_until = NULL WHERE id = ?")
       .run(f.status, f.costUsd ?? null, f.inputTokens ?? null, f.outputTokens ?? null, f.result ?? null, f.error ?? null, this.now(), id);
@@ -299,6 +299,18 @@ export class AutomationStore {
 
   checkpoint(id: number, data: unknown): void {
     this.db.prepare("UPDATE automation_runs SET checkpoint = ? WHERE id = ?").run(JSON.stringify(data ?? null), id);
+  }
+
+  atomic<T>(write: () => T): T {
+    this.db.exec("SAVEPOINT automation_delivery");
+    try {
+      const result = write();
+      this.db.exec("RELEASE automation_delivery");
+      return result;
+    } catch (err) {
+      this.db.exec("ROLLBACK TO automation_delivery; RELEASE automation_delivery");
+      throw err;
+    }
   }
 
   /** Park a run at waiting-input or paused-budget without finishing it. */
@@ -325,6 +337,11 @@ export class AutomationStore {
 
   runs(automationId: string, limit = 20): AutomationRun[] {
     return (this.db.prepare(`SELECT ${RUN_COLS} FROM automation_runs WHERE automation_id = ? ORDER BY scheduled_at DESC, id DESC LIMIT ?`).all(automationId, limit) as unknown as RawRun[]).map(runOf);
+  }
+
+  latestFinished(automationId: string): AutomationRun | null {
+    const row = this.db.prepare(`SELECT ${RUN_COLS} FROM automation_runs WHERE automation_id = ? AND ended_at IS NOT NULL ORDER BY ended_at DESC, id DESC LIMIT 1`).get(automationId) as unknown as RawRun | undefined;
+    return row ? runOf(row) : null;
   }
 
   run(id: number): AutomationRun | null {
@@ -377,14 +394,14 @@ export class AutomationStore {
     return this.delivery(key);
   }
 
-  confirmDelivery(key: string, receipt?: string): Delivery | null {
-    this.db.prepare("UPDATE automation_deliveries SET state = 'confirmed', receipt = COALESCE(?, receipt), updated_at = ? WHERE idempotency_key = ?").run(receipt ?? null, this.now(), key);
+  confirmDelivery(key: string, receipt?: string, settled = false): Delivery | null {
+    this.db.prepare("UPDATE automation_deliveries SET state = 'confirmed', receipt = COALESCE(?, receipt), settled = MAX(settled, ?), updated_at = ? WHERE idempotency_key = ?").run(receipt ?? null, settled ? 1 : 0, this.now(), key);
     return this.delivery(key);
   }
 
   /** The destination may or may not have received it; reconcile rather than re-post. */
   markUnknown(key: string): Delivery | null {
-    this.db.prepare("UPDATE automation_deliveries SET state = 'unknown', updated_at = ? WHERE idempotency_key = ?").run(this.now(), key);
+    this.db.prepare("UPDATE automation_deliveries SET state = 'unknown', updated_at = ? WHERE idempotency_key = ? AND state IN ('intent', 'published')").run(this.now(), key);
     return this.delivery(key);
   }
 
@@ -394,9 +411,9 @@ export class AutomationStore {
   }
 
   /** Everything not yet confirmed, to reconcile on startup before any retry. */
-  pendingDeliveries(): Delivery[] {
+  pendingDeliveries(recoverConfirmed = false): Delivery[] {
     return (
-      this.db.prepare(`SELECT ${DEL_COLS} FROM automation_deliveries WHERE state IN ('intent', 'published', 'unknown') ORDER BY created_at, idempotency_key`).all() as unknown as RawDelivery[]
+      this.db.prepare(`SELECT ${DEL_COLS} FROM automation_deliveries WHERE state != 'confirmed' OR (? AND settled = 0) ORDER BY created_at, idempotency_key`).all(recoverConfirmed ? 1 : 0) as unknown as RawDelivery[]
     ).map(deliveryOf);
   }
 

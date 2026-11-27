@@ -13,6 +13,7 @@ export function RequestDock({ threadId }: { threadId: string }) {
   const allPermissions = useStore((s) => s.permissions);
   const allQuestions = useStore((s) => s.questions);
   const allPlans = useStore((s) => s.plans);
+  const target = useStore((s) => s.inboxTarget);
   const respondQuestion = useStore((s) => s.respondQuestion);
   const pending = useMemo(
     () => [
@@ -22,7 +23,7 @@ export function RequestDock({ threadId }: { threadId: string }) {
     ],
     [allPermissions, allQuestions, allPlans, threadId],
   );
-  const first = pending[0];
+  const first = pending.find((p) => p.kind === target?.kind && p.request.threadId === target.threadId && p.request.requestId === target.requestId) ?? pending[0];
   if (!first) return null;
   const waiting = pending.length - 1;
   return (

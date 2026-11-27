@@ -11,7 +11,7 @@ export interface WatchHandle {
 export type DesignWatchFn = (dir: string, listener: (file?: string) => void) => WatchHandle;
 
 /** Files CubiQ itself keeps at the top of a design folder: writing them is bookkeeping, not a design change. */
-export const UNWATCHED = new Set(["comments.json", ".tier"]);
+export const UNWATCHED = new Set(["comments.json", ".tier", ".flows.json"]);
 
 /** How many distinct paths a burst may name before the change is treated as unknown (reload everything). */
 const MAX_PATHS = 200;

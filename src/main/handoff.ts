@@ -189,8 +189,9 @@ export async function buildCheckpoint(store: Store, threadId: string, opts?: { b
 export type GitCheckpoint = { ok: true; ref: string } | { ok: false; kind: "no-repo" | "no-commits" | "dirty"; reason: string };
 
 /** A ref to return to before handing off. Refuses a dirty worktree: the checkpoint must be the state the handoff describes. */
-export async function checkpointGit(cwd: string, seq: number): Promise<GitCheckpoint> {
+export async function checkpointGit(cwd: string, seq: number, signal?: AbortSignal): Promise<GitCheckpoint> {
   const state = await gitState(cwd);
+  signal?.throwIfAborted();
   if (!state) return { ok: false, kind: "no-repo", reason: "This folder isn't a git repository, so there's no checkpoint to return to." };
   if (!state.head) return { ok: false, kind: "no-commits", reason: "The repository has no commits yet, so there's no checkpoint to return to." };
   if (state.dirty.length) {
@@ -327,6 +328,7 @@ export async function fitCheckpoint(
     countTokens?: (text: string) => number | Promise<number>;
     contextWindow: number | null;
     replacedTokens: number;
+    signal?: AbortSignal;
     onTier?: (tier: 0 | 1 | 2, tokens: number) => void;
     commandsAsItems?: boolean;
   },
@@ -335,6 +337,7 @@ export async function fitCheckpoint(
   const estimated = !opts.countTokens;
   let tokens = 0;
   for (const tier of [0, 1, 2] as const) {
+    opts.signal?.throwIfAborted();
     const text = opts.commandsAsItems ? renderCheckpoint(cp, tier, { commandsAsItems: true }) : renderCheckpoint(cp, tier);
     const counted = opts.commandsAsItems ? text + "\n" + JSON.stringify(codexSeedItems(cp, text, tier).slice(1)) : text;
     tokens = opts.countTokens ? await opts.countTokens(counted) : estimateTokens(counted);

@@ -4,6 +4,7 @@
 
 import { APP_THEME_DEFAULTS, APP_THEME_TOKENS } from "../../shared/apps";
 import type { AppCallResult } from "../../shared/types";
+import { appSample, SAMPLE_OFFLINE, SAMPLE_PRODUCT, type SampleMode } from "../../shared/app-sample";
 import type { PluginAppTheme } from "../../shared/app-themes";
 import { appThemePalette } from "../../shared/app-theme-palette";
 
@@ -71,6 +72,9 @@ export interface CheckWindow {
 }
 
 export interface CheckOptions {
+  sample?: { mode: SampleMode; grants: { server: string; tools: string[] }[] };
+  disposableStore?: boolean;
+  allowedGrants?: { server: string; tools: string[] }[];
   scheme: "light" | "dark";
   screenshot: boolean;
   /** The size the app shows at (its placement's); default 900×700. */
@@ -94,7 +98,7 @@ export interface AppCheckDeps {
 export interface AppCheckReport {
   ok: boolean;
   errors: { level: "error" | "warn"; message: string }[];
-  calls: { call: string; status: "ok" | "error" | "not-run"; ms: number; error?: string }[];
+  calls: { call: string; status: "ok" | "error" | "expected-error" | "not-run"; ms: number; error?: string }[];
   /** Nothing visible: no text worth reading and no image, svg or canvas. */
   empty: boolean;
   text: string;
@@ -145,6 +149,9 @@ export class AppChecker {
     let lastActivity = this.now();
     let loadedAt: number | null = null;
     const started = this.now();
+    const sample = opts.sample ? appSample(opts.sample.mode, opts.sample.grants) : null;
+    const scratch = sample?.store ?? (opts.disposableStore ? new Map<string, unknown>() : null);
+    let recovered = false;
     try {
       await win.load(CHECK_HOST_URL);
       const vars: Record<string, string> = {};
@@ -172,10 +179,15 @@ export class AppChecker {
             if (opts.expectedTools) { await reply(m.id, { ok: false, error: "Register handlers on load; make connector calls only inside the invoked handler." }); continue; }
             const args = m.args && typeof m.args === "object" && !Array.isArray(m.args) ? (m.args as Record<string, unknown>) : {};
             const name = `${m.server}.${m.tool}`;
+            if (opts.allowedGrants && !opts.allowedGrants.some((g) => g.server === m.server && g.tools.includes(String(m.tool)))) {
+              errors.push({ level: "error", message: `Not granted: ${name}` });
+              await reply(m.id, { ok: false, error: `Not granted: ${name}` });
+              continue;
+            }
             const t0 = this.now();
             pending++;
-            void this.deps
-              .call(key, m.server, m.tool, args)
+            const response = sample ? Promise.resolve(sample.call(m.server, m.tool)) : this.deps.call(key, m.server, m.tool, args);
+            void (response as Promise<AppCallResult>)
               .then(async (r) => {
                 const ms = this.now() - t0;
                 if (r.ok) {
@@ -185,7 +197,8 @@ export class AppChecker {
                   if (calls.length < MAX_CALLS) calls.push({ call: name, status: "not-run", ms, error: "can change data: the check doesn't run it (the user approves it when the app is open)" });
                   await reply(m.id, { ok: false, error: "The check doesn't run calls that can change data." });
                 } else {
-                  if (calls.length < MAX_CALLS) calls.push({ call: name, status: "error", ms, error: r.error.slice(0, 600) });
+                  const expected = sample && opts.sample?.mode === "offline" && r.error === SAMPLE_OFFLINE;
+                  if (calls.length < MAX_CALLS) calls.push({ call: name, status: expected ? "expected-error" : "error", ms, error: r.error.slice(0, 600) });
                   await reply(m.id, r);
                 }
               })
@@ -199,15 +212,23 @@ export class AppChecker {
                 lastActivity = this.now();
               });
           } else if (op === "store.get" && typeof m.key === "string") {
-            await reply(m.id, { ok: true, result: this.deps.storeGet(key, m.key) });
+            await reply(m.id, { ok: true, result: scratch ? scratch.get(m.key) ?? null : this.deps.storeGet(key, m.key) });
           } else if (op === "store.set" && typeof m.key === "string") {
             if (card || opts.expectedTools) { await reply(m.id, { ok: false, error: "Card/handler checks cannot change saved plugin data." }); continue; }
+            if (scratch) { scratch.set(m.key, m.value); await reply(m.id, { ok: true, result: null }); continue; }
             const r = this.deps.storeSet(key, m.key, m.value);
             await reply(m.id, "approval" in r ? { ok: false, error: "Not allowed." } : r);
           }
         }
         const t = this.now();
-        if (loadedAt !== null && t - loadedAt >= MIN_AFTER_LOAD_MS && pending === 0 && t - lastActivity >= QUIET_MS) break;
+        if (loadedAt !== null && t - loadedAt >= MIN_AFTER_LOAD_MS && pending === 0 && t - lastActivity >= QUIET_MS) {
+          if (opts.sample?.mode === "offline" && !recovered) {
+            recovered = Boolean(await win.evaluateApp(`(() => { if (!document.body.innerText.includes(${JSON.stringify(SAMPLE_OFFLINE)})) return false; const retry = [...document.querySelectorAll('button')].find(b => b.getClientRects().length && !b.disabled && b.innerText.trim() === 'Retry'); if (!retry) return false; retry.click(); return true; })()`));
+            if (recovered) { lastActivity = this.now(); continue; }
+            errors.push({ level: "error", message: "Expected the offline message and an actionable Retry button." });
+          }
+          break;
+        }
         if (t - started >= CHECK_MAX_MS) {
           timedOut = true;
           break;
@@ -219,6 +240,10 @@ export class AppChecker {
       const probe = ((await win.evaluateApp(PROBE).catch(() => null)) ?? null) as { text: string; chars: number; media: number; width: number; height: number } | null;
       const png = opts.screenshot ? await win.capture(size.width, size.height) : undefined;
       const empty = !probe || (probe.chars < (opts.minChars ?? 20) && probe.media === 0);
+      if (opts.sample && (opts.sample.mode !== "data" || opts.sample.grants.some((g) => g.server === "shop" && g.tools.includes("sales_summary")))) {
+        const expected = opts.sample.mode === "empty" ? "No sales in this period" : SAMPLE_PRODUCT;
+        if (!calls.some((c) => c.status === "ok") || !probe?.text.includes(expected)) errors.push({ level: "error", message: `Sample view did not show: ${expected}` });
+      }
       const failed = errors.some((e) => e.level === "error") || calls.some((c) => c.status === "error");
       return {
         ok: !failed && !empty && !timedOut,

@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { appSample, type SampleMode } from "../../../shared/app-sample";
+import { Select } from "./Select";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -102,6 +104,8 @@ export function AppFrame({ app, head, onPill, card }: { app: AppInfo; head(contr
   const [nonce, setNonce] = useState(0);
   // A previewed draft reloads itself when its files change.
   const fileChanges = useStore((s) => s.appReloads[app.key] ?? 0);
+  const [sampleMode, setSampleMode] = useState<SampleMode | "live">("data");
+  const sample = useMemo(() => app.scope === "draft" && sampleMode !== "live" ? appSample(sampleMode, app.grants) : null, [app, sampleMode, nonce, fileChanges]);
   const [asks, setAsks] = useState<Ask[]>([]);
   const [logs, setLogs] = useState<Log[]>([]);
   const [showLogs, setShowLogs] = useState(false);
@@ -202,6 +206,7 @@ export function AppFrame({ app, head, onPill, card }: { app: AppInfo; head(contr
           const args = m.args && typeof m.args === "object" && !Array.isArray(m.args) ? (m.args as Record<string, unknown>) : {};
           const server = m.server;
           const tool = m.tool;
+          if (sample) { reply(load, id, sample.call(server, tool)); return; }
           const called = card ? api().callAppCard(app.key, card.threadId, server, tool, args) : api().callApp(app.key, projectId, server, tool, args);
           void called
             .then((r) => {
@@ -214,6 +219,7 @@ export function AppFrame({ app, head, onPill, card }: { app: AppInfo; head(contr
         }
         case "store.get":
           if (typeof m.key !== "string") return;
+          if (sample) { reply(load, id, { ok: true, result: sample.store.get(m.key) ?? null }); return; }
           void api()
             .appStoreGet(app.key, m.key)
             .then((v) => reply(load, id, { ok: true, result: v }))
@@ -222,6 +228,7 @@ export function AppFrame({ app, head, onPill, card }: { app: AppInfo; head(contr
         case "store.set":
           if (typeof m.key !== "string") return;
           if (card) { reply(load, id, { ok: false, error: "Transcript cards cannot change saved plugin data." }); return; }
+          if (sample) { sample.store.set(m.key, m.value); reply(load, id, { ok: true, result: null }); return; }
           void api()
             .appStoreSet(app.key, m.key, m.value)
             .then((r) => reply(load, id, "approval" in r ? { ok: false, error: "Not allowed." } : r))
@@ -231,7 +238,7 @@ export function AppFrame({ app, head, onPill, card }: { app: AppInfo; head(contr
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [app, projectId, postTheme, reply, allow, card]);
+  }, [app, projectId, postTheme, reply, allow, card, sample]);
 
   const answer = (ask: Ask, decision: "deny" | "once" | "always") => {
     setAsks((a) => a.filter((x) => x !== ask));
@@ -265,6 +272,7 @@ export function AppFrame({ app, head, onPill, card }: { app: AppInfo; head(contr
   return (
     <>
       {head({ logsButton, reload })}
+      {app.scope === "draft" && !card && <Select<SampleMode | "live"> ariaLabel="Preview data" value={sampleMode} options={[{ value: "data", label: "Sample data" }, { value: "empty", label: "Empty sample" }, { value: "offline", label: "Offline sample" }, { value: "live", label: "Live preview" }]} onChange={(mode) => { setSampleMode(mode); reload(); }} />}
       <div className="app-frame-wrap">
         <iframe
           key={`${app.key}:${nonce}:${fileChanges}`}

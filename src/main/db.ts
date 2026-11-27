@@ -9,6 +9,7 @@ import { readDirection, type DesignDirection } from "../shared/direction";
 import {
   CREATOR_PRESET_REVISION,
   type ArtifactVersion,
+  type CodeMode,
   type EventPage,
   type PermissionMode,
   type Project,
@@ -35,7 +36,10 @@ export class Store {
   private db: DatabaseSync;
   private blobsDir: string;
 
-  constructor(file: string) {
+  private defaultCodeMode: () => CodeMode;
+
+  constructor(file: string, defaultCodeMode: () => CodeMode = () => "off") {
+    this.defaultCodeMode = defaultCodeMode;
     // The busy timeout must apply before the first statement, or a second
     // connection opening the same file fails "database is locked" on setup.
     this.db = new DatabaseSync(file, { timeout: 5000 });
@@ -414,6 +418,18 @@ export class Store {
           key TEXT PRIMARY KEY, operation TEXT NOT NULL, committed INTEGER NOT NULL DEFAULT 0, error TEXT
         );`,
       },
+      { applied: () => this.hasColumn("threads", "code_mode"), sql: "ALTER TABLE threads ADD COLUMN code_mode TEXT" },
+      { applied: () => this.hasTable("app_check_evidence"), sql: "CREATE TABLE app_check_evidence (context TEXT NOT NULL, scenario TEXT NOT NULL, report TEXT NOT NULL, PRIMARY KEY(context, scenario))" },
+      // Earlier versions could confirm the receipt before finishing the run. Completed successes
+      // and budget pauses already passed both steps; keep their original bookmarks and end times.
+      {
+        applied: () => this.hasColumn("automation_deliveries", "settled"),
+        sql: `BEGIN;
+          ALTER TABLE automation_deliveries ADD COLUMN settled INTEGER NOT NULL DEFAULT 0;
+          UPDATE automation_deliveries SET settled = 1 WHERE state = 'confirmed' AND run_id IN
+            (SELECT id FROM automation_runs WHERE status IN ('succeeded', 'paused-budget') AND error IS NULL);
+          COMMIT;`,
+      },
     ];
     const row = this.db.prepare("SELECT version FROM schema_version").get() as unknown as { version: number } | undefined;
     let version = row?.version ?? 0;
@@ -549,7 +565,7 @@ export class Store {
     };
     this.db
       .prepare(
-        "INSERT INTO threads (id, project_id, agent, title, session_id, model, effort, permission_mode, created_at, updated_at, kind, design_system, expert_id, preset, preset_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO threads (id, project_id, agent, title, session_id, model, effort, permission_mode, created_at, updated_at, kind, design_system, expert_id, preset, preset_revision, code_mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         thread.id,
@@ -567,6 +583,7 @@ export class Store {
         thread.expertId ?? null,
         preset,
         presetRevision,
+        this.defaultCodeMode(),
       );
     return thread;
   }
@@ -575,6 +592,20 @@ export class Store {
     const row = this.db.prepare(`SELECT ${THREAD_COLS} FROM threads WHERE id = ?`).get(id);
     if (!row) throw new Error(`no thread ${id}`);
     return toThread(row as unknown as ThreadRow);
+  }
+
+  hasThread(id: string): boolean {
+    return Boolean(this.db.prepare("SELECT 1 FROM threads WHERE id = ?").get(id));
+  }
+
+  codeMode(id: string): CodeMode {
+    const row = this.db.prepare("SELECT code_mode FROM threads WHERE id = ?").get(id);
+    if (!row) return "off";
+    if (row.code_mode === null) {
+      const fixed = this.db.prepare("UPDATE threads SET code_mode = COALESCE(code_mode, ?) WHERE id = ? RETURNING code_mode").get(this.defaultCodeMode(), id);
+      return fixed?.code_mode === "on" ? "on" : "off";
+    }
+    return row.code_mode === "on" ? "on" : "off";
   }
 
   /**

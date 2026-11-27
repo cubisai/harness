@@ -8,7 +8,7 @@ import { relative, resolve, sep } from "node:path";
 import { onPath } from "../../agents/registry";
 import { bound } from "./bound";
 import { globToRegExp, walkFiles } from "./glob";
-import { resolvePath, type ResolvedPath } from "./paths";
+import { resolvePath, scopedReadPath, type ResolvedPath } from "./paths";
 import { boolAny, intAny, strAny, ToolError, type NativeTool, type ToolContext } from "./types";
 
 type OutputMode = "files_with_matches" | "content" | "count";
@@ -338,7 +338,7 @@ export const grepTool: NativeTool = {
     } catch (e) {
       throw new ToolError(`Invalid regex: ${e instanceof Error ? e.message : String(e)}`);
     }
-    const target = resolvePath(ctx.cwd, strAny(args, ["path"]) ?? ".");
+    const target = scopedReadPath(ctx, resolvePath(ctx.cwd, strAny(args, ["path"]) ?? "."));
     const opts: SearchOptions = { target, ...(glob ? { glob } : {}), ignoreCase, mode, context, caps: capsOf(ctx, limit) };
 
     const rg = rgPath(ctx.env ?? process.env, ctx.platform ?? process.platform, ctx.env === undefined);

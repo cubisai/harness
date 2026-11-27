@@ -886,6 +886,9 @@ export interface QuestionRequest {
 
 /** What is live in the main process, for a window that (re)loads mid-turn. */
 export interface PendingState {
+  automationNotices?: AutomationNotice[];
+  sequence?: number;
+  queued?: string[];
   running: string[];
   permissions: PermissionRequest[];
   plans: PlanRequest[];
@@ -1160,6 +1163,17 @@ export interface DesignEntry {
   handoff: boolean;
 }
 
+export interface DesignReview {
+  page: string;
+  digest: string;
+  files: { path: string; sha256: string }[];
+}
+export interface PrototypeFlow { name: string; pages: string[] }
+export interface SizeReview {
+  width: number;
+  findings: { id?: string; selector: string; detail: string }[];
+}
+
 export interface ArtifactFile {
   path: string;
   kind: ArtifactKind;
@@ -1268,6 +1282,9 @@ export interface AgentInfo {
   binary?: { path: string; version: string; others: { path: string; version: string }[] };
 }
 
+export type TurnAdmission = { status: "started" | "queued" } | { status: "rejected"; reason: string };
+export type TurnOutcome = { status: "succeeded" | "cancelled"; text: string } | { status: "failed"; text: string; reason: string };
+
 export interface SendRequest {
   threadId: string;
   text: string;
@@ -1307,6 +1324,8 @@ export interface ScreenshotInfo {
 
 /** The browser pane's in-band state, fetched once when the renderer mounts it. */
 export interface BrowserState {
+  owner?: { threadId: string; turnId: string } | null;
+  paused?: boolean;
   device: DevicePreset;
   logs: BrowserLogEntry[];
   screenshots: ScreenshotInfo[];
@@ -1327,7 +1346,7 @@ export interface BackgroundShell {
   pid: number | null;
 }
 
-export type LiveUpdate =
+export type LiveUpdate = { pendingSequence?: number } & (
   | { type: "event"; threadId: string; stored: StoredEvent }
   /** A background shell started, exited or was stopped. */
   | { type: "shell"; shell: BackgroundShell }
@@ -1353,7 +1372,8 @@ export type LiveUpdate =
   /** The emulated viewport changed. */
   | { type: "browser-device"; device: DevicePreset }
   /** The agent acted in the browser pane; the UI shows who is driving. */
-  | { type: "browser-action"; action: "open" | "click" | "type" | "eval"; ref?: string; url: string }
+  | { type: "browser-action"; action: "open" | "click" | "type" | "eval"; ref?: string; url: string; owner?: BrowserState["owner"] }
+  | { type: "browser-control"; owner: BrowserState["owner"]; paused: boolean }
   | { type: "terminal-data"; id: string; data: string }
   | { type: "terminal-exit"; id: string; code: number }
   | { type: "settings"; settings: SettingsView }
@@ -1389,7 +1409,7 @@ export type LiveUpdate =
   /** A Creator thread previews its draft app: open it (modal or floating) if that thread is on screen. */
   | { type: "app-open"; threadId: string; app: AppInfo }
   /** A previewed draft's files changed: reload its frame (with its app.json re-read, when it is a valid draft). */
-  | { type: "app-reload"; key: string; app?: AppInfo };
+  | { type: "app-reload"; key: string; app?: AppInfo });
 
 export type ProposalScope = { kind: "project"; projectId: string } | { kind: "global" };
 export type ProposalStatus = "staged" | "installed" | "rejected" | "failed";
@@ -1428,6 +1448,17 @@ export interface ExtensionAppSummary {
   update: boolean;
   /** The draft's frame key, so the card can preview it. */
   draftKey: string;
+}
+
+export interface AppCheckEvidence {
+  scenario: "data" | "empty" | "offline" | "real";
+  ok: boolean;
+  realConnector: boolean;
+  detail: string;
+  placement: string;
+  width: number;
+  height: number;
+  scheme: "light" | "dark";
 }
 
 export interface ThemeTokenOverride {
@@ -1570,7 +1601,7 @@ export interface UnskilledApi {
   threadTotals(threadId: string): Promise<ThreadTotals>;
   listSkills(projectId?: string): Promise<SkillEntry[]>;
   listAgents(): Promise<AgentInfo[]>;
-  send(request: SendRequest): Promise<void>;
+  send(request: SendRequest): Promise<TurnAdmission>;
   /** Copy files into a thread's `.cubiq/attachments/` (at most 10, 20 MB each) for the next send. */
   saveAttachments(threadId: string, sources: AttachmentSource[]): Promise<Attachment[]>;
   /** The native file picker for attachments; [] when cancelled. */
@@ -1621,7 +1652,7 @@ export interface UnskilledApi {
   /** The browser pane's current device, logs, and screenshots. */
   browserState(): Promise<BrowserState>;
   /** The user grabbed the pane: pause (true) or resume (false) the agent's acting tools. */
-  browserTakeOver(paused: boolean): Promise<void>;
+  browserTakeOver(paused: boolean, owner?: BrowserState["owner"], stop?: boolean): Promise<void>;
   /** Open (or reattach to) the terminal with this id, in `cwd` (home when null). */
   terminalOpen(id: string, cwd: string | null, cols: number, rows: number): Promise<void>;
   terminalWrite(id: string, data: string): void;
@@ -1724,6 +1755,9 @@ export interface UnskilledApi {
   listExtensionInstalls(projectId?: string | null): Promise<ExtensionInstallView[]>;
   /** Installed Creator apps for a project (its own, then global ones it doesn't shadow), or global only. */
   listApps(projectId: string | null): Promise<AppInfo[]>;
+  listAppDrafts(projectId: string, threadId: string | null): Promise<string[]>;
+  openAppDraft(threadId: string, name: string, template?: string): Promise<void>;
+  appProposalChecks(id: string, scheme: "light" | "dark", run?: "samples" | "real"): Promise<AppCheckEvidence[]>;
   /** Enabled reviewed plugin commands only. Listing never sends a turn. */
   listPluginCommands(): Promise<import("./plugin-parts").PluginCommandView[]>;
   appThemeState(): Promise<import("./app-themes").AppThemeState>;
@@ -1781,6 +1815,11 @@ export interface UnskilledApi {
   designActionNote(action: string): Promise<string>;
   /** Detect: lint a saved design page (contrast, targets, slop; the style's `Lint allows:` exempt) for the canvas's pins. */
   designDetect(threadId: string, rel: string): Promise<DesignDetect>;
+  designReviewSizes(threadId: string, page: string): Promise<SizeReview[]>;
+  designReview(threadId: string, page: string): Promise<DesignReview>;
+  designApprove(threadId: string, review: DesignReview): Promise<string>;
+  designToCreator(threadId: string, snapshot: string, size: { width: number; height: number }): Promise<{ thread: Thread; app: AppInfo }>;
+  designFlows(threadId: string, save?: PrototypeFlow): Promise<PrototypeFlow[]>;
   /** Save a pasted reference image (png/jpg/webp/gif, ≤ 10 MB) into a design thread's `refs/`; its path relative to the thread's folder. */
   designSaveRef(threadId: string, bytes: Uint8Array): Promise<string>;
   /** Capture a rectangle of the app window (CSS px, e.g. the canvas with a Draw overlay) as a PNG reference image in a design thread's `refs/`: its path relative to the thread's folder and a small data-URL thumbnail. */

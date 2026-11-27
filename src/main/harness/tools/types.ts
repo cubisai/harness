@@ -11,6 +11,8 @@ export type ToolAccess = "read" | "edit" | "shell" | "web" | "control";
 export interface ToolContext {
   /** The thread's working folder; relative paths resolve against it. */
   cwd: string;
+  /** External Code Mode file tools are confined to this canonical directory. */
+  readRoot?: string;
   signal: AbortSignal;
   /** Where bounded tool output is saved in full, one file per call. */
   outputDir: string;

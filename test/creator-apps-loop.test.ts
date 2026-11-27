@@ -299,8 +299,17 @@ describe("Creator app tools", () => {
     expect(existsSync(join(env.draftsDir, "clock"))).toBe(true);
     expect(opened).toEqual([]);
     env.store.updateThread(env.thread.id, { permissionMode: "plan" });
+    expect((await byName[CREATOR_APP_PREVIEW_TOOL]!.run({ name: "clock", template: "widget" })).isError).toBe(true);
+    expect(readdirSync(join(env.draftsDir, "clock"))).toEqual([]);
     expect((await byName[CREATOR_APP_PREVIEW_TOOL]!.run({ name: "later" })).isError).toBe(true);
     expect(existsSync(join(env.draftsDir, "later"))).toBe(false);
+    env.store.updateThread(env.thread.id, { permissionMode: "ask" });
+    const seeded = await byName[CREATOR_APP_PREVIEW_TOOL]!.run({ name: "clock", template: "widget" });
+    expect(JSON.parse(seeded.text)).toMatchObject({ seeded: "widget", shown: true });
+    const entry = join(env.draftsDir, "clock", "index.html");
+    writeFileSync(entry, "<h1>Authored</h1>");
+    await byName[CREATOR_APP_PREVIEW_TOOL]!.run({ name: "clock", template: "dashboard" });
+    expect(readFileSync(entry, "utf8")).toBe("<h1>Authored</h1>");
   });
 
   it("reports a broken draft instead of showing it, and won't seed in Plan mode", async () => {
@@ -327,7 +336,7 @@ describe("Creator app tools", () => {
     expect(withImage.imagePng).toBe(Buffer.from("png").toString("base64"));
     const check = vi.fn(async () => ({ ok: true, errors: [], calls: [], empty: false, text: "", size: { width: 0, height: 0 }, timedOut: false }));
     const noImage = await toolsFor(env, { takeImage: () => false, check }).byName[CREATOR_APP_CHECK_TOOL]!.run({ name: "sales" });
-    expect(check).toHaveBeenCalledWith(`d~${env.thread.id}~sales`, expect.stringContaining("cubiq-app://a/"), { scheme: "light", screenshot: false, size: { width: 900, height: 700 } });
+    expect(check).toHaveBeenCalledWith(`d~${env.thread.id}~sales`, expect.stringContaining("cubiq-app://a/"), expect.objectContaining({ sample: expect.objectContaining({ mode: "data" }), disposableStore: true, scheme: "light", screenshot: false, size: { width: 900, height: 700 } }));
     expect(noImage.imagePng).toBeUndefined();
     expect(noImage.text).toContain("No screenshot");
   });

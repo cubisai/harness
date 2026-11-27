@@ -32,23 +32,25 @@ function gated(browser: BrowserBackend, fn: () => Promise<ToolOutput>): Promise<
  */
 export class TargetLock {
   private chain: Promise<unknown> = Promise.resolve();
-  private owner: string | null = null;
+  private owner: { threadId: string; turn?: AbortSignal } | null = null;
 
-  constructor(private busy: (threadId: string) => boolean = () => false) {}
+  constructor(private busy: (threadId: string, turn?: AbortSignal) => boolean = () => false) {}
 
   /** Who drove the target last, if anyone. */
   get current(): string | null {
-    return this.owner;
+    return this.owner?.threadId ?? null;
   }
 
   /** Run a mutation for `threadId` after every earlier one has finished. */
-  run<T>(threadId: string | undefined, fn: () => Promise<T>): Promise<T> {
+  run<T>(threadId: string | undefined, fn: () => Promise<T>, turn?: AbortSignal, caller?: AbortSignal): Promise<T> {
     const next = this.chain.then(() => {
+      caller?.throwIfAborted();
+      if (threadId && turn && (turn.aborted || !this.busy(threadId, turn))) throw new Error("The originating browser turn ended.");
       const owner = this.owner;
-      if (threadId && owner && owner !== threadId && this.busy(owner)) {
+      if (owner && owner.threadId !== threadId && this.busy(owner.threadId, owner.turn)) {
         throw new Error("The browser pane is in use by another thread's running turn. Wait for it to finish, or carry on without the browser.");
       }
-      if (threadId) this.owner = threadId;
+      if (threadId) this.owner = { threadId, turn };
       return fn();
     });
     // A failed mutation must not block the ones queued behind it.
@@ -89,12 +91,21 @@ function define<S extends z.ZodRawShape>(t: HarnessTool<S>): HarnessTool {
  */
 export function browserTools(
   target: BrowserBackend | BrowserController,
-  opts: { busy?: (threadId: string) => boolean; takeImage?: (threadId: string) => boolean } = {},
+  opts: { busy?: (threadId: string) => boolean; takeImage?: (threadId: string) => boolean; turnSignal?(id: string): AbortSignal | undefined; onOwner?(id: string, signal: AbortSignal): void } = {},
 ): HarnessTool[] {
   const browser = asBackend(target);
-  const lock = new TargetLock(opts.busy);
+  const { turnSignal } = opts;
+  const lock = new TargetLock(turnSignal ? (id, turn) => turnSignal(id) === turn : opts.busy);
   /** A page-changing tool: opened if needed, then queued on the target and owned by the calling thread. */
-  const acting = (ctx: ToolContext | undefined, fn: () => Promise<ToolOutput>): Promise<ToolOutput> => gated(browser, () => lock.run(ctx?.threadId, fn));
+  const acting = (ctx: ToolContext | undefined, fn: () => Promise<ToolOutput>): Promise<ToolOutput> => {
+    const id = ctx?.threadId;
+    const turn = id ? turnSignal?.(id) : undefined;
+    if (id && turnSignal && !turn) return Promise.resolve({ text: "The originating browser turn ended.", isError: true });
+    return gated(browser, () => lock.run(id, () => {
+      if (id && turn) opts.onOwner?.(id, turn);
+      return fn();
+    }, turn, ctx?.signal));
+  };
   return [
     define({
       name: "browser_open",

@@ -19,7 +19,7 @@ export interface CodeBrokerOptions {
   /** Puts a row in the thread. */
   emit: (event: ThreadEvent) => void;
   /** Gates one call (ask mode asks); absent = every call runs. */
-  authorize?: (tool: LoopTool, args: Record<string, unknown>, summary: string) => Promise<Authorization>;
+  authorize?: (tool: LoopTool, args: Record<string, unknown>, summary: string, signal: AbortSignal) => Promise<Authorization>;
   outputDir: string;
   /** The row a script's calls nest under, from the id the script runs as; absent = that id. Undefined = top-level rows. May be async (the driver's row is awaited lazily, on the first emission). */
   parentOf?: (parentId: string) => string | undefined | Promise<string | undefined>;
@@ -78,7 +78,10 @@ export function createCodeBroker(o: CodeBrokerOptions): CodeToolOptions["broker"
     } catch {
       summary = tool.displayName;
     }
-    const parentId = o.parentOf ? await o.parentOf(scriptId) : scriptId;
+    const serial = runsAlone(tool) ? serialTurn() : null;
+    let parentId: string | undefined;
+    try { parentId = o.parentOf ? await o.parentOf(scriptId) : scriptId; }
+    catch (err) { serial?.done(); throw err; }
     const nest = parentId ? { parentId } : {};
     // The row goes up before the permission ask, so a refused call shows in the thread too.
     const toolUseId = `${parentId ?? scriptId}:${++childCalls}`;
@@ -96,19 +99,19 @@ export function createCodeBroker(o: CodeBrokerOptions): CodeToolOptions["broker"
       if (shown) o.emit(e);
     };
     emit({ kind: "tool-use", toolUseId, name: tool.displayName, summary, ...nest });
-    const auth = o.authorize ? await o.authorize(tool, args, summary) : ({ ok: true } as const);
-    if (!auth.ok) {
-      emit({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(auth.reason), ...nest });
-      return { text: auth.reason, isError: true };
-    }
-    const serial = runsAlone(tool) ? serialTurn() : null;
-    if (serial) await serial.ready;
-    if (!(await acquire(signal))) {
-      serial?.done();
-      emit({ kind: "tool-result", toolUseId, isError: true, summary: NOT_STARTED, ...nest });
-      return { text: NOT_STARTED, isError: true };
-    }
+    let acquired = false;
     try {
+      if (signal.aborted) throw new Error(NOT_STARTED);
+      if (o.authorize) {
+        const auth = await o.authorize(tool, args, summary, signal);
+        if (!auth.ok) {
+          emit({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(auth.reason), ...nest });
+          return { text: auth.reason, isError: true };
+        }
+      }
+      if (serial) await serial.ready;
+      acquired = await acquire(signal);
+      if (!acquired || signal.aborted) throw new Error(NOT_STARTED);
       // `script` asks read, glob and grep for plain values; the row shows a bounded copy of the text.
       const result = await tool.run(args, { id: toolUseId, signal, onOutput: () => {}, script: true });
       // A data call's text is only a UI preview: cut it in memory, never a spill file. An unlisted call (41+) skips that work too.
@@ -116,11 +119,11 @@ export function createCodeBroker(o: CodeBrokerOptions): CodeToolOptions["broker"
       emit({ kind: "tool-result", toolUseId, isError: result.isError === true, summary: oneLine(text), payload: result.display?.result ?? text, ...nest });
       return result.data !== undefined ? { text: result.text, isError: result.isError === true, data: result.data } : { text, isError: result.isError === true };
     } catch (err) {
-      const text = `${tool.displayName} failed: ${err instanceof Error ? err.message : String(err)}`;
+      const text = signal.aborted ? NOT_STARTED : `${tool.displayName} failed: ${err instanceof Error ? err.message : String(err)}`;
       emit({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(text), ...nest });
       return { text, isError: true };
     } finally {
-      release();
+      if (acquired) release();
       serial?.done();
     }
   };

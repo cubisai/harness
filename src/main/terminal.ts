@@ -26,6 +26,7 @@ export interface TerminalEvents {
  */
 export class TerminalManager {
   private terms = new Map<string, IPty>();
+  private opening = new Map<string, Promise<void>>();
 
   constructor(private events: TerminalEvents) {}
 
@@ -34,7 +35,16 @@ export class TerminalManager {
       this.resize(id, cols, rows);
       return;
     }
-    const pty = await import("node-pty");
+    const existing = this.opening.get(id);
+    if (existing) { await existing; this.resize(id, cols, rows); return; }
+    const opening = import("node-pty").then((pty) => {
+      if (this.opening.get(id) === opening) this.spawn(pty, id, cwd, cols, rows);
+    });
+    this.opening.set(id, opening);
+    try { await opening; } finally { if (this.opening.get(id) === opening) this.opening.delete(id); }
+  }
+
+  private spawn(pty: typeof import("node-pty"), id: string, cwd: string | null, cols: number, rows: number): void {
     const shell = defaultShell();
     const term = pty.spawn(shell.file, shell.args, {
       name: "xterm-256color",
@@ -44,8 +54,9 @@ export class TerminalManager {
       env: { ...process.env, TERM_PROGRAM: "CubiQ" } as Record<string, string>,
     });
     this.terms.set(id, term);
-    term.onData((d) => this.events.data(id, d));
+    term.onData((d) => { if (this.terms.get(id) === term) this.events.data(id, d); });
     term.onExit(({ exitCode }) => {
+      if (this.terms.get(id) !== term) return;
       this.terms.delete(id);
       this.events.exit(id, exitCode);
     });
@@ -64,11 +75,13 @@ export class TerminalManager {
   }
 
   close(id: string): void {
+    this.opening.delete(id);
     this.terms.get(id)?.kill();
     this.terms.delete(id);
   }
 
   dispose(): void {
+    this.opening.clear();
     for (const t of this.terms.values()) t.kill();
     this.terms.clear();
   }
