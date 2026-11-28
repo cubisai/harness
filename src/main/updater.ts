@@ -7,7 +7,7 @@ export interface UpdaterBackend {
   autoInstallOnAppQuit: boolean;
   logger: unknown;
   checkForUpdates(): Promise<unknown>;
-  quitAndInstall(): void;
+  quitAndInstall(): void | Promise<void>;
   on(event: "update-downloaded", listener: (info: { version: string; releaseNotes?: unknown }) => void): unknown;
   on(event: "error", listener: (err: Error) => void): unknown;
 }
@@ -72,8 +72,8 @@ export class Updater {
     }
   }
 
-  install(): void {
-    if (this.backend && this.ready) this.backend.quitAndInstall();
+  async install(): Promise<void> {
+    if (this.backend && this.ready) await this.backend.quitAndInstall();
   }
 
   stop(): void {

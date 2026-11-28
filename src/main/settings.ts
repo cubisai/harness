@@ -61,6 +61,8 @@ interface FileShape {
  */
 export class SettingsStore {
   private data: FileShape;
+  /** Invalidate extraction when any settings entry point changes memory permissions. */
+  onMemoryChange?: () => void;
 
   constructor(
     private file: string,
@@ -226,6 +228,7 @@ export class SettingsStore {
     if (patch.antigravity === false || !ackIsCurrent(next.antigravityAck)) next.antigravity = false;
     else if (patch.antigravity === true) next.antigravity = true;
     this.data.settings = next;
+    if (patch.memory) this.onMemoryChange?.();
     this.write();
     return next;
   }

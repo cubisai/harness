@@ -14,7 +14,7 @@ import type { LoopTool } from "../src/main/harness/loop";
 import { startToolServer, withCode } from "../src/main/mcp-http";
 import { SettingsStore, type SecretBox } from "../src/main/settings";
 import type { ThreadEvent } from "../src/shared/types";
-import { closeAfter, tempDir } from "./helpers";
+import { closeAfter, deferred, tempDir } from "./helpers";
 
 const signal = (): AbortSignal => new AbortController().signal;
 
@@ -78,6 +78,27 @@ describe("createCodeBroker", () => {
       { kind: "tool-result", toolUseId: "p1:1", isError: true, summary: "denied here", parentId: "p1" },
     ]);
     expect(ran).toBe(false);
+  });
+
+  it("settles a withdrawn permission as stopped rather than denied", async () => {
+    const events: ThreadEvent[] = [];
+    const stop = new AbortController();
+    const broker = createCodeBroker({
+      tools: () => [fake("write")],
+      emit: (e) => events.push(e),
+      outputDir: tempDir(),
+      authorize: (_tool, _args, _summary, signal) => new Promise((resolve) => {
+        signal.addEventListener("abort", () => resolve({ ok: false, reason: "User denied" }), { once: true });
+      }),
+    });
+    const pending = broker("write", {}, "p1", stop.signal);
+    stop.abort();
+    const result = await pending;
+    expect(result).toEqual({ isError: true, text: expect.stringMatching(/Not run:.*stopped/) });
+    expect(events).toEqual([
+      expect.objectContaining({ kind: "tool-use", toolUseId: "p1:1" }),
+      expect.objectContaining({ kind: "tool-result", toolUseId: "p1:1", isError: true, summary: result.text }),
+    ]);
   });
 
   it("runs at most MAX_IN_FLIGHT of one script's calls at once", async () => {
@@ -220,6 +241,22 @@ describe("createCodeServer", () => {
     expect(second.text.endsWith("=> 42")).toBe(true);
     const other = await run(codes, "u", "return load('k') === undefined");
     expect(other.text.endsWith("=> true")).toBe(true);
+  });
+
+  it.each(["stopped", "replaced"])("discards state and widgets when the originating turn is %s while waiting for its row", async (ending) => {
+    const pending = deferred<void>();
+    let owner = new AbortController();
+    let row: string | undefined;
+    const { codes, events } = setup({ uiBlocks: () => true, turnSignal: () => owner.signal, parentWaitMs: 2000, parentOf: () => { pending.resolve(); return row; } });
+    await run(codes, "t", "store('value', 1)");
+    const old = run(codes, "t", `store('value', 2); show('stat', { stats: [{ label: 'Old', value: '2' }] });`);
+    await pending.promise;
+    if (ending === "stopped") owner.abort();
+    owner = new AbortController();
+    row = "next-turn-row";
+    expect((await old).isError).toBe(true);
+    expect(events).toEqual([]);
+    expect((await run(codes, "t", "return load('value')")).text).toBe("=> 1");
   });
 
   it("boots the sandbox immediately without waiting on parentOf when no child calls emit, and skips child spill files", async () => {

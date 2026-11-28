@@ -104,6 +104,8 @@ export function createCodeBroker(o: CodeBrokerOptions): CodeToolOptions["broker"
       if (signal.aborted) throw new Error(NOT_STARTED);
       if (o.authorize) {
         const auth = await o.authorize(tool, args, summary, signal);
+        // Withdrawing an open permission resolves it as a denial; nobody clicked Deny.
+        if (signal.aborted) throw new Error(NOT_STARTED);
         if (!auth.ok) {
           emit({ kind: "tool-result", toolUseId, isError: true, summary: oneLine(auth.reason), ...nest });
           return { text: auth.reason, isError: true };

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import type { UpdaterBackend } from "./updater";
 
 /**
@@ -32,7 +33,7 @@ export interface SwapDeps {
   sha512(path: string): Promise<string>;
   /** Runs a command (no shell); rejects on a non-zero exit. */
   run(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }>;
-  spawnDetached(cmd: string, args: string[]): void;
+  spawnDetached(cmd: string, args: string[]): Promise<void>;
   writeFile(path: string, text: string): void;
   /** Empties and recreates a directory. */
   resetDir(path: string): void;
@@ -76,6 +77,18 @@ exit 0
 
 type Listener = (arg: never) => void;
 
+/** A ChildProcess handle alone doesn't mean the OS accepted the launch. */
+export function spawnSwapHelper(cmd: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
 export class MacSwapBackend implements UpdaterBackend {
   autoDownload = true;
   autoInstallOnAppQuit = true;
@@ -84,11 +97,12 @@ export class MacSwapBackend implements UpdaterBackend {
   /** The unpacked bundle waiting to replace the running one. */
   private staged: string | null = null;
   private busy = false;
+  private launching = false;
   private swapped = false;
 
   constructor(private deps: SwapDeps) {
     deps.onWillQuit(() => {
-      if (this.autoInstallOnAppQuit) this.swap(false);
+      if (this.autoInstallOnAppQuit) void this.swap(false).catch((err) => this.emit("error", err));
     });
   }
 
@@ -139,18 +153,23 @@ export class MacSwapBackend implements UpdaterBackend {
     }
   }
 
-  quitAndInstall(): void {
-    if (this.swap(true)) this.deps.quit();
+  async quitAndInstall(): Promise<void> {
+    if (await this.swap(true)) this.deps.quit();
   }
 
   /** Starts the helper once; it does the swap after this process exits. */
-  private swap(relaunch: boolean): boolean {
-    if (!this.staged || this.swapped) return false;
+  private async swap(relaunch: boolean): Promise<boolean> {
+    if (!this.staged || this.swapped || this.launching) return false;
     const script = `${this.deps.stagingDir}/swap.sh`;
-    this.deps.writeFile(script, SWAP_SCRIPT);
-    this.deps.spawnDetached("/bin/sh", [script, String(this.deps.pid), this.deps.appPath, this.staged, relaunch ? "1" : "0"]);
-    this.swapped = true;
-    return true;
+    this.launching = true;
+    try {
+      this.deps.writeFile(script, SWAP_SCRIPT);
+      await this.deps.spawnDetached("/bin/sh", [script, String(this.deps.pid), this.deps.appPath, this.staged, relaunch ? "1" : "0"]);
+      this.swapped = true;
+      return true;
+    } finally {
+      this.launching = false;
+    }
   }
 }
 

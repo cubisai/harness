@@ -6,12 +6,23 @@ type Schema = Record<string, unknown>;
 /** How many object levels render inline before falling back to a record. */
 const MAX_DEPTH = 4;
 
+// Examples for CubiQ's script APIs, shown only when the script asks about that tool.
+const examples = new Map<string, string>([
+  ["read", 'await tools.read({ path: "README.md", offset: 1, limit: 20 })'],
+  ["glob", 'await tools.glob({ pattern: "src/**/*.ts", limit: 20 })'],
+  ["grep", 'await tools.grep({ pattern: "TODO", output_mode: "content", limit: 10 })'],
+  ["search_tools", 'const { matches, unavailable } = await tools.search_tools({ query: "list_tables", limit: 1 })'],
+  ["call_mcp_tool", 'await tools.call_mcp_tool({ server: "db", tool: "list_tables", arguments: {} }) // use the server, tool and schema from search_tools'],
+]);
+
 /** `declare function <name>(args: ...)`, documented with the tool's description. */
 export function toTsDeclaration(name: string, description: string, schema: unknown, returns = "string"): string {
   const root = isSchema(schema) ? schema : null;
   const args = root && properties(root).length ? `args: ${objectType(root, 0)}` : "args?: Record<string, never>";
   const summary = firstLine(description);
-  return `${summary ? `/** ${escape(summary)} */` : "/** */"}\ndeclare function ${name}(${args}): Promise<${returns}>;`;
+  const declaration = `${summary ? `/** ${escape(summary)} */` : "/** */"}\ndeclare function ${name}(${args}): Promise<${returns}>;`;
+  const example = examples.get(name);
+  return example ? `${declaration}\n// Example: ${example}` : declaration;
 }
 
 /** An inline object type; objects nested deeper than MAX_DEPTH fall back to a record. */

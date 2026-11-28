@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MacSwapBackend, SWAP_SCRIPT, bundlePath, isAdHocSigned, notesText, type FoundUpdate, type SwapDeps } from "../src/main/mac-swap-updater";
+import { MacSwapBackend, SWAP_SCRIPT, bundlePath, isAdHocSigned, notesText, spawnSwapHelper, type FoundUpdate, type SwapDeps } from "../src/main/mac-swap-updater";
 import { Updater } from "../src/main/updater";
 
 const zipName = `CubiQ-0.2.0-${process.arch === "arm64" ? "arm64-" : ""}mac.zip`;
@@ -35,7 +35,7 @@ function fakeDeps(over: Partial<SwapDeps> = {}) {
       if (cmd.endsWith("plutil")) return { stdout: `${plist[args[1]!]}\n`, stderr: "" };
       return { stdout: "", stderr: "" };
     },
-    spawnDetached: (cmd, args) => void calls.spawned.push([cmd, ...args]),
+    spawnDetached: async (cmd, args) => void calls.spawned.push([cmd, ...args]),
     writeFile: (path, text) => void (calls.files[path] = text),
     resetDir: () => {},
     exists: () => true,
@@ -56,10 +56,32 @@ describe("MacSwapBackend", () => {
     const backend = new MacSwapBackend(deps), write = deps.writeFile;
     await backend.checkForUpdates();
     deps.writeFile = () => { throw new Error("disk full"); };
-    expect(() => backend.quitAndInstall()).toThrow("disk full");
+    await expect(backend.quitAndInstall()).rejects.toThrow("disk full");
     deps.writeFile = write;
-    backend.quitAndInstall();
-    backend.quitAndInstall();
+    await backend.quitAndInstall();
+    await backend.quitAndInstall();
+    expect(calls.spawned).toHaveLength(1);
+    expect(calls.quits).toBe(1);
+  });
+  it("keeps Restart usable after OS spawn refusal, and launches once across concurrent clicks and quit", async () => {
+    const { deps, calls, quitApp } = fakeDeps();
+    deps.spawnDetached = () => spawnSwapHelper(join(deps.stagingDir, "absent-qa-helper"), []);
+    const updater = new Updater(new MacSwapBackend(deps), "0.1.0", () => true, () => {});
+    await updater.check();
+    await expect(updater.install()).rejects.toThrow(/ENOENT/);
+    expect(calls.quits).toBe(0);
+    expect(updater.status().ready).toBe("0.2.0");
+    let acknowledge!: () => void;
+    deps.spawnDetached = (cmd, args) => {
+      calls.spawned.push([cmd, ...args]);
+      return new Promise((resolve) => { acknowledge = resolve; });
+    };
+    const first = updater.install(), second = updater.install();
+    quitApp();
+    expect(calls.quits).toBe(0);
+    acknowledge();
+    await Promise.all([first, second]);
+    quitApp();
     expect(calls.spawned).toHaveLength(1);
     expect(calls.quits).toBe(1);
   });
@@ -73,11 +95,11 @@ describe("MacSwapBackend", () => {
     expect(calls.run[0]).toEqual(["/usr/bin/ditto", "-x", "-k", `/stage/${zipName}`, "/stage/unpacked"]);
     expect(calls.run.at(-1)).toEqual(["/usr/bin/codesign", "--verify", "--deep", "--strict", "/stage/unpacked/CubiQ.app"]);
     expect(ready).toEqual([{ version: "0.2.0", releaseNotes: "<ul><li>New thing</li></ul>" }]);
-    backend.quitAndInstall();
+    await backend.quitAndInstall();
     expect(calls.files["/stage/swap.sh"]).toBe(SWAP_SCRIPT);
     expect(calls.spawned).toEqual([["/bin/sh", "/stage/swap.sh", "4242", "/Applications/CubiQ.app", "/stage/unpacked/CubiQ.app", "1"]]);
     expect(calls.quits).toBe(1);
-    backend.quitAndInstall(); // the helper starts once
+    await backend.quitAndInstall(); // the helper starts once
     expect(calls.spawned).toHaveLength(1);
   });
 
@@ -110,7 +132,7 @@ describe("MacSwapBackend", () => {
       backend.on("error", (e: Error) => void errors.push(e));
       await expect(backend.checkForUpdates(), name).rejects.toThrow();
       expect(errors, name).toHaveLength(1);
-      backend.quitAndInstall();
+      await backend.quitAndInstall();
       expect(f.calls.spawned, name).toEqual([]);
     }
   });

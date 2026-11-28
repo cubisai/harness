@@ -698,6 +698,10 @@ export class DocumentMutationService {
     return join(this.journalDir, `${documentId}.wal`);
   }
 
+  hasJournal(documentId: string): boolean {
+    return existsSync(this.journalPath(documentId));
+  }
+
   private historyPath(documentId: string): string {
     return join(this.journalDir, `${documentId}.history.json`);
   }

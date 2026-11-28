@@ -519,20 +519,30 @@ export class McpAuth {
     const provider = new VaultProvider(this.deps.vault, key, spec, "http://127.0.0.1/callback", this.deps.openExternal, work.assert, () => this.now());
     const clientInformation = provider.clientInformation() ?? (o.client as OAuthClientInformationMixed | undefined);
     if (!clientInformation) return null;
+    let responseStatus: number | undefined;
     try {
+      const guarded = this.guardedWorkFetch(spec, work);
       const tokens = await authWait(refreshAuthorization(discovery.authorizationServerUrl, {
         metadata: discovery.authorizationServerMetadata,
         clientInformation,
         refreshToken,
         ...(discovery.resourceMetadata?.resource && { resource: new URL(discovery.resourceMetadata.resource) }),
-        fetchFn: this.guardedWorkFetch(spec, work),
+        fetchFn: async (url, init) => {
+          const response = await guarded(url, init);
+          responseStatus = response.status;
+          return response;
+        },
       }), work.signal);
       work.assert();
       provider.saveTokens(tokens);
       return tokens.access_token;
     } catch (err) {
       try { work.assert(); } catch { return null; }
-      if (err instanceof InvalidGrantError) this.deps.vault.update(key, { oauth: { ...this.oauth(key), tokens: undefined } });
+      // The SDK classifies the JSON error independently of HTTP status. A rate limit or
+      // server outage is not evidence of revocation, even if the body says invalid_grant.
+      if ((responseStatus === 400 || responseStatus === 401) && err instanceof InvalidGrantError) {
+        this.deps.vault.update(key, { oauth: { ...this.oauth(key), tokens: undefined } });
+      }
       return null;
     }
   }

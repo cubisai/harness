@@ -1,6 +1,6 @@
 import type { ChildProcess } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { constants, readFileSync } from "node:fs";
+import { copyFile, mkdir, mkdtemp, open, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { IssueComment, IssueDetail, IssueResult, IssueState, IssueSummary, IssueTracker, IssueType } from "../shared/types";
@@ -373,6 +373,31 @@ function withAttachments(body: string, links: string[]): string {
   return links.length ? `${body.trim()}\n\n## Attachments\n${links.map((l) => `- ${l}`).join("\n")}` : body.trim();
 }
 
+/** Preserve the original basename, including on case-insensitive filesystems. */
+async function copyLocalAttachment(path: string, dir: string): Promise<string> {
+  const name = basename(path);
+  try {
+    await copyFile(path, join(dir, name), constants.COPYFILE_EXCL);
+    return encodeURIComponent(name);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+  }
+  const separate = await mkdtemp(join(dir, "file-"));
+  await copyFile(path, join(separate, name));
+  return `${basename(separate)}/${encodeURIComponent(name)}`;
+}
+
+/** A failed write must not leave a readable, truncated issue or remove an existing file. */
+async function writeNewIssue(file: string, text: string): Promise<void> {
+  const handle = await open(file, "wx");
+  try {
+    await handle.writeFile(text).finally(() => handle.close());
+  } catch (err) {
+    await rm(file, { force: true });
+    throw err;
+  }
+}
+
 /**
  * File a new issue, labelled with its type and `needs-triage`. GitHub, GitLab and
  * Gitea go through their CLI's `api` command with a JSON body file; local issues
@@ -408,16 +433,21 @@ export async function createIssue(projectDir: string, issue: NewIssue, run: CliR
         catch (err) { if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err; }
         number++;
       }
-      const links: string[] = [];
-      if (sized.length) {
-        for (const path of sized) {
-          await copyFile(path, join(dir, "attachments", id, basename(path)));
-          links.push(fileLink(basename(path), `attachments/${id}/${encodeURIComponent(basename(path))}`));
+      const reserved = join(attachmentsDir, id);
+      try {
+        const links: string[] = [];
+        for (const path of new Set(sized)) {
+          const link = await copyLocalAttachment(path, reserved);
+          links.push(fileLink(basename(path), `attachments/${id}/${link}`));
         }
+        const date = today.toISOString().slice(0, 10);
+        const front = [`id: ${number}`, `title: ${issue.title}`, `type: ${labels[0]}`, `state: ${labels[1]}`, `created: ${date}`];
+        await writeNewIssue(join(dir, `${id}-${issueSlug(issue.title)}.md`), `---\n${front.join("\n")}\n---\n\n${withAttachments(issue.body, links)}\n`);
+      } catch (err) {
+        // Only this create acquired this directory; another in-flight create has its own number.
+        await rm(reserved, { recursive: true, force: true });
+        throw err;
       }
-      const date = today.toISOString().slice(0, 10);
-      const front = [`id: ${number}`, `title: ${issue.title}`, `type: ${labels[0]}`, `state: ${labels[1]}`, `created: ${date}`];
-      await writeFile(join(dir, `${id}-${issueSlug(issue.title)}.md`), `---\n${front.join("\n")}\n---\n\n${withAttachments(issue.body, links)}\n`, { flag: "wx" });
       return { ok: true, tracker, value: { number, title: issue.title, labels, commentCount: 0, type: issue.type, state: "needs-triage", leftOut } };
     }
     if (tracker !== "gitlab") leftOut.push(...sized.map((p) => `${basename(p)} (${CLI[tracker].command} can't upload files)`));

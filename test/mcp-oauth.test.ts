@@ -6,7 +6,7 @@ import { McpVault } from "../src/main/mcp/vault";
 import type { SecretBox } from "../src/main/settings";
 import type { McpServerSpec } from "../src/shared/types";
 import { startMockOAuthServer, type MockOAuthServer } from "./fixtures/mock-oauth-server";
-import { tempDir } from "./helpers";
+import { deferred, tempDir } from "./helpers";
 
 type RemoteSpec = Extract<McpServerSpec, { url: string }>;
 type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
@@ -49,7 +49,7 @@ interface Harness {
  * awaiting the response: that tab only answers after the code is exchanged,
  * which happens after connect() gets control back.
  */
-async function harness(options: { boxAvailable?: boolean; iss?: string | null; state?: string } = {}): Promise<Harness> {
+async function harness(options: { boxAvailable?: boolean; iss?: string | null; state?: string; fetchFn?: FetchLike } = {}): Promise<Harness> {
   const server = await startMockOAuthServer();
   servers.push(server);
   const file = join(tempDir(), "s.json");
@@ -67,7 +67,7 @@ async function harness(options: { boxAvailable?: boolean; iss?: string | null; s
     if (options.iss !== null) redirect.searchParams.set("iss", options.iss ?? server.base);
     void fetch(redirect).then((r) => r.text()).catch(() => undefined);
   };
-  const auth = new McpAuth({ vault, openExternal, now: () => state.now, callbackTimeoutMs: 3000 });
+  const auth = new McpAuth({ vault, openExternal, fetchFn: options.fetchFn, now: () => state.now, callbackTimeoutMs: 3000 });
   return { server, auth, vault, spec, key: "global:test", file, opened, state };
 }
 
@@ -188,6 +188,45 @@ describe("guardedFetch", () => {
 });
 
 describe("McpAuth refresh", () => {
+  it.each([429, 503])("HTTP %i cannot revoke a grant, even if its error body says invalid_grant", async (status) => {
+    let outage = false;
+    const h = await harness({ fetchFn: (url, init) => outage
+      ? Promise.resolve(Response.json({ error: "invalid_grant" }, { status }))
+      : fetch(url, init) });
+    expect(await h.auth.connect(h.key, h.spec)).toEqual({ ok: true });
+    const issued = h.vault.get(h.key)!.oauth!.tokens!.obtained_at;
+    outage = true;
+    h.state.now = issued + 3_000_000;
+    expect(await h.auth.accessToken(h.key, h.spec)).toBe("at-1");
+    h.state.now = issued + 3_600_000;
+    expect(await h.auth.accessToken(h.key, h.spec)).toBeNull();
+    expect(h.vault.get(h.key)!.oauth!.tokens!.refresh_token).toBe("rt-1");
+    outage = false;
+    expect(await h.auth.accessToken(h.key, h.spec)).toBe("at-2");
+  });
+
+  it("sign-out wins over a successful refresh response already on its way back", async () => {
+    const received = deferred<void>(), release = deferred<void>();
+    let hold = false;
+    const h = await harness({ fetchFn: async (url, init) => {
+      const response = await fetch(url, init);
+      if (hold && new URL(url).pathname === "/token") {
+        received.resolve();
+        await release.promise;
+      }
+      return response;
+    } });
+    expect(await h.auth.connect(h.key, h.spec)).toEqual({ ok: true });
+    h.state.now += 3_000_000;
+    hold = true;
+    const token = h.auth.accessToken(h.key, h.spec);
+    await received.promise;
+    try { await h.auth.disconnect(h.key, h.spec); } finally { release.resolve(); }
+    expect(await token).toBeNull();
+    expect(h.auth.status(h.key).signedIn).toBe(false);
+    expect(h.vault.get(h.key)?.oauth?.tokens).toBeUndefined();
+  });
+
   it("retains refresh credentials through an outage without returning an expired access token", async () => {
     const h = await harness();
     await h.auth.connect(h.key, h.spec);

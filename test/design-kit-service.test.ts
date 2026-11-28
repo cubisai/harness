@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { DesignKitOption } from "../src/shared/design-mutation";
@@ -57,7 +57,8 @@ function setup(designSystem = "kit:foundation", project: string | null = tempDir
     broadcast: (u) => updates.push(u),
   });
   let busy = false;
-  const documents = new DesignDocuments({ journalDir: join(tempDir(), "journal"), isBusy: () => busy, debounceMs: 0 });
+  const journalDir = join(tempDir(), "journal");
+  const documents = new DesignDocuments({ journalDir, isBusy: () => busy, debounceMs: 0 });
   open.push(documents);
   const catalog: DesignKitOption[] = [
     { id: "foundation", name: "Foundation", version: "1.0.0", bundled: true, installed: true },
@@ -66,7 +67,7 @@ function setup(designSystem = "kit:foundation", project: string | null = tempDir
   ];
   kits.connect({ documents, pageFile: (_t, rel) => join(root, rel), catalog: () => catalog });
   const write = (rel: string, html: string) => writeFileSync(join(root, rel), html);
-  return { kits, thread, root, project, updates, documents, write, setBusy: (b: boolean) => (busy = b) };
+  return { kits, thread, root, project, updates, documents, journalDir, write, setBusy: (b: boolean) => (busy = b) };
 }
 
 const PAGE = '<!doctype html><html><head><link rel="stylesheet" href="system/tokens.css"><link rel="stylesheet" href="system/ui.css"></head><body><button data-ui="button" data-variant="primary">Go</button><span data-ui="badge">New</span></body></html>';
@@ -241,6 +242,33 @@ describe("tokens from the agent", () => {
     expect(out.isError).toBeFalsy();
     const undone = s.documents.history(s.thread.id, "index.html", join(s.root, "index.html"), { action: "undo" });
     expect(undone.html.replace(/ data-agent-id="[^"]*"/g, "")).toBe(PAGE);
+  });
+
+  it.each([false, true])("keeps the token journal through a failed save and flushes exactly one undo step (reopen: %s)", async (reopen) => {
+    const s = ready(), rel = "index.html", id = s.thread.id, file = join(s.root, rel);
+    s.documents.history(id, rel, file, { action: "status" });
+    renameSync(file, `${file}.original`);
+    mkdirSync(file); // a directory can't be replaced by the page's atomic file rename
+    expect(() => s.kits.applyTokens(id, rel, { "--radius-md": "17px" })).toThrow(/journaled but not saved/);
+    expect(() => s.documents.flushThread(id, s.root)).toThrow(/Not saved: index.html/);
+    const wal = join(s.journalDir, `${documentIdOf(id, rel)}.wal`);
+    expect(readFileSync(wal, "utf8").trim().split("\n")).toHaveLength(2);
+    expect(readFileSync(`${file}.original`, "utf8")).toBe(PAGE);
+    let docs = s.documents;
+    if (reopen) {
+      docs.dispose();
+      docs = new DesignDocuments({ journalDir: s.journalDir, isBusy: () => false });
+      open.push(docs);
+    }
+    rmdirSync(file);
+    renameSync(`${file}.original`, file);
+    if (reopen) docs.flushThread(id, s.root); // review before the canvas reopens the journaled page
+    else expect(docs.history(id, rel, file, { action: "flush" }).status.save).toBe("saved");
+    expect(readFileSync(file, "utf8")).toMatch(/--radius-md:\s*17px/);
+    expect(existsSync(wal)).toBe(false);
+    const undo = docs.history(id, rel, file, { action: "undo" });
+    expect(undo.status).toMatchObject({ save: "saved", canUndo: false });
+    expect(readFileSync(file, "utf8").replace(/ data-agent-id="[^"]*"/g, "")).toBe(PAGE);
   });
 
   it("refuse any name the system doesn't have, changing nothing", async () => {

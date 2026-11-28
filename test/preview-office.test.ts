@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import * as XLSX from "xlsx";
 import { docxToHtml, previewKind, pptxSlides, sanitizeHtml, sheetsFrom } from "../src/main/preview/office";
@@ -110,6 +110,10 @@ class FakeWorker implements WorkerLike {
 
   exit(): void {
     this.exitHandler?.(0);
+  }
+
+  answer(message: unknown): void {
+    this.messageHandler?.(message);
   }
 }
 
@@ -230,6 +234,31 @@ describe("PreviewHost", () => {
     expect(await host.preview("/tmp/a.docx")).toEqual({ ok: false, error: "Preview timed out" });
     expect(workers[0]!.killed).toBe(true);
     host.dispose();
+  });
+
+  it("settles both old previews and ignores their deadline, messages and late exit after replacement", async () => {
+    vi.useFakeTimers();
+    const old = new FakeWorker(() => undefined), next = new FakeWorker(() => undefined);
+    const workers = [old, next];
+    const host = new PreviewHost(() => workers.shift()!, { timeoutMs: 100, stat: async () => ({ mtimeMs: 1, size: 10 }) });
+    try {
+      const first = host.preview("one.docx");
+      await vi.advanceTimersByTimeAsync(40);
+      const second = host.preview("two.docx");
+      await vi.advanceTimersByTimeAsync(60);
+      const timeout = { ok: false, error: "Preview timed out" };
+      expect(await Promise.all([first, second])).toEqual([timeout, timeout]);
+      expect(old.killed).toBe(true);
+      const third = host.preview("one.docx");
+      await vi.advanceTimersByTimeAsync(45);
+      const request = next.posted[0]!;
+      old.answer({ id: request.id, ok: false, error: "stale" });
+      old.exit();
+      expect(next.killed).toBe(false);
+      next.answer(success(request));
+      expect(await third).toMatchObject({ ok: true, result: { kind: "docx" } });
+      expect(await host.preview("one.docx")).toEqual(await third);
+    } finally { host.dispose(); vi.useRealTimers(); }
   });
 
   it("rejects oversized files without forking", async () => {

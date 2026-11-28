@@ -26,7 +26,7 @@ export interface TerminalEvents {
  */
 export class TerminalManager {
   private terms = new Map<string, IPty>();
-  private opening = new Map<string, Promise<void>>();
+  private opening = new Map<string, Promise<IPty | undefined>>();
 
   constructor(private events: TerminalEvents) {}
 
@@ -36,15 +36,19 @@ export class TerminalManager {
       return;
     }
     const existing = this.opening.get(id);
-    if (existing) { await existing; this.resize(id, cols, rows); return; }
+    if (existing) {
+      const term = await existing;
+      if (term && this.terms.get(id) === term) this.resize(id, cols, rows);
+      return;
+    }
     const opening = import("node-pty").then((pty) => {
-      if (this.opening.get(id) === opening) this.spawn(pty, id, cwd, cols, rows);
+      if (this.opening.get(id) === opening) return this.spawn(pty, id, cwd, cols, rows);
     });
     this.opening.set(id, opening);
     try { await opening; } finally { if (this.opening.get(id) === opening) this.opening.delete(id); }
   }
 
-  private spawn(pty: typeof import("node-pty"), id: string, cwd: string | null, cols: number, rows: number): void {
+  private spawn(pty: typeof import("node-pty"), id: string, cwd: string | null, cols: number, rows: number): IPty {
     const shell = defaultShell();
     const term = pty.spawn(shell.file, shell.args, {
       name: "xterm-256color",
@@ -60,6 +64,7 @@ export class TerminalManager {
       this.terms.delete(id);
       this.events.exit(id, exitCode);
     });
+    return term;
   }
 
   write(id: string, data: string): void {
@@ -76,13 +81,13 @@ export class TerminalManager {
 
   close(id: string): void {
     this.opening.delete(id);
-    this.terms.get(id)?.kill();
+    const term = this.terms.get(id);
     this.terms.delete(id);
+    term?.kill();
   }
 
   dispose(): void {
     this.opening.clear();
-    for (const t of this.terms.values()) t.kill();
-    this.terms.clear();
+    for (const id of this.terms.keys()) this.close(id);
   }
 }

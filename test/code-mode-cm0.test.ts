@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { LoopTool } from "../src/main/harness/loop";
 import { createCodeTool, type CodeToolOptions } from "../src/main/harness/tools/code";
 import { createCodeBroker, runsAlone } from "../src/main/harness/tools/code-broker";
+import { deferred } from "./helpers";
 
 const dirs: string[] = [];
 const tmp = (): string => {
@@ -102,6 +103,31 @@ describe("run_code cancellation (CM0)", () => {
 });
 
 describe("run_code state commits (CM0)", () => {
+  it("rejects the entire later commit if concurrent scripts together exceed the quota", async () => {
+    const state = new Map([["owner", '"before"']]);
+    // Each script fits by itself. Wait until both have staged writes from the same snapshot.
+    const laterStaged = deferred<void>();
+    const allowLaterCommit = deferred<void>();
+    const sandbox = codeTool([tool("gate")], async (_name, _args, scriptId) => {
+      if (scriptId === "a") await laterStaged.promise;
+      else {
+        laterStaged.resolve();
+        await allowLaterCommit.promise;
+      }
+      return { text: "ok", isError: false };
+    }, { state });
+    const script = (prefix: string) => `store('owner', '${prefix}'); for (let i=0; i<3; i++) store('${prefix}'+i, 'x'.repeat(200000)); await tools.gate(); return '${prefix}';`;
+    const first = run(sandbox, script("a"), undefined, "a");
+    const second = run(sandbox, script("b"), undefined, "b");
+    const accepted = await first;
+    allowLaterCommit.resolve();
+    const rejected = await second;
+    expect(accepted.text).toBe("=> a");
+    expect(rejected).toMatchObject({ isError: true, text: expect.stringContaining("Session state may not exceed") });
+    expect(state.get("owner")).toBe('"a"');
+    expect([...state.keys()].sort()).toEqual(["a0", "a1", "a2", "owner"]);
+  });
+
   it("two concurrent scripts keep both of their writes", async () => {
     const state = new Map<string, string>();
     const broker: CodeToolOptions["broker"] = async (name) => {

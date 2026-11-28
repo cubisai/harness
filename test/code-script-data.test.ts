@@ -75,6 +75,23 @@ describe("run_code script values", () => {
     expect(res.text).toContain("=> [0,0,0]");
   });
 
+  it("uses the external thread's folder for individual and batched file calls", async () => {
+    const { run } = setup();
+    const other = tempDir();
+    const otherFile = join(other, "README.md");
+    writeFileSync(otherFile, "A different project");
+    const result = await run(`
+      const other = ${JSON.stringify(other)}, file = ${JSON.stringify(otherFile)};
+      const calls = await Promise.allSettled([tools.read({path: file}), tools.glob({path: other, pattern: "*.md"}), tools.grep({path: other, pattern: "project"})]);
+      return { errors: calls.map(call => call.status === 'rejected' ? call.reason.message : null), batch: await tools.readMany(['README.md', file]) };
+    `);
+    const outside = expect.stringContaining("outside the thread's folder");
+    expect(JSON.parse(result.text.slice(3))).toEqual({
+      errors: [outside, outside, outside],
+      batch: [{ path: "README.md", content: "# demo\n" }, { path: otherFile, error: outside }],
+    });
+  });
+
   it("lists a script's first calls as rows and stands one note in for the rest", async () => {
     const { run, events } = setup();
     const res = await run(`
@@ -108,11 +125,17 @@ describe("run_code script values", () => {
     expect(res.text).toContain("=> done");
   });
 
-  it("describes the typed returns to the script", async () => {
-    const { run } = setup();
-    const res = await run(`return describeTool("glob") + "\\n" + describeTool("read");`);
-    expect(res.text).toContain("Promise<string[]>");
-    expect(res.text).toContain("Promise<string /* a file's raw text */ | string[] /* a directory's entries */>");
+  it("keeps search hits short and gives types and examples without running a tool", async () => {
+    const { run, events } = setup();
+    const res = await run(`return { hits: searchTools("glob"), glob: describeTool("glob"), read: describeTool("read"), hidden: describeTool("search_tools") };`);
+    const { hits, glob, read, hidden } = JSON.parse(res.text.slice(3));
+    expect(hits).toContainEqual({ name: "glob", description: expect.any(String) });
+    expect(hits.every((hit: { description: string }) => hit.description.length <= 120)).toBe(true);
+    expect(glob).toContain("Promise<string[]>");
+    expect(glob).toContain('await tools.glob({ pattern: "src/**/*.ts"');
+    expect(read).toContain("Promise<string /* a file's raw text */ | string[] /* a directory's entries */>");
+    expect(hidden).toBeNull();
+    expect(events).toEqual([]);
   });
 
   it("pages files over 2 MB with offset/limit, normalizes CRLF, and batches tolerant reads via readMany", async () => {

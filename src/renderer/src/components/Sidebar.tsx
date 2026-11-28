@@ -462,7 +462,7 @@ export function Sidebar() {
               </button>
             </span>
           </span>
-          <button className="button primary" onClick={() => void api().installUpdate()}>
+          <button className="button primary" onClick={() => void useStore.getState().restartToUpdate()}>
             Restart
           </button>
         </div>

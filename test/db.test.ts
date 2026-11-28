@@ -11,6 +11,28 @@ import type { StoredEvent } from "../src/shared/types";
 import { closeAfter, tempDir } from "./helpers";
 
 describe("Store", () => {
+  it("pins Code Mode at creation and resolves a legacy thread only once across restarts", () => {
+    const file = join(tempDir(), "code-mode.db");
+    const first = new Store(file, () => "on");
+    const project = first.addProject("/fixture");
+    const original = first.createThread(project.id, "fixture", "m", "ask");
+    const legacy = first.createThread(project.id, "fixture", "m", "ask");
+    first.sql.prepare("UPDATE threads SET code_mode = NULL WHERE id = ?").run(legacy.id);
+    first.close();
+
+    const second = new Store(file, () => "off");
+    const fresh = second.createThread(project.id, "fixture", "m", "ask");
+    expect(second.codeMode(original.id)).toBe("on"); // first use after the preference changed
+    expect(second.codeMode(fresh.id)).toBe("off");
+    expect(second.codeMode(legacy.id)).toBe("off");
+    second.close();
+
+    const third = new Store(file, () => "on");
+    expect(third.codeMode(legacy.id)).toBe("off");
+    expect(third.codeMode(fresh.id)).toBe("off");
+    third.close();
+  });
+
   it("keeps projects, threads, and ordered events", () => {
     const store = new Store(join(tempDir(), "t.db"));
     const p = store.addProject("/tmp/some/project");

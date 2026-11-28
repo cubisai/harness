@@ -112,8 +112,13 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
     const cwd = deps.cwdOf(threadId);
     if (!cwd) return { text: "This thread's folder is gone, so run_code can't run here.", isError: true };
     const turn = deps.turnSignal?.(threadId);
+    if (deps.turnSignal && !turn) return { text: "No active turn for this script.", isError: true };
     const stop = [signal, turn].filter((s): s is AbortSignal => Boolean(s));
     const combined = stop.length ? AbortSignal.any(stop) : new AbortController().signal;
+    const ownsTurn = () => deps.turnSignal?.(threadId) === turn;
+    const assertCurrent = () => {
+      if (!ownsTurn() || combined.aborted) throw new Error("The originating script was stopped or its turn ended.");
+    };
     // The sandbox boots at once; the driver's row is awaited only when the
     // script's first call is about to emit (or resolved immediately when known).
     let parentPromise: Promise<string | undefined> | null = null;
@@ -121,18 +126,27 @@ export function createCodeServer(deps: CodeServerDeps): { tool(threadId: string)
       parentId !== undefined ? Promise.resolve(parentId) : (parentPromise ??= waitFor(() => deps.parentOf(threadId, code), deps.parentWaitMs ?? PARENT_WAIT_MS, combined));
     let state = states.get(threadId);
     if (!state) states.set(threadId, (state = new Map()));
-    const available = scriptTools(threadId, cwd);
+    const available = scriptTools(threadId, cwd).map((tool): LoopTool => ({
+      ...tool,
+      run: (args, call) => {
+        assertCurrent();
+        return tool.run(args, call);
+      },
+    }));
+    let widgetOwner: string | undefined;
     const sandbox = createCodeTool({
       tools: () => available,
       outputDir: deps.outputDir,
       state,
-      broker: createCodeBroker({ tools: () => available, emit: (e) => deps.emit(threadId, e), outputDir: deps.outputDir, parentOf: () => parent() }),
+      broker: createCodeBroker({ tools: () => available, emit: (e) => { if (ownsTurn()) deps.emit(threadId, e); }, outputDir: deps.outputDir, parentOf: parent }),
+      beforePublish: async (hasWidgets) => {
+        if (hasWidgets) widgetOwner = await parent();
+        assertCurrent();
+      },
       ...(canShow
         ? {
-            show: async (widgets: ShownWidget[], callId: string) => {
-              // The widget belongs to the agent's run_code row; without one (it never showed), the sandbox's own id.
-              const owner = (await parent()) ?? callId;
-              widgets.forEach((w, i) => deps.emit(threadId, { kind: "widget", envelope: scriptEnvelope(w.spec, owner, i, w.complete) }));
+            show: (widgets: ShownWidget[], callId: string) => {
+              widgets.forEach((w, i) => deps.emit(threadId, { kind: "widget", envelope: scriptEnvelope(w.spec, widgetOwner ?? callId, i, w.complete) }));
             },
           }
         : {}),

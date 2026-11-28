@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Check, PenTool } from "lucide-react";
 import type { WorkspaceMode } from "../../../shared/types";
 import { IconCompose, IconFolder, IconGear, IconLibrary, IconRefresh, IconSidebarClose, IconSidebarOpen } from "../icons";
-import { api } from "../api";
 import { InboxBell } from "./MessageCenter";
 import { useStore } from "../store";
 import { sidebarMode } from "../sections";
@@ -170,7 +169,7 @@ export function PaneRail() {
       <ModeToggle />
       <div className="rail-foot">
         {readyVersion && (
-          <button className="icon-button active" title={`Update ready: restart to install version ${readyVersion}`} onClick={() => void api().installUpdate()}>
+          <button className="icon-button active" title={`Update ready: restart to install version ${readyVersion}`} onClick={() => void useStore.getState().restartToUpdate()}>
             <IconRefresh />
           </button>
         )}

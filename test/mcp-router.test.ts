@@ -315,11 +315,15 @@ describe("routerTools", () => {
       [DB_SPEC, dbListing],
       [DOWN_SPEC, downListing],
     ]);
-    const { search } = fakeRouter([dbEntry, downEntry], listings, { callTool: async () => ({ ok: true, text: "", isError: false }) });
+    const { search } = fakeRouter([dbEntry, downEntry], listings, { callTool: async () => { throw new Error("Discovery must not execute a tool"); } });
     const out = await search.run({ query: "database query", limit: 5 });
     expect(out.isError).toBeUndefined();
     expect(out.text).toContain("run_query");
     expect(out.text).toContain("Couldn't reach: down (No answer in 15 seconds.); their tools aren't included.");
+    expect(out.data).toEqual({
+      matches: expect.arrayContaining([{ server: "db", tool: "run_query", description: "run a database query", inputSchema: DB_SCHEMA }]),
+      unavailable: [{ name: "down", error: "No answer in 15 seconds." }],
+    });
   });
 
   it("tells no match apart from an unreachable server", async () => {

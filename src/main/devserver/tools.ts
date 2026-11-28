@@ -49,6 +49,10 @@ export function devServerTools(servers: DevServers, cwdOf: (projectId: string) =
           for (const d of detected) {
             const mine = owned.find((s) => s.script === d.script);
             if (mine) {
+              if (mine.state === "starting") {
+                lines.push(`${d.script}: ${d.command} (port ${d.port}) — starting (owned by CubiQ)`);
+                continue;
+              }
               lines.push(`${d.script}: ${d.command} (port ${d.port}) — running (owned by CubiQ, pid ${mine.pid}) — http://localhost:${d.port}`);
               continue;
             }

@@ -120,6 +120,7 @@ interface State {
   openDoctor(): void;
   closeDoctor(): void;
   appUpdate: AppUpdateStatus | null;
+  restartToUpdate(): Promise<void>;
   /** Plan rate limits by agent id, as the agents last reported them. */
   limits: Record<string, AgentLimits>;
   paletteOpen: boolean;
@@ -660,6 +661,13 @@ export const useStore = create<State>((set, get) => ({
     set({ mcpSheetOpen: false, mcpSheetPrefill: "" });
   },
   appUpdate: null,
+  async restartToUpdate() {
+    try {
+      await api().installUpdate();
+    } catch (err) {
+      get().showNotice(`Couldn't restart to update: ${ipcErrorText(err)}. Try Restart again.`);
+    }
+  },
   limits: {},
   paletteOpen: false,
   paletteQuery: "",

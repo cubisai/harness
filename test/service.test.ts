@@ -6,6 +6,7 @@ import type { LiveUpdate, PlanDecision, SkillEntry, ThreadEvent } from "../src/s
 import { teamMemberProtocol, type ExpertDef } from "../src/shared/experts";
 import type { AgentDriver, HarnessTool, TurnInput } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
+import { startAutomations } from "../src/main/automations/app";
 import { CRITIQUE_ARTIFACT, PLAN_ARTIFACT } from "../src/shared/artifact-kind";
 import { Store } from "../src/main/db";
 import type { TurnDelta } from "../src/main/memory/extractor";
@@ -1188,6 +1189,45 @@ describe("the project check gate", () => {
     const checks = store.listEvents(thread.id).flatMap(({ event }) => event.kind === "check" && event.ok !== null ? [[event.round, event.ok]] : []);
     expect(checks).toEqual([[0, false], [1, status === "succeeded"]]);
     expect(service.pendingState()).toMatchObject({ running: [], queued: [] });
+  });
+
+  it.each(["succeeded", "failed", "cancelled"] as const)("delivers only the automation's own result after a %s fix round", async (status) => {
+    const fixing = deferred<void>(), finishFix = deferred<void>(), settled = deferred<void>();
+    const { store, service, thread } = setup(async (input) => {
+      if (input.prompt === "unrelated") {
+        input.onEvent({ kind: "assistant-text", text: "another answer" });
+      } else if (input.prompt.startsWith("Review the change")) {
+        edit(input);
+        input.onEvent({ kind: "assistant-text", text: "partial brief" });
+      } else {
+        fixing.resolve();
+        await finishFix.promise;
+        if (status === "succeeded") writeFileSync(join(input.cwd, "fixed"), "yes");
+        input.onEvent({ kind: "assistant-text", text: "final brief" });
+      }
+    });
+    store.setCheckCommand(thread.projectId, nodeCmd("process.exit(require('fs').existsSync('fixed') ? 0 : 3)"), 1);
+    const app = startAutomations({ store, service,
+      sources: new Map([["git", { id: "git", read: async () => ({ items: ["change"], next: "new" }) }]]),
+      broadcast: (u) => { if (u.type === "automation-run") settled.resolve(); },
+    });
+    try {
+      const a = app.save(thread.projectId, { name: "Brief", template: "project-brief", prompt: "Review the change", schedule: { kind: "interval", everyMinutes: 5 }, missed: "skip", enabled: false, agent: null, model: null, budgetUsd: null, permissions: "ask" });
+      app.store.confirmSource(a.id, "git", "old");
+      const claim = app.runNow(a.id)!;
+      await fixing.promise;
+      const run = app.store.run(claim.runId)!;
+      const key = `${run.runKey}:message-center`;
+      expect(app.store.delivery(key)).toBeNull();
+      if (status === "cancelled") service.interrupt(run.threadId!);
+      finishFix.resolve();
+      await settled.promise;
+      await expect(service.send({ threadId: run.threadId!, text: "unrelated" })).resolves.toEqual({ status: "succeeded", text: "another answer" });
+      expect(app.store.run(run.id)).toMatchObject({ status, result: status === "succeeded" ? "final brief" : null });
+      expect(app.store.delivery(key)?.receipt ?? null).toBe(status === "succeeded" ? key : null);
+      expect(app.store.cursor(a.id, "git").bookmark).toBe(status === "succeeded" ? "new" : "old");
+      expect(store.listEvents(run.threadId!).map((e) => e.event)).toContainEqual({ kind: "assistant-text", text: "partial brief" });
+    } finally { finishFix.resolve(); app.dispose(); }
   });
 
   it("sends up to 2 fix rounds when the check keeps failing", async () => {

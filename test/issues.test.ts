@@ -272,6 +272,50 @@ describe("createIssue", () => {
     expect(readdirSync(join(dir, "docs", "issues")).filter((n) => n.endsWith(".md"))).toHaveLength(2);
   });
 
+  it("keeps concurrent local issues and same-named evidence files distinct", async () => {
+    const dir = project({ tracker: "local" });
+    const folder = join(dir, "docs/issues");
+    const files = ["before", "after", "unrelated"].map((body) => {
+      mkdirSync(join(dir, body));
+      const path = join(dir, body, "shot.png");
+      writeFileSync(path, body);
+      return path;
+    });
+    const created = await Promise.all([
+      createIssue(dir, { ...BUG, title: "Two screenshots", attachments: files.slice(0, 2) }),
+      createIssue(dir, { ...BUG, title: "Another screenshot", attachments: files.slice(2) }),
+    ]);
+    expect(created.map((r) => r.ok && r.value.number).sort()).toEqual([1, 2]);
+    for (const [i, r] of created.entries()) {
+      if (!r.ok) throw Error(r.message);
+      const detail = await getIssue(dir, r.value.number);
+      if (!detail.ok) throw Error(detail.message);
+      expect(detail.value.title).toBe(r.value.title);
+      const paths = [...detail.value.body.matchAll(/!\[shot\.png\]\(([^)]+)\)/g)].map((m) => decodeURIComponent(m[1]!));
+      for (const path of paths) expect(path.startsWith(`attachments/${String(r.value.number).padStart(4, "0")}/`)).toBe(true);
+      expect(paths.map((path) => readFileSync(join(folder, path), "utf8"))).toEqual(i === 0 ? ["before", "after"] : ["unrelated"]);
+    }
+  });
+
+  it("a failed local publication leaves no attachment copies or visible issue and preserves the occupied file", async () => {
+    const dir = project({ tracker: "local" });
+    const folder = join(dir, "docs/issues");
+    mkdirSync(folder, { recursive: true });
+    const occupied = join(folder, "0001-occupied.md");
+    writeFileSync(occupied, "Not an issue");
+    const attachment = join(dir, "proof.txt");
+    writeFileSync(attachment, "failed attempt");
+    expect(await createIssue(dir, { ...BUG, title: "Occupied", attachments: [attachment] })).toMatchObject({ ok: false });
+    expect(await listIssues(dir)).toMatchObject({ ok: true, value: [] });
+    expect(readFileSync(occupied, "utf8")).toBe("Not an issue");
+    expect(existsSync(join(folder, "attachments/0001/proof.txt"))).toBe(false);
+    writeFileSync(attachment, "retry");
+    const retry = await createIssue(dir, { ...BUG, title: "Available", attachments: [attachment] });
+    if (!retry.ok) throw Error(retry.message);
+    expect(await listIssues(dir)).toMatchObject({ ok: true, value: [{ title: "Available", number: retry.value.number }] });
+    expect(readFileSync(join(folder, "attachments", String(retry.value.number).padStart(4, "0"), "proof.txt"), "utf8")).toBe("retry");
+  });
+
   it("says when there's no tracker, or the CLI is signed out", async () => {
     expect(await createIssue(tempDir(), BUG, fake())).toMatchObject({ ok: false, error: "no-config" });
     const dir = project({ tracker: "github" });

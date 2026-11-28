@@ -636,6 +636,40 @@ describe("AutomationRunner.recover", () => {
     expect(destination.payloads).toEqual([]);
   });
 
+  it("migrates a pre-settlement database, recovering only the unfinished confirmed receipt across two opens", async () => {
+    const file = join(tempDir(), "legacy.db");
+    const original = new Store(file);
+    const old = new AutomationStore(original.sql, () => 100);
+    const id = pending(old, { text: "legacy brief", advances: [{ source: "git", next: "e000" }] });
+    old.confirmDelivery("brief:dest", "receipt-1");
+    const later = old.claimRun("a1", "later", 2)!;
+    old.startRun(later.id, "later-thread", 100);
+    old.deliveryIntent("later:dest", later.id, "dest");
+    old.confirmDelivery("later:dest", "receipt-2");
+    old.confirmSource("a1", "git", "0100");
+    const completed = old.finishRun(later.id, { status: "succeeded", result: "later brief", inputTokens: 21 });
+    // Version 40 predates the settled column. Both receipts looked alike on disk.
+    original.sql.exec("ALTER TABLE automation_deliveries DROP COLUMN settled; UPDATE schema_version SET version = 40");
+    original.close();
+
+    for (const now of [200, 300]) {
+      const reopened = new Store(file);
+      try {
+        const db = new AutomationStore(reopened.sql, () => now);
+        const destination = fakeDestination();
+        const result = await new AutomationRunner(makeDeps(db, { destination })).recover();
+        expect(result.confirmed).toBe(now === 200 ? 1 : 0);
+        expect(db.run(id)).toMatchObject({ status: "partial", endedAt: 200, result: "legacy brief", error: expect.stringMatching(/confirmed.*uncertain/i) });
+        expect(db.run(later.id)).toEqual(completed);
+        expect(db.delivery("brief:dest")).toMatchObject({ state: "confirmed", receipt: "receipt-1", updatedAt: 200 });
+        expect(db.delivery("later:dest")).toMatchObject({ state: "confirmed", receipt: "receipt-2", updatedAt: 100 });
+        expect(db.cursor("a1", "git").bookmark).toBe("0100");
+        expect(db.pendingDeliveries(true)).toEqual([]);
+        expect(destination.payloads).toEqual([]);
+      } finally { reopened.close(); }
+    }
+  });
+
   it("uses the original payload on a safe retry; a newer bookmark survives the delivery", async () => {
     const { db } = open(() => 1_000);
     const id = pending(db);

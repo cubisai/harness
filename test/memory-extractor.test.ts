@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { BackgroundRun } from "../src/shared/learn";
 import type { AgentCapabilities, ModelOption } from "../src/shared/types";
@@ -5,7 +6,9 @@ import type { AgentDriver } from "../src/main/agents/types";
 import { SAFE_DEFAULTS } from "../src/main/agents/capabilities";
 import { applyOps, buildExtractionPrompt, createExtractor, parseOps, pickExtractorModel } from "../src/main/memory/extractor";
 import { GLOBAL_SCOPE, MemoryStore } from "../src/main/memory/store";
-import { tempDir } from "./helpers";
+import { SettingsStore } from "../src/main/settings";
+import { memoryOn } from "../src/main/memory";
+import { deferred, tempDir } from "./helpers";
 
 function extractorDriver(over: { oneShot: AgentDriver["oneShot"]; capabilities?: Partial<AgentCapabilities>; models?: ModelOption[] }): AgentDriver {
   return {
@@ -259,6 +262,38 @@ describe("applyOps", () => {
 
 describe("createExtractor", () => {
   const base = () => ({ projectId: "p1", threadId: "t1", agentId: "codex", model: "m", user: "u".repeat(50), answer: "a".repeat(50) });
+
+  it.each(["global switch", "project settings import"])("does not revive debounced, queued, or in-flight work after Off/On via %s", async (entry) => {
+    vi.useFakeTimers();
+    const store = new MemoryStore(tempDir());
+    const settings = new SettingsStore(join(tempDir(), "settings.json"), { available: false, encrypt: String, decrypt: String });
+    const late = deferred<string>();
+    const oneShot = vi.fn<NonNullable<AgentDriver["oneShot"]>>().mockImplementationOnce(() => late.promise).mockResolvedValue(ADD_JSON);
+    const ex = createExtractor({ store, enabled: (id) => memoryOn(settings.get(), id), driverFor: () => extractorDriver({ oneShot }), debounceMs: 10 });
+    settings.onMemoryChange = ex.cancelDisabled;
+    try {
+      ex.schedule(base());
+      ex.schedule({ ...base(), threadId: "queued" });
+      ex.schedule({ ...base(), projectId: "p2", threadId: "other" });
+      await vi.advanceTimersByTimeAsync(10);
+      ex.schedule({ ...base(), threadId: "debouncing" });
+      expect(oneShot).toHaveBeenCalledTimes(1);
+      const saved = settings.exportData();
+      if (entry === "global switch") settings.update({ memory: { enabled: false, disabledProjects: [] } });
+      else settings.importData({ ...saved, settings: { ...saved.settings, memory: { enabled: true, disabledProjects: ["p1"] } } });
+      expect(oneShot.mock.calls[0]![0].signal?.aborted).toBe(true);
+      settings.update({ memory: { enabled: true, disabledProjects: [] } });
+      late.resolve(ADD_JSON); // The driver ignored its abort and returned a valid note.
+      await vi.advanceTimersByTimeAsync(20);
+      expect(store.list("p1")).toEqual([]);
+      const scoped = entry === "project settings import";
+      expect(oneShot).toHaveBeenCalledTimes(scoped ? 2 : 1);
+      expect(store.list("p2")).toHaveLength(scoped ? 1 : 0);
+      ex.schedule(base());
+      await vi.advanceTimersByTimeAsync(10);
+      expect(store.list("p1").map((n) => n.file)).toEqual(["tabs.md"]);
+    } finally { ex.dispose(); vi.useRealTimers(); }
+  });
 
   it("debounces per thread and applies the extracted ops once", async () => {
     vi.useFakeTimers();

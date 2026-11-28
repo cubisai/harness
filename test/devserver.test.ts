@@ -1,15 +1,16 @@
 // P5.5a: finding a project's dev server, starting one the app owns, and
 // stopping only the ones it started. No npm runs: spawn is injected.
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { ChildProcess, spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import { once } from "node:events";
 import { createServer, type AddressInfo } from "node:net";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { detectScripts, inferPort, packageManager } from "../src/main/devserver/detect";
 import { DevServers, portOpen, type OwnedServer } from "../src/main/devserver/registry";
 import { devServerTools } from "../src/main/devserver/tools";
-import { closeAfter, tempDir } from "./helpers";
+import { closeAfter, deferred, tempDir } from "./helpers";
 
 /** A free loopback port: bind port 0, read it, release it. */
 function freePort(): Promise<number> {
@@ -115,6 +116,77 @@ describe("portOpen", () => {
 });
 
 describe("DevServers", () => {
+  it.skipIf(process.platform === "win32")("serves the replacement URL after the old process releases the port and exits late", async () => {
+    const port = await freePort(), children: ChildProcess[] = [];
+    const servers = new DevServers({ spawn: () => {
+      const script = `
+        const server = require('node:http').createServer((_, res) => res.end(String(process.pid)));
+        process.on('SIGTERM', () => server.close(() => process.send('port released')));
+        process.on('message', () => process.exit(0));
+        server.listen(${port}, '127.0.0.1');`;
+      const child = spawn(process.execPath, ["-e", script], { detached: true, stdio: ["ignore", "pipe", "pipe", "ipc"] });
+      children.push(child);
+      return child;
+    } });
+    closeAfter(() => { for (const c of children) c.kill("SIGKILL"); });
+    const cwd = tempDir(), d = { script: "dev", command: "vite", port };
+    const first = servers.start("p", cwd, d);
+    await expect(servers.start("p", cwd, d)).rejects.toThrow("Already running");
+    await first;
+    expect(children).toHaveLength(1);
+    const old = children[0]!, released = once(old, "message"), exited = once(old, "exit");
+    servers.stop("p:dev");
+    await released;
+    const next = await servers.start("p", cwd, d);
+    old.send("exit");
+    await exited;
+    expect(servers.list()).toMatchObject([{ state: "running", pid: next.pid }]);
+    expect(await (await fetch(`http://127.0.0.1:${port}`)).text()).toBe(String(next.pid));
+    const signalExit = once(children[1]!, "exit");
+    children[1]!.kill("SIGINT");
+    await signalExit;
+    expect(servers.list()).toMatchObject([{ state: "exited", exited: -1 }]);
+  });
+  it("owns its port probe, reports starting, and cancels it before spawning", async () => {
+    const gate = deferred<boolean>();
+    let probes = 0;
+    let spawns = 0;
+    const servers = new DevServers({ probe: () => ++probes === 1 ? gate.promise : Promise.resolve(probes > 2), spawn: () => { spawns++; return new ChildProcess(); } });
+    const cwd = project({ dev: "vite" });
+    const d = detectScripts(cwd)[0]!;
+    const [status] = devServerTools(servers, () => cwd);
+    const first = servers.start("p", cwd, d);
+    await expect(servers.start("p", cwd, d)).rejects.toThrow("Already running");
+    expect((await status!.run({}, { projectId: "p" })).text).toContain("starting (owned by CubiQ)");
+    expect((await status!.run({ action: "stop" }, { projectId: "p" })).text).toContain("Stopped dev");
+    const next = await servers.start("p", cwd, d);
+    gate.resolve(false);
+    await expect(first).rejects.toThrow("Stopped before starting");
+    expect(spawns).toBe(1);
+    expect(servers.list()).toEqual([next]);
+    servers.stopAll();
+  });
+
+  it("a delayed signal exit during restart cannot remove the ready replacement", async () => {
+    const first = new ChildProcess(), next = new ChildProcess();
+    const children = [first, next];
+    const pending = deferred<boolean>();
+    const probes = [Promise.resolve(false), pending.promise, Promise.resolve(false), Promise.resolve(true)];
+    const servers = new DevServers({ spawn: () => children.shift()!, probe: () => probes.shift()! });
+    const d = { script: "dev", command: "vite", port: 5173 }, cwd = tempDir();
+    const opening = servers.start("p", cwd, d);
+    await Promise.resolve();
+    expect(children).toEqual([next]);
+    servers.stop("p:dev");
+    const replacement = await servers.start("p", cwd, d);
+    first.emit("exit", null, "SIGTERM");
+    pending.resolve(true);
+    await expect(opening).rejects.toThrow("SIGTERM");
+    expect(servers.list()).toEqual([replacement]);
+    next.emit("exit", null, "SIGINT");
+    expect(servers.list()).toMatchObject([{ state: "exited", exited: -1 }]);
+    servers.stopAll();
+  });
   it("starts a server, lists it, then stops it", async () => {
     const port = await freePort();
     const children: ChildProcess[] = [];
@@ -196,7 +268,7 @@ describe("dev server tools", () => {
 
   it("marks an owned server and gives its URL", async () => {
     const dir = project({ dev: "vite" });
-    const owned: OwnedServer = { id: "p:dev", projectId: "p", cwd: dir, script: "dev", port: 5173, pid: 4321, startedAt: 1, output: [], exited: null };
+    const owned: OwnedServer = { id: "p:dev", projectId: "p", cwd: dir, script: "dev", port: 5173, pid: 4321, startedAt: 1, output: [], state: "running", exited: null };
     const tools = devServerTools(fakeServers({ list: [owned], open: true }), () => dir);
     const res = await tools[0]!.run({}, { projectId: "p" });
     expect(res.text).toContain("running (owned by CubiQ, pid 4321)");

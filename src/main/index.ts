@@ -48,7 +48,7 @@ import { DOC_SCHEME, documentUrl, pdfPageCount, serveDocument } from "./document
 import { documentTools } from "./documents/tools";
 import { designTools, imageBudget } from "./design/tools";
 import { selectorFor } from "./browser/picker";
-import { execFile, spawn, spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { createAcpDriver } from "./agents/acp/driver";
 import { setBinaryPins, warmBinaries } from "./agents/binaries";
 import { createDoctor, pinsByCommand } from "./doctor";
@@ -151,7 +151,7 @@ import { APP_TEMPLATES, CREATOR_APP_PREVIEW_TOOL, creatorAppTools, listAppDrafts
 import { prepareAppEdit } from "./apps/manage";
 import { providerWarning } from "../shared/provider-rules";
 import { Updater, type UpdaterBackend } from "./updater";
-import { MacSwapBackend, bundlePath, isAdHocSigned, type FoundUpdate } from "./mac-swap-updater";
+import { MacSwapBackend, bundlePath, isAdHocSigned, spawnSwapHelper, type FoundUpdate } from "./mac-swap-updater";
 import { checkFolder, privacyMessage, type PrivacyBlock } from "./mac-privacy";
 import { defaultSkillsCandidates, findSkillsRoot } from "./skills/catalog";
 import { codexCoveredSkills, withoutCodexCovered } from "./skills/codex-plugins";
@@ -244,7 +244,7 @@ async function updaterBackend(): Promise<UpdaterBackend | null> {
           .on("end", () => done(hash.digest("base64")));
       }),
     run,
-    spawnDetached: (cmd, args) => spawn(cmd, args, { detached: true, stdio: "ignore" }).unref(),
+    spawnDetached: spawnSwapHelper,
     writeFile: (path, text) => writeFileSync(path, text, { mode: 0o755 }),
     resetDir: (path) => {
       rmSync(path, { recursive: true, force: true });
@@ -1586,7 +1586,10 @@ async function main(): Promise<void> {
     journalDir: join(userData, "design-journal"),
     isBusy: (threadId) => service.isRunning(threadId),
     beforeFirstOpen: (threadId, rel) => service.recordDesignPageVersion(threadId, rel),
-    onSaved: (threadId, rel) => service.designPageSaved(threadId, rel),
+    onSaved: (threadId, rel, reload) => {
+      service.designPageSaved(threadId, rel);
+      if (reload) broadcast({ type: "design-changed", threadId, paths: [rel] });
+    },
     onStatus: (threadId, rel, status, conflicts) => broadcast({ type: "design-document", threadId, rel, status, conflicts }),
   });
   designDocuments = documents;
@@ -1938,7 +1941,7 @@ async function main(): Promise<void> {
   const reviewRoot = (threadId: string) => {
     const root = service.designRoot(threadId);
     if (!root) throw new Error("Not a design thread.");
-    designDocuments?.flushThread(threadId);
+    documents.flushThread(threadId, root);
     return root;
   };
   ipcMain.handle("design:review-sizes", async (e, threadId: string, page: string) => {
@@ -2091,6 +2094,7 @@ async function main(): Promise<void> {
       return driver ? { driver, model: chosen.model, effort: null } : null;
     },
   });
+  settings.onMemoryChange = extractor.cancelDisabled;
   service.setTurnListener((d) => extractor.schedule(d));
   // Settings › Run at once: background sends past it wait for a free slot.
   service.setRunLimit(() => settings.get().background?.maxRunning ?? 0);
@@ -2851,11 +2855,7 @@ async function main(): Promise<void> {
       memoryApi.write(projectId, note, memoryScope(scope)),
   );
   ipcMain.handle("memory:delete", (_e, projectId: string, file: string, scope?: unknown) => memoryApi.remove(projectId, file, memoryScope(scope)));
-  ipcMain.handle("memory:set-enabled", (_e, projectId: string | null, on: boolean) => {
-    const result = memoryApi.setEnabled(projectId, on);
-    extractor.cancelDisabled();
-    return result;
-  });
+  ipcMain.handle("memory:set-enabled", (_e, projectId: string | null, on: boolean) => memoryApi.setEnabled(projectId, on));
   ipcMain.handle("memory:import", (_e, projectId: string) => memoryApi.reimport(projectId));
   ipcMain.handle("automation:overview", (_e, projectId: string) => automations.overview(projectId));
   ipcMain.handle("automation:save", (_e, projectId: string, input: AutomationInput, id?: string) => automations.save(projectId, input, id));

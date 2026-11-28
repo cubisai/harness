@@ -141,7 +141,7 @@ export function AboutSheet({ info: initial }: { info?: AboutInfo | null } = {}) 
               <button className="button" onClick={() => setOpen(false)}>
                 Later
               </button>
-              <button className="button primary" onClick={() => void api().installUpdate()}>
+              <button className="button primary" onClick={() => void useStore.getState().restartToUpdate()}>
                 Restart to update
               </button>
             </>

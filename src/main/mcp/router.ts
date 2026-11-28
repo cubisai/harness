@@ -395,6 +395,7 @@ export function routerTools(
   const search = define({
     name: "search_tools",
     description: searchDescription,
+    returns: "{ matches: { server: string; tool: string; description: string; inputSchema: unknown; outputSchema?: unknown }[]; unavailable: { name: string; error: string }[] }",
     autoAllow: true,
     input: {
       query: z.string().describe("What the tool should do, or its exact name"),

@@ -45,6 +45,8 @@ export async function runCodeWorker(file: string, o: CodeToolOptions, code: stri
           if (!controller.signal.aborted) worker.postMessage({ id: job.id, seq: message.seq, result } satisfies WorkerReply);
         } else {
           if (!message.result.isError) {
+            if (o.beforePublish) await o.beforePublish(message.widgets.length > 0);
+            if (controller.signal.aborted) return;
             if (o.state && message.writes.length) commitScriptState(o.state, message.writes);
             if (message.widgets.length) await o.show?.(message.widgets, job.callId);
           }

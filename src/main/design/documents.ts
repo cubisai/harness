@@ -2,6 +2,7 @@
 // so it can be tested without Electron.
 
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type {
   DesignHistoryRequest,
   DesignHistoryResult,
@@ -13,6 +14,7 @@ import type {
 } from "../../shared/design-mutation";
 import { RETAG_TAGS } from "../../shared/design-mutation";
 import { DocumentMutationService, documentIdOf } from "./mutation";
+import { listDesignPages } from "./pages";
 
 /**
  * True when a call came from the app's own top-level page. A design page runs in a sandboxed frame inside that window,
@@ -185,7 +187,7 @@ export interface DesignDocumentsOptions {
   isBusy: (threadId: string) => boolean;
   /** Called once, before a page's first open, so the text as it stood is kept as a version. */
   beforeFirstOpen?: (threadId: string, rel: string) => void;
-  onSaved?: (threadId: string, rel: string) => void;
+  onSaved?: (threadId: string, rel: string, reload: boolean) => void;
   /** A page's save state, revision or undo state changed; `conflicts` says edits are waiting to be fetched with a history call. */
   onStatus?: (threadId: string, rel: string, status: DocumentStatus, conflicts: boolean) => void;
   /** Test seam, passed straight to the service. */
@@ -195,6 +197,8 @@ export interface DesignDocumentsOptions {
 interface Tracked {
   threadId: string;
   rel: string;
+  /** A journaled main-process edit hasn't reached the frame, which still shows the file. */
+  reloadOnSave?: boolean;
   conflicts: MutationConflict[];
   /** A check outside the watcher already found a foreign write, so the watcher's report of it isn't our own save. */
   foreignSeen: boolean;
@@ -211,7 +215,12 @@ export class DesignDocuments {
   private readonly options: DesignDocumentsOptions;
   private readonly tracked = new Map<string, Tracked>();
 
-  flushThread(threadId: string): void {
+  /** Review and build also need edits recovered for pages the canvas hasn't reopened yet. */
+  flushThread(threadId: string, root: string): void {
+    for (const rel of listDesignPages(root)) {
+      const id = documentIdOf(threadId, rel);
+      if (!this.tracked.has(id) && this.service.hasJournal(id)) this.ensure(threadId, rel, join(root, rel));
+    }
     for (const [id, page] of this.tracked) {
       if (page.threadId !== threadId) continue;
       this.checkDisk(id);
@@ -229,7 +238,9 @@ export class DesignDocuments {
         const entry = this.tracked.get(documentId);
         if (!entry) return;
         try {
-          this.options.onSaved?.(entry.threadId, entry.rel);
+          const reload = entry.reloadOnSave === true;
+          entry.reloadOnSave = false;
+          this.options.onSaved?.(entry.threadId, entry.rel, reload);
         } catch (error) {
           console.error("design: onSaved failed", error);
         }
@@ -321,11 +332,6 @@ export class DesignDocuments {
         break;
     }
 
-    const status = this.service.status(id);
-    const html = this.service.html(id);
-    // Both are set once ensure has opened the page.
-    if (status === null || html === null) throw new Error("That page isn't open.");
-
     // Conflicts are handed out once and then forgotten, so the canvas is never told twice.
     const entry = this.tracked.get(id);
     const conflicts = entry ? entry.conflicts : [];
@@ -334,6 +340,10 @@ export class DesignDocuments {
     if (entry) entry.recovered = 0;
     // On disk before the canvas reloads its frame to show them.
     if (recovered > 0) this.service.flush(id);
+
+    const status = this.service.status(id);
+    const html = this.service.html(id);
+    if (status === null || html === null) throw new Error("That page isn't open.");
 
     return { status, html, conflicts, ...(result !== undefined ? { result } : {}), ...(recovered > 0 ? { recovered } : {}) };
   }
@@ -356,7 +366,10 @@ export class DesignDocuments {
         if (!result.ok) return { ok: false, message: result.message ?? "That edit can't be made here." };
       }
       this.service.closeTransaction(id, transactionId);
-      if (!this.service.flush(id)) return { ok: false, journaled: true, message: `The edit to ${rel} is journaled but not saved to disk. Use Retry to save it.` };
+      if (!this.service.flush(id)) {
+        this.tracked.get(id)!.reloadOnSave = true;
+        return { ok: false, journaled: true, message: `The edit to ${rel} is journaled but not saved to disk. Use Retry to save it.` };
+      }
       return { ok: true };
     } finally {
       if (busy) this.service.setReadOnly(id, true);

@@ -57,6 +57,8 @@ export interface CodeToolOptions {
   /** Values kept across scripts in one session, as JSON text; a script's writes commit only when it succeeds. */
   state?: Map<string, string>;
   onCommit?: (writes: [string, string][]) => void;
+  /** Resolve any pending transcript owner before publishing this successful script's state or widgets. */
+  beforePublish?: (hasWidgets: boolean) => Promise<void>;
   /** Draws what a successful script `show()`ed for the user (inline UI on); absent = scripts have no `show`. Called once per run, before it returns. */
   show?: (widgets: ShownWidget[], callId: string) => void | Promise<void>;
 }
@@ -83,7 +85,7 @@ export const CODE_DESCRIPTION = [
   "Run a JavaScript program in a sandbox and return what it prints and returns.",
   "The code is the body of an async function: call tools as `await tools.<name>(args)`, which throws on an error (wrap a call that may fail in try/catch, or use `await tools.readMany(paths, opts?)` for `{ path, content?, entries?, error? }[]` across a batch).",
   'read, glob and grep return plain values, not text: glob gives string[] paths (empty when nothing matches, optional `limit`); grep gives string[] files, or { path: count } with output_mode "count", or [{ path, line, text, before?, after? }] with "content" (optional `limit` and `context`); read gives the file\'s text (or string[] entries for a folder). Other tools return their text output.',
-  "`ALL_TOOLS` lists the tools, `searchTools(query)` ranks them, `describeTool(name)` returns a TypeScript declaration, and `path` has POSIX string helpers (`join`, `dirname`, `basename`, `extname`, `normalize`).",
+  "`ALL_TOOLS` lists the tools, `searchTools(query)` ranks them, `describeTool(name)` gives the TypeScript arguments, return type and a usage example when known, and `path` has POSIX string helpers (`join`, `dirname`, `basename`, `extname`, `normalize`).",
   "Batch: one broad call (a grep pattern like `a|b|c`, then filtering in JavaScript) beats a call per item, and Promise.all runs calls together.",
   "`store(key, value)` and `load(key)` keep JSON between scripts in this session, and a failed script's writes are dropped.",
   "`console.log(...)` (and warn/error/info) lines plus the returned value (JSON-stringified unless it's a string) are the result: return only what you need.",
@@ -212,7 +214,8 @@ export function createCodeTool(o: CodeToolOptions): LoopTool {
             return { text: failed(`${why} The script returned with ${left} tool call${left === 1 ? "" : "s"} it never awaited still running; they were stopped. Await every tool call.`, logs, spill), isError: true };
           }
         }
-        if (runAbort.signal.aborted) return { text: failed(STOPPED, logs, spill), isError: true };
+        if (o.beforePublish) await o.beforePublish(shown.length > 0);
+        if (runAbort.signal.aborted) return { text: failed(stopReason === "timeout" ? timingOut(timeoutMs) : STOPPED, logs, spill), isError: true };
         if (o.state && written.size) {
           const writes: [string, string][] = [...written].map((key) => [key, staged.get(key)!]);
           commitScriptState(o.state, writes);
@@ -314,7 +317,7 @@ function install(
     const hits = ranked.length
       ? ranked
       : tools.filter((t) => t.definition.name.toLowerCase().includes(query.toLowerCase()) || t.definition.description.toLowerCase().includes(query.toLowerCase())).slice(0, limit);
-    return toH(hits.map((t) => ({ name: t.definition.name, description: t.definition.description })));
+    return toH(hits.map((t) => ({ name: t.definition.name, description: firstSentence(t.definition.description) })));
   });
   context.setProp(context.global, "searchTools", search);
   search.dispose();

@@ -44,7 +44,8 @@ export interface OwnedServer {
   startedAt: number;
   /** Last 200 stdout/stderr lines. */
   output: string[];
-  /** Exit code, or null while running. */
+  state: "starting" | "running" | "exited";
+  /** Exit code (-1 for a signal), or null before exit. */
   exited: number | null;
 }
 
@@ -66,7 +67,6 @@ const tail = (lines: string[]): string => (lines.length ? lines.slice(-TAIL_LINE
  */
 export class DevServers {
   private servers = new Map<string, OwnedServer>();
-  private starting = new Map<string, symbol>();
   private spawnFn: SpawnFn;
   private probe: (port: number) => Promise<boolean>;
   private readyTimeoutMs: number;
@@ -96,30 +96,35 @@ export class DevServers {
   async start(projectId: string, cwd: string, d: DevScript): Promise<OwnedServer> {
     const id = `${projectId}:${d.script}`;
     const existing = this.servers.get(id);
-    if (this.starting.has(id) || (existing && existing.exited === null)) {
+    if (existing && existing.state !== "exited") {
       throw new Error(`Already running: ${d.script} on port ${d.port} (owned by CubiQ).`);
     }
-    const reservation = Symbol(id);
-    this.starting.set(id, reservation);
-    try {
-      const occupied = await this.probe(d.port);
-      if (this.starting.get(id) !== reservation) throw new Error(`Stopped before starting ${d.script}.`);
-      if (occupied) throw new Error(`Port ${d.port} is already in use; a server is probably running there. Open http://localhost:${d.port} instead of starting another.`);
-    } finally { if (this.starting.get(id) === reservation) this.starting.delete(id); }
-    const child = this.spawnFn(packageManager(cwd), ["run", d.script], cwd);
     const server: OwnedServer = {
       id,
       projectId,
       cwd,
       script: d.script,
       port: d.port,
-      pid: child.pid ?? -1,
+      pid: -1,
       startedAt: Date.now(),
       output: [],
+      state: "starting",
       exited: null,
     };
     this.servers.set(id, server);
+    let child: ChildProcess;
+    try {
+      const occupied = await this.probe(d.port);
+      if (this.servers.get(id) !== server) throw new Error(`Stopped before starting ${d.script}.`);
+      if (occupied) throw new Error(`Port ${d.port} is already in use; a server is probably running there. Open http://localhost:${d.port} instead of starting another.`);
+      child = this.spawnFn(packageManager(cwd), ["run", d.script], cwd);
+      server.pid = child.pid ?? -1;
+    } catch (err) {
+      if (this.servers.get(id) === server) this.servers.delete(id);
+      throw err;
+    }
     const append = (chunk: string): void => {
+      if (this.servers.get(id) !== server) return;
       for (const line of chunk.split(/\r?\n/)) {
         if (!line) continue;
         server.output.push(line);
@@ -147,6 +152,7 @@ export class DevServers {
       }, this.readyTimeoutMs);
 
       child.once("exit", (code, signal) => {
+        server.state = "exited";
         server.exited = code ?? -1;
         if (settled) return;
         settled = true;
@@ -173,6 +179,7 @@ export class DevServers {
         if (settled) return;
         if (this.servers.get(id) !== server) { settled = true; stopPolling(); reject(new Error(`Stopped ${d.script}.`)); return; }
         if (open) {
+          server.state = "running";
           settled = true;
           stopPolling();
           resolve();
@@ -187,9 +194,8 @@ export class DevServers {
 
   /** Stop an owned server: its process group gets SIGTERM, then SIGKILL after 2 s. Unknown id → false. */
   stop(id: string): boolean {
-    const starting = this.starting.delete(id);
     const server = this.servers.get(id);
-    if (!server) return starting;
+    if (!server) return false;
     this.servers.delete(id);
     // A spawn that failed has no pid; never signal a made-up one (-(-1) would be pid 1).
     if (server.pid <= 0 || server.exited !== null) return true;
@@ -216,7 +222,6 @@ export class DevServers {
 
   /** Stop every owned server (on app quit). */
   stopAll(): void {
-    this.starting.clear();
     for (const id of [...this.servers.keys()]) this.stop(id);
   }
 }
